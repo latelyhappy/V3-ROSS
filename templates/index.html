@@ -2,66 +2,68 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Sniper V21.1 - Full Data Scanner</title>
+    <title>Sniper V22.1 - Tactical Log Hub</title>
     <style>
         :root { --yellow: #ffea00; --purple: #a371f7; --green: #3fb950; --red: #f85149; --bg: #050811; --panel: #0d1117; --border: #30363d; }
         body { margin: 0; background: var(--bg); color: #c9d1d9; font-family: sans-serif; overflow: hidden; }
-        .window { position: absolute; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; }
+        .window { position: absolute; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; }
         .title-bar { background: #0d1f3d; color: white; padding: 6px 10px; font-size: 11px; font-weight: bold; }
         .content { flex: 1; padding: 4px; overflow-y: auto; font-size: 10.5px; }
-        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        th, td { border-bottom: 1px solid #21262d; padding: 10px 4px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border-bottom: 1px solid #21262d; padding: 8px 4px; text-align: left; }
         .status-indicator { width: 6px; padding: 0 !important; }
         
-        tr.tr-yellow { background: rgba(255, 234, 0, 0.15); } .tr-yellow .status-indicator { background: var(--yellow); }
-        tr.tr-purple { background: rgba(163, 113, 247, 0.15); } .tr-purple .status-indicator { background: var(--purple); }
+        tr.tr-yellow { background: rgba(255, 234, 0, 0.2); } .tr-yellow .status-indicator { background: var(--yellow); }
+        tr.tr-purple { background: rgba(163, 113, 247, 0.2); } .tr-purple .status-indicator { background: var(--purple); }
         tr.tr-green { background: rgba(63, 185, 80, 0.1); } .tr-green .status-indicator { background: var(--green); }
         tr.tr-red { background: rgba(248, 81, 73, 0.1); } .tr-red .status-indicator { background: var(--red); }
         
-        .sym { font-weight: bold; color: #58a6ff; font-size: 13px; cursor: pointer; user-select: none; }
+        .sym { font-weight: bold; color: #58a6ff; font-size: 13px; cursor: pointer; }
         .up { color: var(--green); font-weight: bold; } .down { color: var(--red); font-weight: bold; }
-        #tactical-bar { position: fixed; top: 0; left: 0; width: 100%; background: #0d1f3d; padding: 8px 20px; display: flex; align-items: center; border-bottom: 1px solid var(--border); z-index: 999; }
+        #tactical-bar { position: fixed; top: 0; left: 0; width: 100%; background: #0d1f3d; padding: 10px 20px; border-bottom: 1px solid var(--border); z-index: 999; }
+        .log-area { max-height: 400px; overflow-y: auto; }
+        .news-icon { cursor: help; font-size: 12px; margin-left: 2px; }
     </style>
 </head>
 <body>
     <div id="tactical-bar">
-        <button id="audio-btn" style="background:#f85149; color:white; border:none; padding:5px 12px; border-radius:4px; cursor:pointer;" onclick="unlockAudio()">🔇 啟用音效</button>
-        <span id="sys-status" style="margin-left:auto; font-size:11px;">📡 引擎初始化...</span>
+        <button id="audio-btn" style="background:#f85149; color:white; border:none; padding:5px 15px; border-radius:4px; cursor:pointer;" onclick="unlockAudio()">🔇 啟用音效</button>
+        <span id="sys-status" style="margin-left:auto; font-size:11px;">📡 雷達待命...</span>
     </div>
 
-    <div class="window" style="top:50px; left:10px; width:720px; height:450px; border: 1px solid #6e40c9;">
-        <div class="title-bar">🚀 短線動態狙擊 (雙擊代碼連動 TradingView)</div>
-        <div class="content">
+    <div class="window" style="top:55px; left:10px; width:720px; height:430px; border: 1px solid #6e40c9;">
+        <div class="title-bar">🚀 短線狙擊日誌 (時間排序 / 儲存 1000 筆)</div>
+        <div class="content log-area">
             <table>
-                <thead><tr><th class="status-indicator"></th><th style="width:60px;">代碼</th><th>價格</th><th>量比</th><th>浮動</th><th>漲幅</th><th>漲跌價</th><th>訊號</th></tr></thead>
-                <tbody id="surge-list"></tbody>
+                <thead><tr><th class="status-indicator"></th><th>時間</th><th>代碼</th><th>價格</th><th>量比</th><th>成交量</th><th>浮動</th><th>漲幅</th><th>訊號</th></tr></thead>
+                <tbody id="surge-log-body"></tbody>
             </table>
         </div>
     </div>
 
-    <div class="window" style="top:510px; left:10px; width:500px; height:350px;">
-        <div class="title-bar">🏆 今日漲幅排行榜 ($1-40)</div>
+    <div class="window" style="top:495px; left:10px; width:500px; height:370px;">
+        <div class="title-bar">🏆 今日熱門漲幅榜 ($1-$40)</div>
         <div class="content">
             <table>
-                <thead><tr><th class="status-indicator"></th><th style="width:60px;">代碼</th><th>價格</th><th>量比</th><th>浮動</th><th>漲幅</th><th>漲跌價</th></tr></thead>
+                <thead><tr><th class="status-indicator"></th><th>代碼</th><th>價格</th><th>量比</th><th>成交量</th><th>浮動</th><th>漲幅</th><th>漲跌</th></tr></thead>
                 <tbody id="rank-list"></tbody>
             </table>
         </div>
     </div>
 
-    <div class="window" style="top:510px; left:520px; width:570px; height:350px;">
-        <div class="title-bar">💎 潛力股 AI 好消息戰報</div>
+    <div class="window" style="top:495px; left:520px; width:570px; height:370px;">
+        <div class="title-bar">💎 潛力股 AI 好消息 (帶完整數據)</div>
         <div class="content">
             <table>
-                <thead><tr><th style="width:50px;">代碼</th><th style="width:50px;">漲幅</th><th style="width:60px;">量比</th><th>新聞標題 (今日精選)</th></tr></thead>
+                <thead><tr><th>代碼</th><th>價格</th><th>漲幅</th><th>量比</th><th>成交量</th><th>今日精選好消息</th></tr></thead>
                 <tbody id="good-news-list"></tbody>
             </table>
         </div>
     </div>
     
-    <div class="window" style="top:50px; left:740px; width:410px; height:810px;">
-        <div class="title-bar">📊 實時詳情與完整新聞</div>
-        <div class="content" id="detail-list">請單擊上方清單...</div>
+    <div class="window" style="top:55px; left:740px; width:410px; height:810px;">
+        <div class="title-bar">📊 實時戰報詳情</div>
+        <div class="content" id="detail-list">請點擊代碼加載詳情...</div>
     </div>
 
     <script>
@@ -76,41 +78,41 @@
                 brain = d;
                 document.getElementById('sys-status').innerText = `最後同步: ${d.last_update}`;
                 
-                // 1. Surge List (With Signal)
+                // 1. 日誌渲染 (依時間從新到舊)
                 let h1 = "";
-                d.surge.forEach(r => {
+                d.surge_log.forEach(r => {
+                    let newsIcon = (d.details[r.Code] && d.details[r.Code].HasNews) ? " <span class='news-icon'>📰</span>" : "";
                     h1 += `<tr class="tr-${r.Status}" onclick="loadDetail('${r.Code}')">
-                        <td class="status-indicator"></td>
-                        <td class="sym" ondblclick="openTW('${r.Code}')">${r.Code}</td>
-                        <td>${r.Price}</td><td>${r.RelVol}</td><td>${r.Float}</td>
+                        <td class="status-indicator"></td><td>${r.Time}</td>
+                        <td class="sym" ondblclick="openTW('${r.Code}')">${r.Code}${newsIcon}</td>
+                        <td>${r.Price}</td><td>${r.RelVol}</td><td>${r.Vol}</td><td>${r.Float}</td>
                         <td class="${r.Amt.includes('+')?'up':'down'}">${r.Pct}</td>
-                        <td class="${r.Amt.includes('+')?'up':'down'}">${r.Amt}</td>
                         <td style="font-weight:bold; color:var(--yellow);">${r.Signal}</td>
                     </tr>`;
-                    if (r.Audio && r.SignalTS > (played[r.Code] || 0) && audioOn) { 
-                        played[r.Code] = r.SignalTS; sounds[r.Audio].currentTime = 0; sounds[r.Audio].play(); 
+                    if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { 
+                        played[r.SignalTS] = r.SignalTS; sounds[r.Audio].currentTime = 0; sounds[r.Audio].play(); 
                     }
                 });
-                document.getElementById('surge-list').innerHTML = h1;
+                document.getElementById('surge-log-body').innerHTML = h1;
 
-                // 2. Rank List (No Signal)
+                // 2. 排行榜渲染
                 let h2 = "";
                 d.leaderboard.forEach(r => {
-                    h2 += `<tr class="tr-${r.Status}">
+                    let newsIcon = (d.details[r.Code] && d.details[r.Code].HasNews) ? " <span class='news-icon'>📰</span>" : "";
+                    h2 += `<tr class="tr-${r.Status}" onclick="loadDetail('${r.Code}')">
                         <td class="status-indicator"></td>
-                        <td class="sym" ondblclick="openTW('${r.Code}')">${r.Code}</td>
-                        <td>${r.Price}</td><td>${r.RelVol}</td><td>${r.Float}</td>
-                        <td class="up">${r.Pct}</td><td class="up">${r.Amt}</td>
+                        <td class="sym" ondblclick="openTW('${r.Code}')">${r.Code}${newsIcon}</td>
+                        <td>${r.Price}</td><td>${r.RelVol}</td><td>${r.Vol}</td><td>${r.Float}</td><td class="up">${r.Pct}</td><td class="up">${r.Amt}</td>
                     </tr>`;
                 });
                 document.getElementById('rank-list').innerHTML = h2;
 
-                // 3. Good News Table (Dynamic Columns)
+                // 3. 好消息渲染
                 let h3 = "";
                 d.good_news.forEach(n => {
-                    h3 += `<tr>
-                        <td class="sym" ondblclick="openTW('${n.ticker}')">${n.ticker}</td>
-                        <td class="up">${n.Pct}</td><td>${n.RelVol}</td>
+                    h3 += `<tr onclick="loadDetail('${n.ticker}')">
+                        <td class="sym" ondblclick="openTW('${n.ticker}')">${n.ticker} 📰</td>
+                        <td>${n.Price}</td><td class="up">${n.Pct}</td><td>${n.RelVol}</td><td>${n.Vol}</td>
                         <td><a href="${n.link}" target="_blank" style="color:#ffa500; text-decoration:none;">${n.title}</a></td>
                     </tr>`;
                 });
@@ -126,14 +128,15 @@
             let html = `<div style="text-align:center; padding:10px;">
                 <h2 ondblclick="openTW('${sym}')" class="sym" style="font-size:20px;">${sym} ${d.PriceStr}</h2>
                 <div style="background:#161b22; padding:12px; border-radius:4px; display:grid; grid-template-columns: 1fr 1fr; gap:10px; font-size:12px;">
-                    <div>當前量比: <b style="color:#58a6ff;">${d.RelVol}</b></div><div>今日成交: <b>${d.Volume}</b></div>
-                    <div>今日漲幅: <b class="up">${d.ChangePct}</b></div><div>流通股數: <b>${d.Float}</b></div>
+                    <div>成交量: <b style="color:var(--yellow);">${d.Vol}</b></div><div>量比: <b>${d.RelVol}</b></div>
+                    <div>漲跌幅: <b class="up">${d.ChangePct}</b></div><div>漲跌價: <b class="up">${d.Amt}</b></div>
+                    <div>流通股: <b>${d.Float}</b></div><div>止損: <b>$${d.StopLoss.toFixed(2)}</b></div>
                 </div>
-                <h3 style="border-left:4px solid #58a6ff; padding-left:10px; margin-top:20px; text-align:left;">🗞️ 即時繁體新聞</h3>`;
+                <h3 style="border-left:4px solid #58a6ff; padding-left:10px; margin-top:20px; text-align:left;">🗞️ 最新繁體戰報</h3>`;
             (d.NewsList || []).forEach(n => {
                 html += `<div style="margin-bottom:12px; text-align:left; border-bottom:1px solid #21262d; padding-bottom:8px;">
                     <small style="color:#8b949e;">${n.time}</small><br>
-                    <a href="${n.link}" target="_blank" style="text-decoration:none; color:#eee; font-size:13px; line-height:1.4;">${n.title}</a>
+                    <a href="${n.link}" target="_blank" style="text-decoration:none; color:#eee; font-size:13px;">${n.title}</a>
                 </div>`;
             });
             document.getElementById('detail-list').innerHTML = html + `</div>`;
