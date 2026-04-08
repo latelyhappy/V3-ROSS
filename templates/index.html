@@ -12,140 +12,93 @@
         th, td { border-bottom: 1px solid #21262d; padding: 4px; text-align: left; }
         tr:hover { background-color: #161b22; cursor: pointer; }
         .sym { font-weight: bold; font-size: 12px; color: #58a6ff; }
-        
         #tactical-bar { position: fixed; top: 0; left: 0; width: 100%; background: #0d1f3d; padding: 8px 20px; box-sizing: border-box; display: flex; gap: 20px; align-items: center; z-index: 9999; border-bottom: 1px solid #30363d; }
         .t-input { background: #050811; border: 1px solid #58a6ff; color: #c9d1d9; padding: 4px 8px; border-radius: 4px; font-size: 12px; width: 80px; text-align: right; }
         .t-label { font-size: 12px; font-weight: bold; color: #58a6ff; }
-        
-        #audio-btn { background: #f85149; color: white; border: none; padding: 5px 15px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px; transition: 0.3s; }
+        #audio-btn { background: #f85149; color: white; border: none; padding: 5px 15px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px; }
         #audio-btn.active { background: #3fb950; }
-
-        #sys-status { position: fixed; bottom: 10px; left: 10px; background: rgba(13,17,23,0.8); border: 1px solid #30363d; padding: 5px 10px; border-radius: 4px; font-size: 11px; z-index: 9999; }
-        
+        #sys-status { position: fixed; bottom: 10px; left: 10px; background: rgba(13,17,23,0.8); border: 1px solid #30363d; padding: 5px 10px; border-radius: 4px; font-size: 11px; }
         .detail-header { text-align: center; margin: 10px 0; }
-        .detail-sym { color: #58a6ff; font-size: 20px; font-weight: bold; margin-right: 10px; }
+        .detail-sym { color: #58a6ff; font-size: 20px; font-weight: bold; }
         .detail-price { font-size: 16px; font-weight: bold; color: #3fb950; }
-        .detail-stats { display: flex; justify-content: space-around; margin-bottom: 15px; font-size: 12px; background: #161b22; padding: 10px; border-radius: 4px; border: 1px solid #30363d; }
     </style>
 </head>
 <body>
-    
     <div id="tactical-bar">
         <button id="audio-btn" onclick="unlockAudio()">🔇 點擊啟用音效</button>
-        <span class="t-label" style="margin-left: 20px;">⚡ 戰術參數:</span>
-        <div><label class="t-label">總資金 ($):</label> <input type="number" id="inp-acc" class="t-input" value="20000" onchange="if(activeSymbol) loadDetail(activeSymbol)"></div>
-        <div><label class="t-label">單筆風險 (%):</label> <input type="number" id="inp-risk" class="t-input" value="1.0" step="0.1" onchange="if(activeSymbol) loadDetail(activeSymbol)"></div>
+        <span class="t-label">⚡ 戰術參數:</span>
+        <div><label class="t-label">總資金 ($):</label> <input type="number" id="inp-acc" class="t-input" value="20000"></div>
+        <div><label class="t-label">風險 (%):</label> <input type="number" id="inp-risk" class="t-input" value="1.0" step="0.1"></div>
     </div>
 
     <div class="window" style="top:50px; left:10px; width:520px; height:450px; border: 1px solid #6e40c9;">
-        <div class="title-bar">🚀 短線動能追蹤 (美東盤前觀測)</div>
+        <div class="title-bar">🚀 實彈狙擊清單 (ROSS 策略)</div>
         <div class="content" id="surge-list"></div>
     </div>
     
     <div class="window" style="top:50px; left:550px; width:450px; height:600px;">
-        <div class="title-bar">📊 戰情分析與新聞</div>
-        <div class="content" id="detail-list">載入中...</div>
+        <div class="title-bar">📊 戰情分析與繁體新聞</div>
+        <div class="content" id="detail-list">請選擇標的...</div>
     </div>
 
     <div id="sys-status">🔄 引擎連線中...</div>
 
     <script>
-        let brainDetailsCache = {}, activeSymbol = "";
-        
-        // --- 🎧 瀏覽器前端音效引擎 ---
-        let audioEnabled = false;
-        let playedAudioTS = {}; 
-        let lastSysAlertTS = 0;
-        
+        let brainDetailsCache = {}, activeSymbol = "", audioEnabled = false, playedAudioTS = {};
         const sounds = {
             spark: new Audio('/static/sounds/spark.mp3'),
             diamond: new Audio('/static/sounds/diamond.mp3'),
             nova: new Audio('/static/sounds/nova.mp3'),
             system_down: new Audio('/static/sounds/system_down.mp3')
         };
-        sounds.diamond.volume = 0.7;
 
         function unlockAudio() {
             audioEnabled = true;
-            let btn = document.getElementById('audio-btn');
-            btn.innerText = "🔊 音效已解鎖";
-            btn.classList.add("active");
-            sounds.spark.volume = 0; sounds.spark.play().then(() => {
-                sounds.spark.pause(); sounds.spark.currentTime = 0; sounds.spark.volume = 1;
-            }).catch(e=>{});
+            document.getElementById('audio-btn').innerText = "🔊 音效已解鎖";
+            document.getElementById('audio-btn').classList.add("active");
+            sounds.spark.play().then(() => { sounds.spark.pause(); sounds.spark.currentTime = 0; });
         }
 
         function refresh() {
             fetch('/data?t=' + Date.now()).then(r => r.json()).then(d => {
                 document.getElementById('sys-status').innerText = `🟢 V19.8 雲端連線 | 更新: ${d.last_update}`;
                 brainDetailsCache = d.details || {};
-                
-                if (d.system_alert === "system_down" && d.system_alert_ts > lastSysAlertTS) {
-                    lastSysAlertTS = d.system_alert_ts;
-                    if (audioEnabled) { sounds.system_down.currentTime = 0; sounds.system_down.play(); }
-                }
-
                 let html = `<table><thead><tr><th>代碼</th><th>價格</th><th>訊號</th><th>浮動</th></tr></thead><tbody>`;
                 (d.surge || []).forEach(row => {
-                    let style = row.Streak ? 'style="background: rgba(255, 234, 0, 0.12); border-left: 5px solid #ffea00;"' : '';
+                    let style = row.Streak ? 'style="background: rgba(255, 234, 0, 0.12);"' : '';
                     html += `<tr ${style} onclick="loadDetail('${row.Code}')">
-                        <td><span class="sym">${row.Code}</span></td>
-                        <td>${row.Price}</td>
-                        <td style="color:#f2cc60; font-weight:bold;">${row.Streak}</td>
-                        <td>${row.FloatStr}</td>
+                        <td><span class="sym">${row.Code}</span></td><td>${row.Price}</td>
+                        <td style="color:#f2cc60; font-weight:bold;">${row.Streak}</td><td>${row.FloatStr}</td>
                     </tr>`;
-
-                    let prevTS = playedAudioTS[row.Code] || 0;
-                    if (row.AudioTrigger && row.SignalTS > prevTS) {
-                        playedAudioTS[row.Code] = row.SignalTS; 
-                        if (audioEnabled && sounds[row.AudioTrigger]) {
-                            sounds[row.AudioTrigger].currentTime = 0;
-                            sounds[row.AudioTrigger].play().catch(e => console.log("音效遭擋", e));
-                        }
+                    if (row.AudioTrigger && row.SignalTS > (playedAudioTS[row.Code] || 0)) {
+                        playedAudioTS[row.Code] = row.SignalTS;
+                        if (audioEnabled) { sounds[row.AudioTrigger].currentTime = 0; sounds[row.AudioTrigger].play(); }
                     }
                 });
                 document.getElementById('surge-list').innerHTML = html + `</tbody></table>`;
                 if(activeSymbol) loadDetail(activeSymbol);
-                setTimeout(refresh, 3500);
+                setTimeout(refresh, 4000);
             });
         }
 
         function loadDetail(sym) {
             activeSymbol = sym; const d = brainDetailsCache[sym]; if(!d) return;
-            let accSize = parseFloat(document.getElementById('inp-acc').value) || 20000;
-            let riskPct = parseFloat(document.getElementById('inp-risk').value) || 1.0;
+            let acc = parseFloat(document.getElementById('inp-acc').value);
+            let risk = parseFloat(document.getElementById('inp-risk').value);
+            let shares = Math.floor((acc * (risk/100)) / (d.PriceVal - d.StopLossVal));
             
             let html = `<div class="detail-header"><span class="detail-sym">${sym}</span> <span class="detail-price">${d.PriceStr}</span></div>`;
-            
-            if (d.Signal && d.PriceVal && d.StopLossVal && d.PriceVal > d.StopLossVal) {
-                let riskAmount = accSize * (riskPct / 100);
-                let riskPerShare = d.PriceVal - d.StopLossVal;
-                let shares = Math.floor(riskAmount / riskPerShare);
-                let capital = shares * d.PriceVal;
-                
-                if (capital > accSize * 0.5) { shares = Math.floor((accSize * 0.5) / d.PriceVal); capital = shares * d.PriceVal; }
-                
-                html += `
-                <div style="background: rgba(255, 234, 0, 0.15); border: 1px solid #ffea00; padding: 12px; margin-bottom: 15px; border-radius: 4px;">
-                    <div style="color: #ffea00; font-size: 18px; font-weight: bold; text-align: center; margin-bottom: 8px;">
-                        🎯 建議買進 ${shares} 股
-                    </div>
-                    <div style="display: flex; justify-content: space-between; font-size: 13px; color: #c9d1d9;">
-                        <span>預設停損: <b>$${d.StopLossVal.toFixed(2)}</b></span>
-                        <span>預計動用: <b>$${capital.toFixed(2)}</b></span>
-                    </div>
-                </div>`;
+            if (d.Signal) {
+                html += `<div style="background:rgba(255,234,0,0.1); border:1px solid #ffea00; padding:10px; margin-bottom:10px; text-align:center;">
+                    <b style="color:#ffea00; font-size:16px;">🎯 建議買進: ${shares} 股</b><br>
+                    <small>風險控制: $${d.StopLossVal.toFixed(2)} 止損</small></div>`;
             }
-
-            html += `<div class="detail-stats"><div>總量: <b>${d.Volume}</b></div><div>浮動股: <b>${d.FloatStr}</b></div></div><hr style="border-color:#30363d; margin-bottom: 15px;">`;
-            
+            html += `<hr style="border-color:#333;">`;
             (d.NewsList || []).forEach(n => {
-                let color = n.is_today ? '#ffa500' : '#8b949e';
-                html += `<div style="margin-bottom:12px;"><span style="color:${color}; font-weight:bold; font-size:11.5px;">[${n.time} 美東]</span> <a href="${n.link}" target="_blank" style="color:#e6edf3; text-decoration:none; font-size:13px;">${n.title}</a></div>`;
+                html += `<div style="margin-bottom:10px;"><small style="color:#888;">${n.time}</small><br><a href="${n.link}" target="_blank" style="color:#eee; text-decoration:none;">${n.title}</a></div>`;
             });
             document.getElementById('detail-list').innerHTML = html;
         }
-
         window.onload = refresh;
     </script>
 </body>
