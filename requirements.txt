@@ -3,4 +3,3 @@ pandas
 tvDatafeed
 pytz
 requests
-pygame
