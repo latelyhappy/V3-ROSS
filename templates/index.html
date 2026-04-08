@@ -2,54 +2,66 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Sniper V21.0 - Professional Scanners</title>
+    <title>Sniper V21.1 - Full Data Scanner</title>
     <style>
         :root { --yellow: #ffea00; --purple: #a371f7; --green: #3fb950; --red: #f85149; --bg: #050811; --panel: #0d1117; --border: #30363d; }
         body { margin: 0; background: var(--bg); color: #c9d1d9; font-family: sans-serif; overflow: hidden; }
         .window { position: absolute; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; }
         .title-bar { background: #0d1f3d; color: white; padding: 6px 10px; font-size: 11px; font-weight: bold; }
         .content { flex: 1; padding: 4px; overflow-y: auto; font-size: 10.5px; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { border-bottom: 1px solid #21262d; padding: 10px 4px; text-align: left; }
-        .status-indicator { width: 8px; padding: 0 !important; }
-        tr.tr-yellow { background: rgba(255, 234, 0, 0.22); } .tr-yellow .status-indicator { background: var(--yellow); }
-        tr.tr-purple { background: rgba(163, 113, 247, 0.2); } .tr-purple .status-indicator { background: var(--purple); }
-        tr.tr-green { background: rgba(63, 185, 80, 0.12); } .tr-green .status-indicator { background: var(--green); }
-        tr.tr-red { background: rgba(248, 81, 73, 0.12); } .tr-red .status-indicator { background: var(--red); }
-        .sym { font-weight: bold; color: #58a6ff; font-size: 14px; cursor: pointer; }
-        .news-today { color: #ffa500 !important; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        th, td { border-bottom: 1px solid #21262d; padding: 10px 4px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .status-indicator { width: 6px; padding: 0 !important; }
+        
+        tr.tr-yellow { background: rgba(255, 234, 0, 0.15); } .tr-yellow .status-indicator { background: var(--yellow); }
+        tr.tr-purple { background: rgba(163, 113, 247, 0.15); } .tr-purple .status-indicator { background: var(--purple); }
+        tr.tr-green { background: rgba(63, 185, 80, 0.1); } .tr-green .status-indicator { background: var(--green); }
+        tr.tr-red { background: rgba(248, 81, 73, 0.1); } .tr-red .status-indicator { background: var(--red); }
+        
+        .sym { font-weight: bold; color: #58a6ff; font-size: 13px; cursor: pointer; user-select: none; }
+        .up { color: var(--green); font-weight: bold; } .down { color: var(--red); font-weight: bold; }
         #tactical-bar { position: fixed; top: 0; left: 0; width: 100%; background: #0d1f3d; padding: 8px 20px; display: flex; align-items: center; border-bottom: 1px solid var(--border); z-index: 999; }
     </style>
 </head>
 <body>
     <div id="tactical-bar">
-        <button id="audio-btn" style="background:#f85149; color:white; border:none; padding:5px 15px; border-radius:4px; cursor:pointer;" onclick="unlockAudio()">🔇 啟用音效</button>
-        <span id="sys-status" style="margin-left:auto; font-size:11px;">📡 系統初始化中...</span>
+        <button id="audio-btn" style="background:#f85149; color:white; border:none; padding:5px 12px; border-radius:4px; cursor:pointer;" onclick="unlockAudio()">🔇 啟用音效</button>
+        <span id="sys-status" style="margin-left:auto; font-size:11px;">📡 引擎初始化...</span>
     </div>
 
-    <div class="window" style="top:50px; left:10px; width:680px; height:450px; border: 1px solid #6e40c9;">
-        <div class="title-bar">🚀 動態 ROSS 狙擊清單 (雙擊任何代碼開啟圖表)</div>
+    <div class="window" style="top:50px; left:10px; width:720px; height:450px; border: 1px solid #6e40c9;">
+        <div class="title-bar">🚀 短線動態狙擊 (雙擊代碼連動 TradingView)</div>
         <div class="content">
             <table>
-                <thead><tr><th class="status-indicator"></th><th>代碼</th><th>價格</th><th>漲跌</th><th>訊號</th><th>量比</th><th>浮動</th></tr></thead>
-                <tbody id="surge-list-body"></tbody>
+                <thead><tr><th class="status-indicator"></th><th style="width:60px;">代碼</th><th>價格</th><th>量比</th><th>浮動</th><th>漲幅</th><th>漲跌價</th><th>訊號</th></tr></thead>
+                <tbody id="surge-list"></tbody>
             </table>
         </div>
     </div>
 
-    <div class="window" style="top:510px; left:10px; width:280px; height:350px;">
-        <div class="title-bar">🏆 今日漲幅排行榜</div>
-        <div class="content" id="rank-list"></div>
+    <div class="window" style="top:510px; left:10px; width:500px; height:350px;">
+        <div class="title-bar">🏆 今日漲幅排行榜 ($1-40)</div>
+        <div class="content">
+            <table>
+                <thead><tr><th class="status-indicator"></th><th style="width:60px;">代碼</th><th>價格</th><th>量比</th><th>浮動</th><th>漲幅</th><th>漲跌價</th></tr></thead>
+                <tbody id="rank-list"></tbody>
+            </table>
+        </div>
     </div>
 
-    <div class="window" style="top:510px; left:300px; width:400px; height:350px;">
-        <div class="title-bar">💎 潛力股 AI 好消息 (含符合 Ross 條件且有新聞)</div>
-        <div class="content" id="good-news-list"></div>
+    <div class="window" style="top:510px; left:520px; width:570px; height:350px;">
+        <div class="title-bar">💎 潛力股 AI 好消息戰報</div>
+        <div class="content">
+            <table>
+                <thead><tr><th style="width:50px;">代碼</th><th style="width:50px;">漲幅</th><th style="width:60px;">量比</th><th>新聞標題 (今日精選)</th></tr></thead>
+                <tbody id="good-news-list"></tbody>
+            </table>
+        </div>
     </div>
     
-    <div class="window" style="top:50px; left:700px; width:450px; height:810px;">
-        <div class="title-bar">📊 實時戰報與即時新聞</div>
-        <div class="content" id="detail-list">請單擊清單以顯示內容...</div>
+    <div class="window" style="top:50px; left:740px; width:410px; height:810px;">
+        <div class="title-bar">📊 實時詳情與完整新聞</div>
+        <div class="content" id="detail-list">請單擊上方清單...</div>
     </div>
 
     <script>
@@ -62,30 +74,47 @@
         function refresh() {
             fetch('/data?t=' + Date.now()).then(r => r.json()).then(d => {
                 brain = d;
-                document.getElementById('sys-status').innerText = `更新: ${d.last_update}`;
+                document.getElementById('sys-status').innerText = `最後同步: ${d.last_update}`;
                 
-                let tbody = "";
+                // 1. Surge List (With Signal)
+                let h1 = "";
                 d.surge.forEach(r => {
-                    tbody += `<tr class="tr-${r.StatusColor}" onclick="loadDetail('${r.Code}')">
+                    h1 += `<tr class="tr-${r.Status}" onclick="loadDetail('${r.Code}')">
                         <td class="status-indicator"></td>
                         <td class="sym" ondblclick="openTW('${r.Code}')">${r.Code}</td>
-                        <td>${r.Price}</td><td class="${r.Pct.includes('+')?'':'down'}">${r.Pct}</td>
-                        <td style="font-weight:bold;">${r.Streak}</td>
-                        <td style="color:#58a6ff;">${r.RelVol}x</td><td>${r.Float}</td>
+                        <td>${r.Price}</td><td>${r.RelVol}</td><td>${r.Float}</td>
+                        <td class="${r.Amt.includes('+')?'up':'down'}">${r.Pct}</td>
+                        <td class="${r.Amt.includes('+')?'up':'down'}">${r.Amt}</td>
+                        <td style="font-weight:bold; color:var(--yellow);">${r.Signal}</td>
                     </tr>`;
-                    if (r.AudioTrigger && r.SignalTS > (played[r.Code] || 0) && audioOn) { 
-                        played[r.Code] = r.SignalTS; sounds[r.AudioTrigger].currentTime = 0; sounds[r.AudioTrigger].play(); 
+                    if (r.Audio && r.SignalTS > (played[r.Code] || 0) && audioOn) { 
+                        played[r.Code] = r.SignalTS; sounds[r.Audio].currentTime = 0; sounds[r.Audio].play(); 
                     }
                 });
-                document.getElementById('surge-list-body').innerHTML = tbody;
+                document.getElementById('surge-list').innerHTML = h1;
 
-                let h2 = `<table><tbody>`;
-                d.leaderboard.forEach((r, i) => { h2 += `<tr><td>${i+1}</td><td class="sym" ondblclick="openTW('${r.Code}')">${r.Code}</td><td style="color:#3fb950;">+${r.Pct.toFixed(2)}%</td></tr>`; });
-                document.getElementById('rank-list').innerHTML = h2 + `</tbody></table>`;
+                // 2. Rank List (No Signal)
+                let h2 = "";
+                d.leaderboard.forEach(r => {
+                    h2 += `<tr class="tr-${r.Status}">
+                        <td class="status-indicator"></td>
+                        <td class="sym" ondblclick="openTW('${r.Code}')">${r.Code}</td>
+                        <td>${r.Price}</td><td>${r.RelVol}</td><td>${r.Float}</td>
+                        <td class="up">${r.Pct}</td><td class="up">${r.Amt}</td>
+                    </tr>`;
+                });
+                document.getElementById('rank-list').innerHTML = h2;
 
-                let h3 = `<table><tbody>`;
-                d.good_news.forEach(n => { h3 += `<tr><td class="sym" ondblclick="openTW('${n.ticker}')" style="font-size:10px;">${n.ticker}</td><td><a href="${n.link}" target="_blank" class="news-today" style="text-decoration:none;">${n.title}</a></td></tr>`; });
-                document.getElementById('good-news-list').innerHTML = h3 + `</tbody></table>`;
+                // 3. Good News Table (Dynamic Columns)
+                let h3 = "";
+                d.good_news.forEach(n => {
+                    h3 += `<tr>
+                        <td class="sym" ondblclick="openTW('${n.ticker}')">${n.ticker}</td>
+                        <td class="up">${n.Pct}</td><td>${n.RelVol}</td>
+                        <td><a href="${n.link}" target="_blank" style="color:#ffa500; text-decoration:none;">${n.title}</a></td>
+                    </tr>`;
+                });
+                document.getElementById('good-news-list').innerHTML = h3;
 
                 if(activeSym) loadDetail(activeSym);
                 setTimeout(refresh, 5000);
@@ -95,16 +124,16 @@
         function loadDetail(sym) {
             activeSym = sym; const d = brain.details[sym]; if(!d) return;
             let html = `<div style="text-align:center; padding:10px;">
-                <h2 ondblclick="openTW('${sym}')" class="sym">${sym} <span style="color:#eee;">${d.PriceStr}</span></h2>
-                <div style="background:#161b22; padding:10px; margin-top:10px; border-radius:4px; display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
-                    <div>當前量比: <b style="color:#58a6ff;">${d.RelVol}x</b></div><div>今日成交: <b>${d.Volume}</b></div>
-                    <div>漲跌幅度: <b>${d.ChangePct}</b></div><div>流通股數: <b>${d.Float}</b></div>
+                <h2 ondblclick="openTW('${sym}')" class="sym" style="font-size:20px;">${sym} ${d.PriceStr}</h2>
+                <div style="background:#161b22; padding:12px; border-radius:4px; display:grid; grid-template-columns: 1fr 1fr; gap:10px; font-size:12px;">
+                    <div>當前量比: <b style="color:#58a6ff;">${d.RelVol}</b></div><div>今日成交: <b>${d.Volume}</b></div>
+                    <div>今日漲幅: <b class="up">${d.ChangePct}</b></div><div>流通股數: <b>${d.Float}</b></div>
                 </div>
-                <h3 style="border-left:4px solid #58a6ff; padding-left:10px; margin-top:20px; text-align:left;">🗞️ 即時戰報</h3>`;
+                <h3 style="border-left:4px solid #58a6ff; padding-left:10px; margin-top:20px; text-align:left;">🗞️ 即時繁體新聞</h3>`;
             (d.NewsList || []).forEach(n => {
                 html += `<div style="margin-bottom:12px; text-align:left; border-bottom:1px solid #21262d; padding-bottom:8px;">
                     <small style="color:#8b949e;">${n.time}</small><br>
-                    <a href="${n.link}" target="_blank" class="${n.is_today?'news-today':''}" style="text-decoration:none; color:#eee;">${n.title}</a>
+                    <a href="${n.link}" target="_blank" style="text-decoration:none; color:#eee; font-size:13px; line-height:1.4;">${n.title}</a>
                 </div>`;
             });
             document.getElementById('detail-list').innerHTML = html + `</div>`;
