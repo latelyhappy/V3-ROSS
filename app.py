@@ -57,40 +57,10 @@ def fetch_news_sequential(ticker, cell, stats):
             cell["HasTodayNews"] = has_today # 用於前端顯示圖示
     except: pass
 
-# ==========================================
-# 🛠️ 全局緩存：儲存昨日收盤價
-# ==========================================
-PREV_CLOSE_MAP = {} 
-
-# --- 🛰️ 動態名單獲取器 (同步抓取昨日收盤價) ---
-def update_dynamic_watchlist():
-    global DYNAMIC_WATCHLIST, PREV_CLOSE_MAP
-    try:
-        url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&scrIds=day_gainers"
-        res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-        quotes = res.json()['finance']['result'][0]['quotes']
-        
-        new_list = []
-        for q in quotes:
-            symbol = q['symbol']
-            price = q.get('regularMarketPrice', 0)
-            prev_close = q.get('regularMarketPreviousClose', 0)
-            
-            # 🟢 嚴格過濾 1-40 塊
-            if 1.0 <= price <= 40.0:
-                new_list.append(symbol)
-                PREV_CLOSE_MAP[symbol] = prev_close # 💡 存入昨日收盤價
-        
-        DYNAMIC_WATCHLIST = new_list[:25]
-        print(f"📡 動態雷達已更新，已鎖定 {len(DYNAMIC_WATCHLIST)} 檔標的昨日收盤價")
-    except Exception as e:
-        print(f"⚠️ 名單更新失敗: {e}")
-
-# --- 🧠 戰術雷達 (真實漲幅校準版) ---
+# --- 🧠 戰術雷達 (EMA 趨勢滑行版) ---
 def scanner_engine():
     tv = TvDatafeed(TW_USERNAME, TW_PASSWORD) if TW_USERNAME != 'guest' else TvDatafeed()
     last_list_update = 0
-    
     while True:
         try:
             now_ts = time.time()
@@ -101,49 +71,55 @@ def scanner_engine():
             current_leaderboard = []
             for ticker in DYNAMIC_WATCHLIST:
                 try:
-                    time.sleep(1.0)
-                    df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=30, extended_session=True)
+                    time.sleep(0.8)
+                    # 💡 抓取更多 K 線以準確計算 EMA
+                    df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
                     if df is not None and not df.empty:
                         p = float(df['close'].iloc[-1])
-                        # 💡 關鍵修正：從 Map 中獲取昨日收盤價，若無則暫用今日開盤
-                        prev_close = PREV_CLOSE_MAP.get(ticker, df['open'].iloc[0])
+                        o = float(df['open'].iloc[0])
+                        prev_close = PREV_CLOSE_MAP.get(ticker, o)
                         
-                        # 📈 計算真實漲幅 (對比昨日收盤)
-                        real_chg_amt = p - prev_close
-                        real_chg_pct = (real_chg_amt / prev_close) * 100
-                        
-                        # 📊 計算盤中漲幅 (對比今日開盤，輔助判定趨勢)
-                        intraday_chg = p - df['open'].iloc[0]
-                        
-                        curr_v = int(df['volume'].sum()) # 累計量
+                        # 📈 漲幅與量化
+                        real_chg_pct = ((p - prev_close) / prev_close) * 100
+                        curr_v = int(df['volume'].sum())
                         rel_vol = round(df['volume'].iloc[-1] / df['volume'].iloc[-11:-1].mean(), 2) if df['volume'].iloc[-11:-1].mean() > 0 else 1.0
                         
-                        # 🦅 Ross 策略判定
-                        # 只要總漲幅 > 3% 且 盤中沒崩盤，就不標示為「趨勢轉弱」
-                        is_spark = (rel_vol >= 2.0) and (p >= df['high'].iloc[-16:-1].max()) and (real_chg_pct > 3.0)
-                        is_diamond = (p > df['close'].tail(10).mean()) and (real_chg_pct > 2.0) and not is_spark
-                        is_weak = (real_chg_pct < 0) or (intraday_chg < -3.0) # 跌破昨收或盤中重挫才算弱
+                        # 💡 計算 EMA 系統
+                        ema9 = df['close'].ewm(span=9, adjust=False).mean()
+                        ema20 = df['close'].ewm(span=20, adjust=False).mean()
+                        curr_ema9 = ema9.iloc[-1]
+                        curr_ema20 = ema20.iloc[-1]
+                        prev_ema20 = ema20.iloc[-2]
                         
-                        tag = "🔥強力點火" if is_spark else ("💎支撐回踩" if is_diamond else ("💀趨勢轉弱" if is_weak else ""))
-                        status = "yellow" if is_spark else ("purple" if is_diamond else ("red" if is_weak else "green"))
+                        # 🦅 Ross 策略 - 趨勢滑行判斷
+                        # 1. 強力點火 (Spark)：爆量、突破、且在 EMA9 之上
+                        is_spark = (rel_vol >= 2.0) and (p >= df['high'].iloc[-11:-1].max()) and (p > curr_ema9)
+                        
+                        # 2. 趨勢滑行 (Diamond)：取代傳統回踩
+                        # 條件：EMA20 向上翹 + 價格貼近 EMA20 (0.5% 內) + 價格 > EMA20 + 總漲幅 > 3%
+                        is_ema_sloping_up = curr_ema20 > prev_ema20
+                        is_near_ema20 = abs(p - curr_ema20) / curr_ema20 < 0.005 
+                        is_trend_ride = is_ema_sloping_up and is_near_ema20 and (p > curr_ema20) and (real_chg_pct > 3.0) and not is_spark
+                        
+                        tag = "🔥強力點火" if is_spark else ("💎趨勢滑行" if is_trend_ride else "")
+                        status = "yellow" if is_spark else ("purple" if is_trend_ride else ("green" if p > o else "red"))
 
                         stats = {
-                            "Code": ticker, "Price": f"${p:.2f}", "PriceVal": p, "RelVol": f"{rel_vol}x",
-                            "Float": f"{random.uniform(2,15):.1f}M", "Vol": format_vol(curr_v),
-                            "Pct": f"{real_chg_pct:+.2f}%", "Amt": f"{real_chg_amt:+.2f}", # 💡 改為顯示真實漲跌
-                            "Status": status, "StopLoss": p*0.97
+                            "Code": ticker, "Price": f"${p:.2f}", "RelVol": f"{rel_vol}x",
+                            "Vol": format_vol(curr_v), "Pct": f"{real_chg_pct:+.2f}%", 
+                            "Amt": f"{(p-prev_close):+.2f}", "Status": status, "Signal": tag,
+                            "PriceVal": p, "StopLoss": curr_ema20 * 0.99 # 💡 止損設在 EMA20 下方一點點
                         }
                         
-                        cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "HasNews": False})
+                        cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "HasTodayNews": False})
                         cell.update(stats)
                         current_leaderboard.append(stats)
-                        
-                        # 日誌發報與新聞... (維持原有邏輯)
-                        if tag and (now_ts - cooldown_tracker.get(ticker, 0) > 60):
-                            cooldown_tracker[ticker] = now_ts
-                            log_entry = {**stats, "Signal": tag, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova" if is_spark else "spark" if is_diamond else ""}
-                            MASTER_BRAIN["surge_log"].insert(0, log_entry)
 
+                        if tag and (now_ts - cooldown_tracker.get(ticker, 0) > 40):
+                            cooldown_tracker[ticker] = now_ts
+                            log_entry = {**stats, "Signal": tag, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova" if is_spark else "spark"}
+                            MASTER_BRAIN["surge_log"].insert(0, log_entry)
+                        
                         fetch_news_sequential(ticker, cell, stats)
                 except: continue
 
