@@ -62,65 +62,73 @@ def fetch_news_sequential(ticker, cell, stats):
             cell["HasNews"] = has_today
     except: pass
 
-# --- 🧠 戰術雷達 (序列掃描 + 時區校準) ---
+# --- 🧠 戰術雷達 (Ross 實戰校準版) ---
 def scanner_engine():
     tv = TvDatafeed(TW_USERNAME, TW_PASSWORD) if TW_USERNAME != 'guest' else TvDatafeed()
     last_list_update = 0
-    
     while True:
         try:
             now_ts = time.time()
             if now_ts - last_list_update > 600:
-                # 抓取當日 1-40 塊熱門股
                 url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&scrIds=day_gainers"
                 res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
                 quotes = res.json()['finance']['result'][0]['quotes']
                 global DYNAMIC_WATCHLIST
-                DYNAMIC_WATCHLIST = [q['symbol'] for q in quotes if 1.0 <= q.get('regularMarketPrice', 0) <= 40.0][:15]
+                DYNAMIC_WATCHLIST = [q['symbol'] for q in quotes if 1.0 <= q.get('regularMarketPrice', 0) <= 40.0][:20]
                 last_list_update = now_ts
 
             current_leaderboard = []
-            
             for ticker in DYNAMIC_WATCHLIST:
                 try:
-                    time.sleep(1.0) # 💡 呼吸延遲，防止被封
+                    time.sleep(1.0)
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=30, extended_session=True)
                     if df is not None and not df.empty:
                         p = float(df['close'].iloc[-1])
-                        o = float(df['open'].iloc[0])
-                        chg_amt, chg_pct = p - o, ((p - o) / o) * 100
+                        o = float(df['open'].iloc[0]) # 💡 獲取開盤價判定趨勢
+                        chg_amt = p - o
+                        chg_pct_val = (chg_amt / o) * 100
                         curr_v = int(df['volume'].iloc[-1])
-                        avg_v = df['volume'].iloc[-6:-1].mean()
-                        rel_vol = round(curr_v / avg_v, 2) if avg_v > 0 else 1.0
+                        rel_vol = round(curr_v / df['volume'].iloc[-6:-1].mean(), 2) if df['volume'].iloc[-6:-1].mean() > 0 else 1.0
                         
-                        is_spark = rel_vol >= 2.0 and p >= df['high'].iloc[-16:-1].max()
-                        is_diamond = p > df['close'].tail(10).mean() and not is_spark
+                        # 🦅 Ross 策略極限過濾
+                        # 1. 強力點火：RelVol高 + 突破前高 + 價格在開盤價之上
+                        is_spark = (rel_vol >= 2.2) and (p >= df['high'].iloc[-16:-1].max()) and (p > o)
                         
-                        tag = "🔥強力點火" if is_spark else ("💎支撐回踩" if is_diamond else "")
-                        status = "yellow" if is_spark else ("purple" if is_diamond else ("green" if chg_amt > 0 else "red"))
-                        stats = {"Code": ticker, "Price": f"${p:.2f}", "RelVol": f"{rel_vol}x", "Float": f"{random.uniform(2,15):.1f}M", "Vol": format_vol(curr_v), "Pct": f"{chg_pct:+.2f}%", "Amt": f"{chg_amt:+.2f}", "Status": status}
+                        # 2. 支撐回踩：價格回落至均線但守住開盤價，且當前趨勢必須是正的
+                        ma10 = df['close'].tail(10).mean()
+                        is_diamond = (p > ma10) and (p > o) and (chg_pct_val > 2.0) and not is_spark
+                        
+                        # 3. 趨勢轉弱：跌破開盤價或跌幅擴大
+                        is_weak = (p < o) or (chg_pct_val < -1.0)
+                        
+                        tag = "🔥強力點火" if is_spark else ("💎支撐回踩" if is_diamond else ("💀趨勢轉弱" if is_weak else ""))
+                        status = "yellow" if is_spark else ("purple" if is_diamond else ("red" if is_weak else "green"))
+
+                        # 修正 undefined 問題：確保數據 key 與前端一致
+                        stats = {
+                            "Code": ticker, "Price": f"${p:.2f}", "PriceVal": p, "RelVol": f"{rel_vol}x", 
+                            "Float": f"{random.uniform(2,15):.1f}M", "Vol": format_vol(curr_v), 
+                            "Pct": f"{chg_pct_val:+.2f}%", "ChangePct": f"{chg_pct_val:+.2f}%", 
+                            "Amt": f"{chg_amt:+.2f}", "Status": status, "StopLoss": p*0.97
+                        }
                         
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "HasNews": False})
-                        cell.update({**stats, "PriceVal": p, "StopLoss": p*0.98})
+                        cell.update(stats)
                         current_leaderboard.append(stats)
 
-                        if tag and (now_ts - cooldown_tracker.get(ticker, 0) > 40):
+                        if tag and (now_ts - cooldown_tracker.get(ticker, 0) > 60):
                             cooldown_tracker[ticker] = now_ts
-                            # 💡 記錄日誌時間為台北時間
-                            log_time = datetime.now(TZ_TW).strftime("%H:%M:%S")
-                            log_entry = {**stats, "Signal": tag, "Time": log_time, "SignalTS": now_ts, "Audio": "nova" if is_spark else "spark"}
+                            log_entry = {**stats, "Signal": tag, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova" if is_spark else "spark" if is_diamond else ""}
                             MASTER_BRAIN["surge_log"].insert(0, log_entry)
                             MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
                         
-                        fetch_news_sequential(ticker, cell, stats)
+                        threading.Thread(target=fetch_news_sequential, args=(ticker, cell, stats)).start()
                 except: continue
 
             MASTER_BRAIN["leaderboard"] = sorted(current_leaderboard, key=lambda x: float(x['Pct'].replace('%','')), reverse=True)[:15]
-            # 💡 更新最後同步時間為台北時間
             MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
             time.sleep(10)
-        except:
-            time.sleep(15)
+        except: time.sleep(15)
 
 @app.route('/')
 def index(): return render_template('index.html')
