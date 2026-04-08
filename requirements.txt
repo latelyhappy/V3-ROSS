@@ -1,0 +1,6 @@
+flask
+pandas
+tvDatafeed
+pytz
+requests
+pygame
