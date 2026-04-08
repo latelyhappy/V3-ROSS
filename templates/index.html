@@ -2,33 +2,43 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Sniper V22.2 - Commander Hub</title>
+    <title>Sniper V22.3 - Modular Command</title>
+    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { --yellow: #ffea00; --purple: #a371f7; --green: #3fb950; --red: #f85149; --bg: #050811; --panel: #0d1117; --border: #30363d; }
-        body { margin: 0; background: var(--bg); color: #c9d1d9; font-family: sans-serif; overflow: hidden; }
-        .window { position: absolute; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; }
-        .title-bar { background: #0d1f3d; color: white; padding: 6px 10px; font-size: 11px; font-weight: bold; }
+        body { margin: 0; background: var(--bg); color: #c9d1d9; font-family: sans-serif; min-height: 150vh; overflow-x: hidden; }
+        
+        .window { 
+            position: absolute; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; 
+            display: flex; flex-direction: column; overflow: hidden; min-width: 200px; min-height: 100px;
+            touch-action: none; /* 防止移動端干擾 */
+        }
+        .title-bar { background: #0d1f3d; color: white; padding: 8px 10px; font-size: 11px; font-weight: bold; cursor: move; }
         .content { flex: 1; padding: 4px; overflow-y: auto; font-size: 10.5px; }
+        
         table { width: 100%; border-collapse: collapse; }
-        th, td { border-bottom: 1px solid #21262d; padding: 8px 4px; text-align: left; }
+        th, td { border-bottom: 1px solid #21262d; padding: 10px 4px; text-align: left; }
         .status-indicator { width: 6px; padding: 0 !important; }
+        
         tr.tr-yellow { background: rgba(255, 234, 0, 0.2); } .tr-yellow .status-indicator { background: var(--yellow); }
         tr.tr-purple { background: rgba(163, 113, 247, 0.2); } .tr-purple .status-indicator { background: var(--purple); }
         tr.tr-green { background: rgba(63, 185, 80, 0.1); } .tr-green .status-indicator { background: var(--green); }
         tr.tr-red { background: rgba(248, 81, 73, 0.1); } .tr-red .status-indicator { background: var(--red); }
+        
         .sym { font-weight: bold; color: #58a6ff; font-size: 13px; cursor: pointer; }
         .up { color: var(--green); font-weight: bold; } .down { color: var(--red); font-weight: bold; }
-        #tactical-bar { position: fixed; top: 0; left: 0; width: 100%; background: #0d1f3d; padding: 10px 20px; border-bottom: 1px solid var(--border); z-index: 999; }
+        #tactical-bar { position: fixed; top: 0; left: 0; width: 100%; background: #0d1f3d; padding: 10px 20px; border-bottom: 1px solid var(--border); z-index: 9999; }
+        .news-icon { font-size: 12px; margin-left: 2px; color: #ffa500; }
     </style>
 </head>
 <body>
     <div id="tactical-bar">
-        <button id="audio-btn" style="background:#f85149; color:white; border:none; padding:5px 15px; border-radius:4px; cursor:pointer;" onclick="unlockAudio()">🔇 啟用音效</button>
-        <span id="sys-status" style="margin-left:auto; font-size:11px;">📡 引擎運轉中...</span>
+        <button id="audio-btn" style="background:#f85149; color:white; border:none; padding:6px 15px; border-radius:4px; cursor:pointer;" onclick="unlockAudio()">🔇 啟用音效</button>
+        <span id="sys-status" style="margin-left:auto; font-size:11px;">📡 雷達系統就緒...</span>
     </div>
 
-    <div class="window" style="top:55px; left:10px; width:720px; height:430px; border: 1px solid #6e40c9;">
-        <div class="title-bar">🚀 短線狙擊日誌 (1000 筆 / 時間排序)</div>
+    <div id="win-log" class="window" style="top:60px; left:10px; width:720px; height:430px; border-color: #6e40c9;">
+        <div class="title-bar">🚀 短線狙擊日誌 (1000 筆 / 下拉存儲)</div>
         <div class="content">
             <table>
                 <thead><tr><th class="status-indicator"></th><th>時間</th><th>代碼</th><th>價格</th><th>量比</th><th>成交量</th><th>浮動</th><th>漲幅</th><th>訊號</th></tr></thead>
@@ -37,8 +47,8 @@
         </div>
     </div>
 
-    <div class="window" style="top:495px; left:10px; width:500px; height:370px;">
-        <div class="title-bar">🏆 漲幅排行榜 ($1-$40)</div>
+    <div id="win-rank" class="window" style="top:510px; left:10px; width:500px; height:370px;">
+        <div class="title-bar">🏆 今日熱門漲幅榜 ($1-$40)</div>
         <div class="content">
             <table>
                 <thead><tr><th class="status-indicator"></th><th>代碼</th><th>價格</th><th>量比</th><th>成交量</th><th>浮動</th><th>漲幅</th><th>漲跌</th></tr></thead>
@@ -47,32 +57,84 @@
         </div>
     </div>
 
-    <div class="window" style="top:495px; left:520px; width:570px; height:370px;">
-        <div class="title-bar">💎 AI 好消息戰報</div>
+    <div id="win-news" class="window" style="top:510px; left:520px; width:570px; height:370px;">
+        <div class="title-bar">💎 AI 好消息戰報 (含全數據)</div>
         <div class="content">
             <table><thead><tr><th>代碼</th><th>價格</th><th>漲幅</th><th>量比</th><th>成交量</th><th>今日精選好消息</th></tr></thead><tbody id="good-news-list"></tbody></table>
         </div>
     </div>
     
-    <div class="window" style="top:55px; left:740px; width:410px; height:810px;">
-        <div class="title-bar">📊 即時詳情</div>
-        <div class="content" id="detail-list">單擊代碼加載詳情...</div>
+    <div id="win-detail" class="window" style="top:60px; left:740px; width:410px; height:810px;">
+        <div class="title-bar">📊 即時詳情分析</div>
+        <div class="content" id="detail-list">請單擊任何表格內的代碼...</div>
     </div>
 
     <script>
         let brain = {}, activeSym = "", audioOn = false, played = {};
         const sounds = { spark: new Audio('/static/sounds/spark.mp3'), nova: new Audio('/static/sounds/nova.mp3') };
+
         function unlockAudio() { audioOn = true; document.getElementById('audio-btn').style.background = "#3fb950"; document.getElementById('audio-btn').innerText = "🔊 音效已開"; }
         function openTW(s) { window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank'); }
+
+        // --- 視窗管理系統 (Drag, Resize, Save) ---
+        function initWindowManager() {
+            const wins = ['win-log', 'win-rank', 'win-news', 'win-detail'];
+            wins.forEach(id => {
+                const el = document.getElementById(id);
+                // 讀取存儲的佈局
+                const saved = JSON.parse(localStorage.getItem(id));
+                if (saved) {
+                    el.style.width = saved.w + 'px'; el.style.height = saved.h + 'px';
+                    el.style.transform = `translate(${saved.x}px, ${saved.y}px)`;
+                    el.setAttribute('data-x', saved.x); el.setAttribute('data-y', saved.y);
+                }
+
+                interact(el).draggable({
+                    allowFrom: '.title-bar',
+                    onmove: event => {
+                        const target = event.target;
+                        const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
+                        const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
+                        target.style.transform = `translate(${x}px, ${y}px)`;
+                        target.setAttribute('data-x', x); target.setAttribute('data-y', y);
+                    },
+                    onend: saveLayout
+                }).resizable({
+                    edges: { right: true, bottom: true, left: true, top: true },
+                    onmove: event => {
+                        const target = event.target;
+                        let x = (parseFloat(target.getAttribute('data-x')) || 0);
+                        let y = (parseFloat(target.getAttribute('data-y')) || 0);
+                        target.style.width = event.rect.width + 'px';
+                        target.style.height = event.rect.height + 'px';
+                        x += event.deltaRect.left; y += event.deltaRect.top;
+                        target.style.transform = `translate(${x}px, ${y}px)`;
+                        target.setAttribute('data-x', x); target.setAttribute('data-y', y);
+                    },
+                    onend: saveLayout
+                });
+            });
+        }
+
+        function saveLayout() {
+            const wins = ['win-log', 'win-rank', 'win-news', 'win-detail'];
+            wins.forEach(id => {
+                const el = document.getElementById(id);
+                const x = parseFloat(el.getAttribute('data-x')) || 0;
+                const y = parseFloat(el.getAttribute('data-y')) || 0;
+                const w = el.offsetWidth; const h = el.offsetHeight;
+                localStorage.setItem(id, JSON.stringify({x, y, w, h}));
+            });
+        }
 
         function refresh() {
             fetch('/data?t=' + Date.now()).then(r => r.json()).then(d => {
                 brain = d;
-                document.getElementById('sys-status').innerText = `更新: ${d.last_update}`;
+                document.getElementById('sys-status').innerText = `同步完成: ${d.last_update}`;
                 
                 let h1 = "";
                 d.surge_log.forEach(r => {
-                    let icon = (d.details[r.Code] && d.details[r.Code].HasNews) ? " 📰" : "";
+                    let icon = (d.details[r.Code] && d.details[r.Code].HasNews) ? " <span class='news-icon'>📰</span>" : "";
                     h1 += `<tr class="tr-${r.Status}" onclick="loadDetail('${r.Code}')">
                         <td class="status-indicator"></td><td>${r.Time}</td><td class="sym" ondblclick="openTW('${r.Code}')">${r.Code}${icon}</td>
                         <td>${r.Price}</td><td>${r.RelVol}</td><td>${r.Vol}</td><td>${r.Float}</td><td class="${r.Amt.includes('+')?'up':'down'}">${r.Pct}</td><td style="font-weight:bold; color:var(--yellow);">${r.Signal}</td>
@@ -85,7 +147,7 @@
 
                 let h2 = "";
                 d.leaderboard.forEach(r => {
-                    let icon = (d.details[r.Code] && d.details[r.Code].HasNews) ? " 📰" : "";
+                    let icon = (d.details[r.Code] && d.details[r.Code].HasNews) ? " <span class='news-icon'>📰</span>" : "";
                     h2 += `<tr class="tr-${r.Status}" onclick="loadDetail('${r.Code}')">
                         <td class="status-indicator"></td><td class="sym" ondblclick="openTW('${r.Code}')">${r.Code}${icon}</td>
                         <td>${r.Price}</td><td>${r.RelVol}</td><td>${r.Vol}</td><td>${r.Float}</td><td class="up">${r.Pct}</td><td class="up">${r.Amt}</td>
@@ -106,11 +168,11 @@
 
         function loadDetail(sym) {
             activeSym = sym; const d = brain.details[sym]; if(!d) return;
-            let html = `<div style="text-align:center; padding:10px;"><h2 ondblclick="openTW('${sym}')" class="sym" style="font-size:20px;">${sym} ${d.PriceStr}</h2><div style="background:#161b22; padding:12px; border-radius:4px; display:grid; grid-template-columns: 1fr 1fr; gap:10px; font-size:12px;"><div>成交量: <b style="color:var(--yellow);">${d.Vol}</b></div><div>量比: <b>${d.RelVol}</b></div><div>漲幅: <b class="up">${d.ChangePct}</b></div><div>漲跌價: <b class="up">${d.Amt}</b></div><div>流通股: <b>${d.Float}</b></div><div>止損參考: <b>$${d.StopLoss.toFixed(2)}</b></div></div><h3 style="border-left:4px solid #58a6ff; padding-left:10px; margin-top:20px; text-align:left;">🗞️ 即時繁體戰報</h3>`;
+            let html = `<div style="text-align:center; padding:10px;"><h2 ondblclick="openTW('${sym}')" class="sym" style="font-size:20px;">${sym} ${d.PriceStr}</h2><div style="background:#161b22; padding:12px; border-radius:4px; display:grid; grid-template-columns: 1fr 1fr; gap:10px; font-size:12px;"><div>成交量: <b style="color:var(--yellow);">${d.Vol}</b></div><div>量比: <b>${d.RelVol}</b></div><div>漲幅: <b class="up">${d.ChangePct}</b></div><div>漲跌價: <b class="up">${d.Amt}</b></div><div>流通股: <b>${d.Float}</b></div><div>止損參考: <b>$${d.StopLoss.toFixed(2)}</b></div></div><h3 style="border-left:4px solid #58a6ff; padding-left:10px; margin-top:20px; text-align:left;">🗞️ 最新繁體戰報</h3>`;
             (d.NewsList || []).forEach(n => { html += `<div style="margin-bottom:12px; text-align:left; border-bottom:1px solid #21262d; padding-bottom:8px;"><small style="color:#8b949e;">${n.time}</small><br><a href="${n.link}" target="_blank" style="text-decoration:none; color:#eee; font-size:13px;">${n.title}</a></div>`; });
             document.getElementById('detail-list').innerHTML = html + `</div>`;
         }
-        window.onload = refresh;
+        window.onload = () => { initWindowManager(); refresh(); };
     </script>
 </body>
 </html>
