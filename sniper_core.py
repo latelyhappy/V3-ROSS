@@ -8,6 +8,7 @@ import pytz
 from tvDatafeed import TvDatafeed, Interval
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, jsonify, render_template
+from deep_translator import GoogleTranslator
 
 # ==========================================
 # 🛠️ 雲端環境變數設定區
@@ -27,26 +28,42 @@ cooldown_tracker = {} # 記錄音效冷卻時間
 
 app = Flask(__name__)
 
-# --- 📰 新聞獲取模組 (背景執行) ---
+# --- 📰 新聞獲取模組 (背景執行 + 即時翻譯) ---
 def fetch_news_bg(ticker, cell):
     try:
         tz_ny = pytz.timezone('America/New_York')
         now_ny = datetime.now(tz_ny)
         url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
         res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+        
         if res.status_code == 200:
             root = ET.fromstring(res.text)
             articles = []
+            
+            # 啟動翻譯引擎 (指定翻譯為繁體中文 zh-TW)
+            translator = GoogleTranslator(source='auto', target='zh-TW')
+            
             for item in root.findall('./channel/item')[:5]:
                 raw_t = item.find('title').text
+                
+                # 🔄 執行即時翻譯 (加入 try-except 防護，如果翻譯 API 暫時卡住就退回英文)
+                try:
+                    zh_title = translator.translate(raw_t)
+                except:
+                    zh_title = raw_t 
+
                 link = item.find('link').text
                 dt = parsedate_to_datetime(item.find('pubDate').text).astimezone(tz_ny)
+                
                 if (now_ny.date() - dt.date()).days > 4: continue
                 is_today = (dt.date() == now_ny.date())
                 t_str = f"今日 {dt.strftime('%H:%M')}" if is_today else dt.strftime("%m/%d %H:%M")
-                articles.append({"title": raw_t, "link": link, "time": t_str, "is_today": is_today})
+                
+                articles.append({"title": zh_title, "link": link, "time": t_str, "is_today": is_today})
+            
             cell["NewsList"] = articles
-    except: pass
+    except Exception as e: 
+        pass # 背景執行，遇到錯誤默默略過即可
 
 # --- 🔌 數據獲取與流動性分析 ---
 def safe_get_tw_data(tv, symbol):

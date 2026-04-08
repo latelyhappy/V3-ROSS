@@ -3,3 +3,4 @@ pandas
 git+https://github.com/rongardF/tvdatafeed.git
 pytz
 requests
+deep-translator
