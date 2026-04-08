@@ -49,19 +49,25 @@ def fetch_news_bg(ticker, cell):
     except: pass
 
 # --- 🔌 數據獲取與流動性分析 ---
+# --- 🔌 數據獲取與流動性分析 ---
 def safe_get_tw_data(tv, symbol):
     for i in range(3):
         try:
-            df = tv.get_hist(symbol=symbol, exchange='NASDAQ', interval=Interval.in_1_minute, n_bars=20)
+            # 🛑 關鍵修正 1：加入 extended_session=True 才能抓盤前數據！
+            df = tv.get_hist(symbol=symbol, exchange='NASDAQ', interval=Interval.in_1_minute, n_bars=20, extended_session=True)
             if df is not None and not df.empty:
                 last_time = df.index[-1]
                 if last_time.tz is None: last_time = last_time.tz_localize('UTC')
-                # 90秒延遲鎖：防止拿到殭屍資料
-                if (datetime.now(last_time.tzinfo) - last_time).total_seconds() > 90:
-                    raise ValueError("數據延遲過高")
+                
+                delay = (datetime.now(last_time.tzinfo) - last_time).total_seconds()
+                
+                # 🛑 關鍵修正 2：盤前交易容易有空窗期，90秒太嚴，放寬至 600 秒 (10分鐘)
+                if delay > 600:
+                    raise ValueError(f"數據延遲過高 ({delay}秒)")
                 return df
             raise ValueError("數據為空")
         except Exception as e:
+            # print(f"抓取 {symbol} 失敗: {e}") # 測試時可以把這行打開來看錯誤原因
             time.sleep((2 ** i) + random.random())
     return None
 
