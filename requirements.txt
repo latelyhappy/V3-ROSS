@@ -1,5 +1,5 @@
 flask
 pandas
-tvDatafeed
+git+https://github.com/rongardF/tvdatafeed.git
 pytz
 requests
