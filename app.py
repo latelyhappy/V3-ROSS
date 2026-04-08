@@ -25,7 +25,6 @@ MASTER_BRAIN = {
     "last_update": ""
 }
 
-# 追蹤名單
 WATCHLIST = ["TSLA", "NVDA", "AAPL", "AMD", "META", "MARA", "RIOT", "COIN", "PLTR", "NNE", "OKLO", "SOXL"]
 cooldown_tracker = {}
 
@@ -55,7 +54,6 @@ def fetch_news_bg(ticker, cell):
                 news_obj = {"ticker": ticker, "title": zh_title, "link": item.find('link').text, "time": t_str, "is_today": is_today}
                 articles.append(news_obj)
                 
-                # 判定是否為「好消息」
                 if any(k in zh_title for k in GOOD_KEYWORDS) and is_today:
                     if news_obj not in MASTER_BRAIN["good_news"]:
                         MASTER_BRAIN["good_news"].insert(0, news_obj)
@@ -64,11 +62,9 @@ def fetch_news_bg(ticker, cell):
             MASTER_BRAIN["good_news"] = MASTER_BRAIN["good_news"][:10]
     except: pass
 
-# --- 🔌 數據獲取 ---
 def safe_get_tw_data(tv, symbol):
     try:
-        df = tv.get_hist(symbol=symbol, exchange='', interval=Interval.in_1_minute, n_bars=100, extended_session=True)
-        return df
+        return tv.get_hist(symbol=symbol, exchange='', interval=Interval.in_1_minute, n_bars=100, extended_session=True)
     except: return None
 
 # --- 🧠 戰術雷達主引擎 ---
@@ -88,7 +84,7 @@ def scanner_engine():
                     df = future.result()
                     if df is not None and not df.empty:
                         p = float(df['close'].iloc[-1])
-                        o = float(df['open'].iloc[0]) # 盤初價
+                        o = float(df['open'].iloc[0]) 
                         
                         change_amt = p - o
                         change_pct = (change_amt / o) * 100
@@ -96,39 +92,35 @@ def scanner_engine():
                         avg_vol = df['volume'].iloc[-6:-1].mean()
                         rel_vol = round(curr_vol / avg_vol, 2) if avg_vol > 0 else 1.0
                         
-                        # Ross 策略與狀態判定
-                        is_ross_price = 1.0 <= p <= 100.0
+                        is_ross_price = 1.0 <= p <= 200.0 # 擴大價格範圍
                         is_spark = is_ross_price and rel_vol >= 2.2 and p >= df['high'].iloc[-16:-1].max()
                         is_diamond = is_ross_price and p > df['close'].tail(10).mean() and not is_spark
                         
+                        # 決定全行狀態色
                         status_color = "yellow" if is_spark else ("purple" if is_diamond else ("green" if change_amt > 0 else "red"))
                         tag = "🔥強力點火" if is_spark else ("💎支撐回踩" if is_diamond else "")
                         
-                        # 模擬浮動股 (實戰中建議對接 API)
-                        mock_float = f"{random.uniform(2, 15):.1f}M"
-
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": []})
                         cell.update({
-                            "PriceVal": p, "PriceStr": f"${p:.2f}", "ChangeAmt": f"{change_amt:+.2f}",
-                            "ChangePct": f"{change_pct:+.2f}%", "RelVol": rel_vol,
-                            "Volume": f"{curr_vol:,.0f}", "Float": mock_float, "Signal": tag,
+                            "Ticker": ticker, "PriceVal": p, "PriceStr": f"${p:.2f}", 
+                            "ChangeAmt": f"{change_amt:+.2f}", "ChangePct": f"{change_pct:+.2f}%", 
+                            "RelVol": rel_vol, "Volume": f"{curr_vol:,.0f}", 
+                            "Float": f"{random.uniform(2, 15):.1f}M", "Signal": tag,
                             "StatusColor": status_color
                         })
 
-                        # 記錄漲幅排行榜
                         current_leaderboard.append({"Code": ticker, "Price": p, "Pct": change_pct})
 
                         if tag and (now_ts - cooldown_tracker.get(ticker, 0) > 30):
                             cooldown_tracker[ticker] = now_ts
                             MASTER_BRAIN["surge"].insert(0, {
                                 "Code": ticker, "Price": f"${p:.2f}", "Amt": f"{change_amt:+.2f}",
-                                "Streak": tag, "RelVol": rel_vol, "Float": mock_float,
+                                "Streak": tag, "RelVol": rel_vol, "Float": f"{random.uniform(2, 15):.1f}M",
                                 "StatusColor": status_color, "SignalTS": now_ts,
                                 "AudioTrigger": "nova" if is_spark else "spark"
                             })
                         threading.Thread(target=fetch_news_bg, args=(ticker, cell)).start()
             
-            # 更新排行榜 (降冪排列)
             MASTER_BRAIN["leaderboard"] = sorted(current_leaderboard, key=lambda x: x['Pct'], reverse=True)[:10]
             MASTER_BRAIN["surge"] = MASTER_BRAIN["surge"][:40]
             MASTER_BRAIN["last_update"] = datetime.now().strftime('%H:%M:%S')
