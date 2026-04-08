@@ -49,7 +49,6 @@ def fetch_news_bg(ticker, cell):
     except: pass
 
 # --- 🔌 數據獲取與流動性分析 ---
-# --- 🔌 數據獲取與流動性分析 ---
 def safe_get_tw_data(tv, symbol):
     for i in range(3):
         try:
@@ -117,10 +116,30 @@ def scanner_engine():
                         p = float(df['close'].iloc[-1])
                         stop_loss = float(df['low'].tail(3).min() - 0.05)
                         
-                        # 模擬訊號
-                        is_spark = random.random() > 0.85 and is_liquid 
-                        is_diamond = random.random() > 0.90 and is_liquid and not is_spark
-                        mock_float = random.uniform(1.0, 10.0)
+                        # ==========================================
+                        # 🦅 ROSS 動能狙擊策略 (實彈模式)
+                        # ==========================================
+                        # 1. 價格過濾 ($1.5 ~ $20)
+                        is_ross_price = 1.5 <= p <= 20.0
+                        
+                        # 2. 動能爆量過濾 (當前 1 分鐘成交量，大於過去 5 分鐘平均的 2.5 倍)
+                        recent_vol_mean = df['volume'].iloc[-6:-1].mean()
+                        vol_spike = df['volume'].iloc[-1] > (recent_vol_mean * 2.5) if recent_vol_mean > 0 else False
+                        
+                        # 3. 突破前高過濾 (當前收盤價，突破過去 10 分鐘的最高點)
+                        recent_high = df['high'].iloc[-11:-1].max()
+                        is_breakout = p > recent_high
+
+                        # 綜合判定：點火訊號
+                        is_spark = is_ross_price and vol_spike and is_breakout and is_liquid
+                        
+                        # 綜合判定：支撐回踩 (價格回落但守住 10 分鐘均線)
+                        ma_10 = df['close'].tail(10).mean()
+                        is_diamond = is_ross_price and is_liquid and (df['low'].iloc[-1] <= ma_10 <= df['close'].iloc[-1]) and not is_spark
+                        
+                        # (實戰註記：Float 應該接真實 API，目前仍暫用亂數模擬浮動股，等待後續串接 Yahoo Finance)
+                        mock_float = random.uniform(1.0, 15.0) 
+                        # ==========================================
                         
                         tag = ""
                         audio_trigger = ""
