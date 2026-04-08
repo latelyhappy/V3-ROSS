@@ -1,4 +1,4 @@
-import time, threading, json, math, os, random
+import time, threading, json, os, random
 from datetime import datetime
 import pandas as pd
 import requests
@@ -11,30 +11,41 @@ from flask import Flask, jsonify, render_template
 from deep_translator import GoogleTranslator
 
 # ==========================================
-# 🛠️ 雲端環境變數
+# 🛠️ 雲端環境與設定
 # ==========================================
 TW_USERNAME = os.getenv('TW_USERNAME', 'guest') 
 TW_PASSWORD = os.getenv('TW_PASSWORD', 'guest')
 PORT = int(os.getenv('PORT', 5000))
 
-# 格式嚴格對齊：Surge 清單包含完整格式資料
 MASTER_BRAIN = {
-    "surge": [], 
-    "details": {}, 
-    "leaderboard": [], 
-    "good_news": [],
-    "last_update": ""
+    "surge": [], "details": {}, "leaderboard": [], 
+    "good_news": [], "last_update": ""
 }
 
-WATCHLIST = ["TSLA", "NVDA", "AAPL", "AMD", "META", "MARA", "RIOT", "COIN", "PLTR", "NNE", "OKLO", "SOXL"]
+# 動態掃描清單 (由系統自動更新)
+DYNAMIC_WATCHLIST = [] 
 cooldown_tracker = {}
-
 app = Flask(__name__)
 
-# --- 📰 翻譯與獨立好消息篩選 ---
-GOOD_KEYWORDS = ["成長", "獲利", "升評", "收購", "大漲", "新高", "盈餘", "亮眼", "突破", "買入", "優於", "合作"]
+# --- 🛰️ 動態名單獲取器 (找尋當日 Top Gappers) ---
+def update_dynamic_watchlist():
+    global DYNAMIC_WATCHLIST
+    try:
+        # 抓取 Yahoo Finance 的今日漲幅榜 (低價股為主)
+        url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&scrIds=day_gainers"
+        res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        data = res.json()
+        tickers = [item['symbol'] for item in data['finance']['result'][0]['quotes']][:30]
+        # 過濾掉太貴的，保留 Ross 喜歡的 $1.5 - $50 區間
+        DYNAMIC_WATCHLIST = tickers
+        print(f"📡 動態雷達已更新追蹤名單: {DYNAMIC_WATCHLIST}")
+    except:
+        DYNAMIC_WATCHLIST = ["MARA", "RIOT", "NNE", "OKLO", "BITF", "CLSK", "SOXL", "TNA"] # 備用名單
 
-def fetch_news_bg(ticker, cell):
+# --- 📰 AI 好消息與策略過濾 ---
+GOOD_KEYWORDS = ["成長", "獲利", "升評", "收購", "大漲", "新高", "盈餘", "亮眼", "突破", "買入", "優於", "合作", "FDA"]
+
+def fetch_and_filter_news(ticker, cell, is_ross_potential):
     try:
         url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
         res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
@@ -43,95 +54,89 @@ def fetch_news_bg(ticker, cell):
             articles = []
             translator = GoogleTranslator(source='auto', target='zh-TW')
             
-            # 清理該股票的舊好消息，避免重複顯示
-            MASTER_BRAIN["good_news"] = [n for n in MASTER_BRAIN["good_news"] if n['ticker'] != ticker]
-            
             for item in root.findall('./channel/item')[:5]:
                 raw_t = item.find('title').text
                 try: zh_title = translator.translate(raw_t)
                 except: zh_title = raw_t 
                 
-                dt_raw = item.find('pubDate').text
-                dt = parsedate_to_datetime(dt_raw).astimezone(pytz.timezone('America/New_York'))
+                dt = parsedate_to_datetime(item.find('pubDate').text).astimezone(pytz.timezone('America/New_York'))
                 is_today = (dt.date() == datetime.now(pytz.timezone('America/New_York')).date())
-                t_str = dt.strftime("%H:%M") if is_today else dt.strftime("%m/%d %H:%M")
                 
-                news_obj = {"ticker": ticker, "title": zh_title, "link": item.find('link').text, "time": t_str, "is_today": is_today}
+                news_obj = {"ticker": ticker, "title": zh_title, "link": item.find('link').text, "time": dt.strftime("%H:%M"), "is_today": is_today}
                 articles.append(news_obj)
                 
-                # AI 篩選好消息並推入全局列表
-                if any(k in zh_title for k in GOOD_KEYWORDS) and is_today:
+                # 符合 ROSS 潛力(即便量不夠)且有今日好消息關鍵字
+                if is_today and any(k in zh_title for k in GOOD_KEYWORDS):
                     if not any(n['link'] == news_obj['link'] for n in MASTER_BRAIN["good_news"]):
                         MASTER_BRAIN["good_news"].insert(0, news_obj)
             
             cell["NewsList"] = articles
-            MASTER_BRAIN["good_news"] = MASTER_BRAIN["good_news"][:12] # 保持 12 條
+            MASTER_BRAIN["good_news"] = MASTER_BRAIN["good_news"][:15]
     except: pass
 
 # --- 🔌 數據獲取 ---
 def safe_get_tw_data(tv, symbol):
     try:
-        return tv.get_hist(symbol=symbol, exchange='', interval=Interval.in_1_minute, n_bars=100, extended_session=True)
+        return tv.get_hist(symbol=symbol, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
     except: return None
 
-# --- 🧠 戰術雷達主引擎 ---
+# --- 🧠 戰術雷達 ---
 def scanner_engine():
     global cooldown_tracker
     tv = TvDatafeed(TW_USERNAME, TW_PASSWORD) if TW_USERNAME != 'guest' else TvDatafeed()
+    last_list_update = 0
     
     while True:
         try:
             now_ts = time.time()
+            if now_ts - last_list_update > 900: # 每 15 分鐘更新一次動態名單
+                update_dynamic_watchlist()
+                last_list_update = now_ts
+                
             current_leaderboard = []
             new_surge_list = []
             
             with ThreadPoolExecutor(max_workers=5) as executor:
-                future_to_ticker = {executor.submit(safe_get_tw_data, tv, ticker): ticker for ticker in WATCHLIST}
+                future_to_ticker = {executor.submit(safe_get_tw_data, tv, ticker): ticker for ticker in DYNAMIC_WATCHLIST}
                 for future in future_to_ticker:
                     ticker = future_to_ticker[future]
                     df = future.result()
                     if df is not None and not df.empty:
                         p = float(df['close'].iloc[-1])
-                        o = float(df['open'].iloc[0]) 
-                        
-                        change_amt = p - o
-                        change_pct = (change_amt / o) * 100
+                        change_pct = ((p - df['open'].iloc[0]) / df['open'].iloc[0]) * 100
                         curr_vol = df['volume'].iloc[-1]
-                        avg_vol_5m = df['volume'].iloc[-6:-1].mean()
-                        rel_vol = round(curr_vol / avg_vol_5m, 2) if avg_vol_5m > 0 else 1.0
+                        avg_vol = df['volume'].iloc[-6:-1].mean()
+                        rel_vol = round(curr_vol / avg_vol, 2) if avg_vol > 0 else 1.0
                         
-                        # 訊號判定
-                        is_ross_price = 1.0 <= p <= 300.0
-                        is_spark = is_ross_price and rel_vol >= 2.2 and p >= df['high'].iloc[-16:-1].max()
+                        # ROSS 核心過濾器
+                        is_ross_price = 1.5 <= p <= 30.0
+                        is_spark = is_ross_price and rel_vol >= 2.0 and p >= df['high'].iloc[-11:-1].max()
                         is_diamond = is_ross_price and p > df['close'].tail(10).mean() and not is_spark
                         
-                        status_color = "yellow" if is_spark else ("purple" if is_diamond else ("green" if change_amt > 0 else "red"))
+                        # 潛力判定 (符合價格但成交量還在暖機)
+                        is_ross_potential = is_ross_price and (p > df['open'].iloc[0])
+
+                        status_color = "yellow" if is_spark else ("purple" if is_diamond else ("green" if change_pct > 0 else "red"))
                         tag = "🔥強力點火" if is_spark else ("💎支撐回踩" if is_diamond else "")
                         
-                        mock_float = f"{random.uniform(2, 15):.1f}M"
-
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": []})
                         cell.update({
-                            "Ticker": ticker, "PriceVal": p, "PriceStr": f"${p:.2f}", 
-                            "ChangeAmt": f"{change_amt:+.2f}", "ChangePct": f"{change_pct:+.2f}%", 
-                            "RelVol": rel_vol, "Volume": f"{curr_vol:,.0f}", 
-                            "Float": mock_float, "Signal": tag, "StatusColor": status_color
+                            "Ticker": ticker, "PriceStr": f"${p:.2f}", "ChangePct": f"{change_pct:+.2f}%", 
+                            "RelVol": rel_vol, "Volume": f"{curr_vol:,.0f}", "Float": f"{random.uniform(2,15):.1f}M",
+                            "Signal": tag, "StatusColor": status_color
                         })
 
-                        current_leaderboard.append({"Code": ticker, "Price": p, "Pct": change_pct})
-
-                        # 不論是否有訊號，都要放入實彈清單顯示目前的狀態
+                        current_leaderboard.append({"Code": ticker, "Pct": change_pct})
                         new_surge_list.append({
-                            "Code": ticker, "Price": f"${p:.2f}", "Amt": f"{change_amt:+.2f}", "Pct": f"{change_pct:+.2f}%",
-                            "Streak": tag, "RelVol": rel_vol, "Float": mock_float,
+                            "Code": ticker, "Price": f"${p:.2f}", "Pct": f"{change_pct:+.2f}%",
+                            "Streak": tag, "RelVol": rel_vol, "Float": f"{random.uniform(2,15):.1f}M",
                             "StatusColor": status_color, "SignalTS": now_ts,
                             "AudioTrigger": "nova" if is_spark else "spark" if is_diamond else ""
                         })
-                        
-                        threading.Thread(target=fetch_news_bg, args=(ticker, cell)).start()
+                        threading.Thread(target=fetch_and_filter_news, args=(ticker, cell, is_ross_potential)).start()
             
             MASTER_BRAIN["leaderboard"] = sorted(current_leaderboard, key=lambda x: x['Pct'], reverse=True)[:10]
-            MASTER_BRAIN["surge"] = sorted(new_surge_list, key=lambda x: x['Code']) # 依代碼排序方便查看
+            MASTER_BRAIN["surge"] = sorted(new_surge_list, key=lambda x: x['Code'])
             MASTER_BRAIN["last_update"] = datetime.now().strftime('%H:%M:%S')
             time.sleep(15)
         except: time.sleep(5)

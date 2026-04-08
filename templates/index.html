@@ -2,48 +2,33 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Sniper V20.2 - Commander Hub</title>
+    <title>Sniper V21.0 - Professional Scanners</title>
     <style>
-        :root { 
-            --yellow: #ffea00; --purple: #a371f7; --green: #3fb950; --red: #f85149; 
-            --bg: #050811; --panel: #0d1117; --border: #30363d; 
-        }
+        :root { --yellow: #ffea00; --purple: #a371f7; --green: #3fb950; --red: #f85149; --bg: #050811; --panel: #0d1117; --border: #30363d; }
         body { margin: 0; background: var(--bg); color: #c9d1d9; font-family: sans-serif; overflow: hidden; }
-        .window { position: absolute; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; }
+        .window { position: absolute; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; }
         .title-bar { background: #0d1f3d; color: white; padding: 6px 10px; font-size: 11px; font-weight: bold; }
         .content { flex: 1; padding: 4px; overflow-y: auto; font-size: 10.5px; }
-        
         table { width: 100%; border-collapse: collapse; }
-        th, td { border-bottom: 1px solid #21262d; padding: 10px 6px; text-align: left; }
-        
-        /* --- 視覺高亮系統：全行上色 + 側邊條 --- */
+        th, td { border-bottom: 1px solid #21262d; padding: 10px 4px; text-align: left; }
         .status-indicator { width: 8px; padding: 0 !important; }
-        
-        tr.tr-yellow { background: rgba(255, 234, 0, 0.22) !important; } .tr-yellow .status-indicator { background: var(--yellow); box-shadow: 0 0 10px var(--yellow); }
-        tr.tr-purple { background: rgba(163, 113, 247, 0.2) !important; } .tr-purple .status-indicator { background: var(--purple); }
-        tr.tr-green { background: rgba(63, 185, 80, 0.12) !important; } .tr-green .status-indicator { background: var(--green); }
-        tr.tr-red { background: rgba(248, 81, 73, 0.12) !important; } .tr-red .status-indicator { background: var(--red); }
-        
-        tr.active-row { outline: 2px solid #58a6ff; background: rgba(88, 166, 255, 0.2) !important; }
-        
-        .sym { font-weight: bold; color: #58a6ff; font-size: 14px; cursor: pointer; user-select: none; }
-        #tactical-bar { position: fixed; top: 0; left: 0; width: 100%; background: #0d1f3d; padding: 8px 20px; display: flex; gap: 20px; align-items: center; z-index: 9999; border-bottom: 1px solid var(--border); }
-        .t-input { background: #050811; border: 1px solid #58a6ff; color: white; padding: 4px; width: 80px; border-radius: 4px; text-align: right; }
-        
+        tr.tr-yellow { background: rgba(255, 234, 0, 0.22); } .tr-yellow .status-indicator { background: var(--yellow); }
+        tr.tr-purple { background: rgba(163, 113, 247, 0.2); } .tr-purple .status-indicator { background: var(--purple); }
+        tr.tr-green { background: rgba(63, 185, 80, 0.12); } .tr-green .status-indicator { background: var(--green); }
+        tr.tr-red { background: rgba(248, 81, 73, 0.12); } .tr-red .status-indicator { background: var(--red); }
+        .sym { font-weight: bold; color: #58a6ff; font-size: 14px; cursor: pointer; }
         .news-today { color: #ffa500 !important; font-weight: bold; }
-        .up { color: var(--green); } .down { color: var(--red); }
+        #tactical-bar { position: fixed; top: 0; left: 0; width: 100%; background: #0d1f3d; padding: 8px 20px; display: flex; align-items: center; border-bottom: 1px solid var(--border); z-index: 999; }
     </style>
 </head>
 <body>
     <div id="tactical-bar">
         <button id="audio-btn" style="background:#f85149; color:white; border:none; padding:5px 15px; border-radius:4px; cursor:pointer;" onclick="unlockAudio()">🔇 啟用音效</button>
-        <div>💰 總資金: <input type="number" id="inp-acc" class="t-input" onchange="save()"></div>
-        <div>⚠️ 風險%: <input type="number" id="inp-risk" class="t-input" step="0.1" onchange="save()"></div>
-        <span id="sys-status" style="font-size:11px; margin-left:auto;">連線中...</span>
+        <span id="sys-status" style="margin-left:auto; font-size:11px;">📡 系統初始化中...</span>
     </div>
 
     <div class="window" style="top:50px; left:10px; width:680px; height:450px; border: 1px solid #6e40c9;">
-        <div class="title-bar">🚀 實彈狙擊清單 (單擊顯示新聞 / 雙擊代號圖表)</div>
+        <div class="title-bar">🚀 動態 ROSS 狙擊清單 (雙擊任何代碼開啟圖表)</div>
         <div class="content">
             <table>
                 <thead><tr><th class="status-indicator"></th><th>代碼</th><th>價格</th><th>漲跌</th><th>訊號</th><th>量比</th><th>浮動</th></tr></thead>
@@ -53,44 +38,40 @@
     </div>
 
     <div class="window" style="top:510px; left:10px; width:280px; height:350px;">
-        <div class="title-bar">🏆 戰力排行榜 (當前漲幅)</div>
+        <div class="title-bar">🏆 今日漲幅排行榜</div>
         <div class="content" id="rank-list"></div>
     </div>
 
     <div class="window" style="top:510px; left:300px; width:400px; height:350px;">
-        <div class="title-bar">💎 AI 精選今日好消息 (含關鍵字過濾)</div>
+        <div class="title-bar">💎 潛力股 AI 好消息 (含符合 Ross 條件且有新聞)</div>
         <div class="content" id="good-news-list"></div>
     </div>
     
     <div class="window" style="top:50px; left:700px; width:450px; height:810px;">
-        <div class="title-bar">📊 詳情分析與即時新聞</div>
-        <div class="content" id="detail-list">請點擊標的以加載新聞戰報...</div>
+        <div class="title-bar">📊 實時戰報與即時新聞</div>
+        <div class="content" id="detail-list">請單擊清單以顯示內容...</div>
     </div>
 
     <script>
-        let brainData = {}, activeSym = "", audioOn = false, played = {};
+        let brain = {}, activeSym = "", audioOn = false, played = {};
         const sounds = { spark: new Audio('/static/sounds/spark.mp3'), nova: new Audio('/static/sounds/nova.mp3') };
 
-        function save() { localStorage.setItem('acc', document.getElementById('inp-acc').value); localStorage.setItem('risk', document.getElementById('inp-risk').value); }
         function unlockAudio() { audioOn = true; document.getElementById('audio-btn').style.background = "#3fb950"; document.getElementById('audio-btn').innerText = "🔊 音效已開"; }
+        function openTW(s) { window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank'); }
 
         function refresh() {
             fetch('/data?t=' + Date.now()).then(r => r.json()).then(d => {
-                brainData = d;
-                document.getElementById('sys-status').innerText = `最後同步: ${d.last_update}`;
+                brain = d;
+                document.getElementById('sys-status').innerText = `更新: ${d.last_update}`;
                 
-                // 渲染主清單
                 let tbody = "";
                 d.surge.forEach(r => {
-                    let activeCls = (activeSym === r.Code) ? "active-row" : "";
-                    tbody += `<tr class="tr-${r.StatusColor} ${activeCls}" onclick="loadDetail('${r.Code}', this)">
+                    tbody += `<tr class="tr-${r.StatusColor}" onclick="loadDetail('${r.Code}')">
                         <td class="status-indicator"></td>
-                        <td class="sym" ondblclick="window.open('https://www.tradingview.com/chart/?symbol=${r.Code}')">${r.Code}</td>
-                        <td>${r.Price}</td>
-                        <td class="${r.Amt.includes('+')?'up':'down'}">${r.Pct}</td>
+                        <td class="sym" ondblclick="openTW('${r.Code}')">${r.Code}</td>
+                        <td>${r.Price}</td><td class="${r.Pct.includes('+')?'':'down'}">${r.Pct}</td>
                         <td style="font-weight:bold;">${r.Streak}</td>
-                        <td style="color:#58a6ff;">${r.RelVol}x</td>
-                        <td>${r.Float}</td>
+                        <td style="color:#58a6ff;">${r.RelVol}x</td><td>${r.Float}</td>
                     </tr>`;
                     if (r.AudioTrigger && r.SignalTS > (played[r.Code] || 0) && audioOn) { 
                         played[r.Code] = r.SignalTS; sounds[r.AudioTrigger].currentTime = 0; sounds[r.AudioTrigger].play(); 
@@ -98,65 +79,37 @@
                 });
                 document.getElementById('surge-list-body').innerHTML = tbody;
 
-                // 渲染排行榜
                 let h2 = `<table><tbody>`;
-                d.leaderboard.forEach((r, i) => { h2 += `<tr><td>${i+1}</td><td class="sym">${r.Code}</td><td class="up">+${r.Pct.toFixed(2)}%</td></tr>`; });
+                d.leaderboard.forEach((r, i) => { h2 += `<tr><td>${i+1}</td><td class="sym" ondblclick="openTW('${r.Code}')">${r.Code}</td><td style="color:#3fb950;">+${r.Pct.toFixed(2)}%</td></tr>`; });
                 document.getElementById('rank-list').innerHTML = h2 + `</tbody></table>`;
 
-                // 渲染好消息表
                 let h3 = `<table><tbody>`;
-                d.good_news.forEach(n => { h3 += `<tr><td style="font-size:9px; color:#58a6ff;">${n.ticker}</td><td><a href="${n.link}" target="_blank" class="news-today" style="text-decoration:none;">${n.title}</a></td></tr>`; });
+                d.good_news.forEach(n => { h3 += `<tr><td class="sym" ondblclick="openTW('${n.ticker}')" style="font-size:10px;">${n.ticker}</td><td><a href="${n.link}" target="_blank" class="news-today" style="text-decoration:none;">${n.title}</a></td></tr>`; });
                 document.getElementById('good-news-list').innerHTML = h3 + `</tbody></table>`;
 
-                if(activeSym) loadDetail(activeSym, null);
-                setTimeout(refresh, 4000);
+                if(activeSym) loadDetail(activeSym);
+                setTimeout(refresh, 5000);
             });
         }
 
-        function loadDetail(sym, rowElem) {
-            activeSym = sym;
-            const d = brainData.details[sym];
-            if(!d) return;
-
-            if(rowElem) {
-                document.querySelectorAll('tr').forEach(tr => tr.classList.remove('active-row'));
-                rowElem.classList.add('active-row');
-            }
-            
-            let acc = parseFloat(document.getElementById('inp-acc').value) || 20000;
-            let risk = parseFloat(document.getElementById('inp-risk').value) || 1.0;
-            let shares = Math.floor((acc * (risk/100)) / (d.PriceVal - d.StopLossVal)) || 0;
-            
+        function loadDetail(sym) {
+            activeSym = sym; const d = brain.details[sym]; if(!d) return;
             let html = `<div style="text-align:center; padding:10px;">
-                <h2 style="margin:0; color:#58a6ff;">${sym} <span class="${d.ChangeAmt.includes('+')?'up':'down'}">${d.PriceStr}</span></h2>
-                <div style="background:#161b22; padding:10px; margin-top:10px; border-radius:4px; display:grid; grid-template-columns: 1fr 1fr; font-size:12px; gap:8px;">
-                    <div>漲跌金額: <b class="${d.ChangeAmt.includes('+')?'up':'down'}">${d.ChangeAmt}</b></div>
-                    <div>當前量比: <b style="color:#58a6ff;">${d.RelVol}x</b></div>
-                    <div>今日成交: <b>${d.Volume}</b></div>
-                    <div>流通股數: <b>${d.Float}</b></div>
+                <h2 ondblclick="openTW('${sym}')" class="sym">${sym} <span style="color:#eee;">${d.PriceStr}</span></h2>
+                <div style="background:#161b22; padding:10px; margin-top:10px; border-radius:4px; display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+                    <div>當前量比: <b style="color:#58a6ff;">${d.RelVol}x</b></div><div>今日成交: <b>${d.Volume}</b></div>
+                    <div>漲跌幅度: <b>${d.ChangePct}</b></div><div>流通股數: <b>${d.Float}</b></div>
+                </div>
+                <h3 style="border-left:4px solid #58a6ff; padding-left:10px; margin-top:20px; text-align:left;">🗞️ 即時戰報</h3>`;
+            (d.NewsList || []).forEach(n => {
+                html += `<div style="margin-bottom:12px; text-align:left; border-bottom:1px solid #21262d; padding-bottom:8px;">
+                    <small style="color:#8b949e;">${n.time}</small><br>
+                    <a href="${n.link}" target="_blank" class="${n.is_today?'news-today':''}" style="text-decoration:none; color:#eee;">${n.title}</a>
                 </div>`;
-            
-            if(d.Signal) html += `<div style="background:rgba(255,234,0,0.3); border:1px solid var(--yellow); padding:10px; margin-top:10px; font-weight:bold; color:var(--yellow); font-size:16px;">🎯 建議買進: ${shares} 股<br><small style="color:white;">止損點: $${d.StopLossVal.toFixed(2)}</small></div>`;
-            
-            html += `<h3 style="border-left:4px solid #58a6ff; padding-left:10px; margin-top:20px; text-align:left;">🗞️ 即時繁體戰報</h3>`;
-            
-            if(d.NewsList && d.NewsList.length > 0) {
-                d.NewsList.forEach(n => {
-                    html += `<div style="margin-bottom:12px; text-align:left; border-bottom:1px solid #21262d; padding-bottom:8px;">
-                        <small style="color:#8b949e;">${n.time} 美東</small><br>
-                        <a href="${n.link}" target="_blank" class="${n.is_today?'news-today':''}" style="text-decoration:none; color:#eee; line-height:1.4;">${n.title}</a>
-                    </div>`;
-                });
-            } else { html += `<p style="color:#8b949e;">正在加載 ${sym} 的最新戰報...</p>`; }
-            
+            });
             document.getElementById('detail-list').innerHTML = html + `</div>`;
         }
-
-        window.onload = () => {
-            document.getElementById('inp-acc').value = localStorage.getItem('acc') || 20000;
-            document.getElementById('inp-risk').value = localStorage.getItem('risk') || 1.0;
-            refresh();
-        };
+        window.onload = refresh;
     </script>
 </body>
 </html>
