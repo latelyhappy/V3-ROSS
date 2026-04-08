@@ -62,7 +62,7 @@ def fetch_news_sequential(ticker, cell, stats):
             cell["HasNews"] = has_today
     except: pass
 
-# --- 🧠 戰術雷達 (Ross 實戰校準版) ---
+# --- 🧠 戰術雷達 (成交量校準 + 策略優化版) ---
 def scanner_engine():
     tv = TvDatafeed(TW_USERNAME, TW_PASSWORD) if TW_USERNAME != 'guest' else TvDatafeed()
     last_list_update = 0
@@ -70,6 +70,7 @@ def scanner_engine():
         try:
             now_ts = time.time()
             if now_ts - last_list_update > 600:
+                # 抓取漲幅榜
                 url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&scrIds=day_gainers"
                 res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
                 quotes = res.json()['finance']['result'][0]['quotes']
@@ -81,34 +82,41 @@ def scanner_engine():
             for ticker in DYNAMIC_WATCHLIST:
                 try:
                     time.sleep(1.0)
-                    df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=30, extended_session=True)
+                    # 💡 增加 n_bars 以便更準確計算當日累計量
+                    df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=100, extended_session=True)
                     if df is not None and not df.empty:
                         p = float(df['close'].iloc[-1])
-                        o = float(df['open'].iloc[0]) # 💡 獲取開盤價判定趨勢
+                        o = float(df['open'].iloc[0])
+                        
+                        # 💡 修正 1：計算「當日累計成交量」而非「最後一根量」
+                        daily_cumulative_vol = int(df['volume'].sum()) 
+                        
+                        # 💡 修正 2：計算「量比 (Relative Volume)」
+                        # 邏輯：當前一分鐘量 / 過去幾分鐘平均量
+                        current_minute_vol = df['volume'].iloc[-1]
+                        avg_vol_prev = df['volume'].iloc[-11:-1].mean()
+                        rel_vol_val = round(current_minute_vol / avg_vol_prev, 2) if avg_vol_prev > 0 else 1.0
+                        
+                        # 漲跌與趨勢
                         chg_amt = p - o
                         chg_pct_val = (chg_amt / o) * 100
-                        curr_v = int(df['volume'].iloc[-1])
-                        rel_vol = round(curr_v / df['volume'].iloc[-6:-1].mean(), 2) if df['volume'].iloc[-6:-1].mean() > 0 else 1.0
                         
-                        # 🦅 Ross 策略極限過濾
-                        # 1. 強力點火：RelVol高 + 突破前高 + 價格在開盤價之上
-                        is_spark = (rel_vol >= 2.2) and (p >= df['high'].iloc[-16:-1].max()) and (p > o)
-                        
-                        # 2. 支撐回踩：價格回落至均線但守住開盤價，且當前趨勢必須是正的
-                        ma10 = df['close'].tail(10).mean()
-                        is_diamond = (p > ma10) and (p > o) and (chg_pct_val > 2.0) and not is_spark
-                        
-                        # 3. 趨勢轉弱：跌破開盤價或跌幅擴大
-                        is_weak = (p < o) or (chg_pct_val < -1.0)
+                        # 🦅 Ross 策略極限過濾 (修正版)
+                        # 只有強勢股 (P > O 且 漲幅 > 2%) 才會觸發信號
+                        is_strong = (p > o) and (chg_pct_val > 1.5)
+                        is_spark = is_strong and (rel_vol_val >= 2.0) and (p >= df['high'].iloc[-16:-1].max())
+                        is_diamond = is_strong and (p > df['close'].tail(10).mean()) and not is_spark
+                        is_weak = (p < o) or (chg_pct_val < -2.0)
                         
                         tag = "🔥強力點火" if is_spark else ("💎支撐回踩" if is_diamond else ("💀趨勢轉弱" if is_weak else ""))
                         status = "yellow" if is_spark else ("purple" if is_diamond else ("red" if is_weak else "green"))
 
-                        # 修正 undefined 問題：確保數據 key 與前端一致
+                        # 統一封裝數據，確保前端不噴 undefined
                         stats = {
-                            "Code": ticker, "Price": f"${p:.2f}", "PriceVal": p, "RelVol": f"{rel_vol}x", 
-                            "Float": f"{random.uniform(2,15):.1f}M", "Vol": format_vol(curr_v), 
-                            "Pct": f"{chg_pct_val:+.2f}%", "ChangePct": f"{chg_pct_val:+.2f}%", 
+                            "Code": ticker, "Price": f"${p:.2f}", "PriceVal": p, "RelVol": f"{rel_vol_val}x",
+                            "Float": f"{random.uniform(2,15):.1f}M", 
+                            "Vol": format_vol(daily_cumulative_vol), # 顯示累計量
+                            "Pct": f"{chg_pct_val:+.2f}%", "ChangePct": f"{chg_pct_val:+.2f}%",
                             "Amt": f"{chg_amt:+.2f}", "Status": status, "StopLoss": p*0.97
                         }
                         
@@ -120,7 +128,6 @@ def scanner_engine():
                             cooldown_tracker[ticker] = now_ts
                             log_entry = {**stats, "Signal": tag, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova" if is_spark else "spark" if is_diamond else ""}
                             MASTER_BRAIN["surge_log"].insert(0, log_entry)
-                            MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
                         
                         threading.Thread(target=fetch_news_sequential, args=(ticker, cell, stats)).start()
                 except: continue
