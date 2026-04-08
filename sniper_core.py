@@ -56,6 +56,7 @@ def safe_get_tw_data(tv, symbol):
             if df is not None and not df.empty:
                 last_time = df.index[-1]
                 if last_time.tz is None: last_time = last_time.tz_localize('UTC')
+                # 90秒延遲鎖：防止拿到殭屍資料
                 if (datetime.now(last_time.tzinfo) - last_time).total_seconds() > 90:
                     raise ValueError("數據延遲過高")
                 return df
@@ -64,10 +65,12 @@ def safe_get_tw_data(tv, symbol):
             time.sleep((2 ** i) + random.random())
     return None
 
-def analyze_liquidity(df, threshold=30000):
+def analyze_liquidity(df, threshold=5000): # 盤前門檻暫降為 5000
     if df is None or df.empty: return False, 0
     if df.index.tz is None: df.index = df.index.tz_localize('UTC')
-    df_market = df.tz_convert('US/Eastern').between_time('09:30', '16:00')
+    
+    # 時間鎖解開至盤前 04:00
+    df_market = df.tz_convert('US/Eastern').between_time('04:00', '16:00')
     if df_market.empty or df_market['volume'].iloc[-1] <= 0: return False, 0
 
     df_market['dollar_vol'] = df_market['close'] * df_market['volume']
@@ -77,7 +80,7 @@ def analyze_liquidity(df, threshold=30000):
 # --- 🧠 戰術雷達主引擎 ---
 def scanner_engine():
     global cooldown_tracker
-    print("🔄 啟動 Sniper V19.8 (雲端聲學版)...")
+    print("🔄 啟動 Sniper V19.8 (雲端聲學與盤前版)...")
     try:
         tv = TvDatafeed(TW_USERNAME, TW_PASSWORD) if TW_USERNAME != 'guest' else TvDatafeed()
         print("✅ TradingView 數據源準備就緒！")
@@ -109,8 +112,8 @@ def scanner_engine():
                         stop_loss = float(df['low'].tail(3).min() - 0.05)
                         
                         # 模擬訊號
-                        is_spark = random.random() > 0.9 and is_liquid 
-                        is_diamond = random.random() > 0.95 and is_liquid and not is_spark
+                        is_spark = random.random() > 0.85 and is_liquid 
+                        is_diamond = random.random() > 0.90 and is_liquid and not is_spark
                         mock_float = random.uniform(1.0, 10.0)
                         
                         tag = ""

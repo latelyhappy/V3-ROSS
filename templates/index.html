@@ -17,7 +17,6 @@
         .t-input { background: #050811; border: 1px solid #58a6ff; color: #c9d1d9; padding: 4px 8px; border-radius: 4px; font-size: 12px; width: 80px; text-align: right; }
         .t-label { font-size: 12px; font-weight: bold; color: #58a6ff; }
         
-        /* 音效解鎖按鈕 */
         #audio-btn { background: #f85149; color: white; border: none; padding: 5px 15px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px; transition: 0.3s; }
         #audio-btn.active { background: #3fb950; }
 
@@ -39,7 +38,7 @@
     </div>
 
     <div class="window" style="top:50px; left:10px; width:520px; height:450px; border: 1px solid #6e40c9;">
-        <div class="title-bar">🚀 短線動能追蹤</div>
+        <div class="title-bar">🚀 短線動能追蹤 (美東盤前觀測)</div>
         <div class="content" id="surge-list"></div>
     </div>
     
@@ -55,7 +54,7 @@
         
         // --- 🎧 瀏覽器前端音效引擎 ---
         let audioEnabled = false;
-        let playedAudioTS = {}; // 紀錄各股票播過的最新時間戳
+        let playedAudioTS = {}; 
         let lastSysAlertTS = 0;
         
         const sounds = {
@@ -64,8 +63,6 @@
             nova: new Audio('/static/sounds/nova.mp3'),
             system_down: new Audio('/static/sounds/system_down.mp3')
         };
-
-        // 調整音量
         sounds.diamond.volume = 0.7;
 
         function unlockAudio() {
@@ -73,7 +70,6 @@
             let btn = document.getElementById('audio-btn');
             btn.innerText = "🔊 音效已解鎖";
             btn.classList.add("active");
-            // 播放極短的無聲音頻來欺騙瀏覽器解鎖限制
             sounds.spark.volume = 0; sounds.spark.play().then(() => {
                 sounds.spark.pause(); sounds.spark.currentTime = 0; sounds.spark.volume = 1;
             }).catch(e=>{});
@@ -84,7 +80,6 @@
                 document.getElementById('sys-status').innerText = `🟢 V19.8 雲端連線 | 更新: ${d.last_update}`;
                 brainDetailsCache = d.details || {};
                 
-                // 檢查全系統癱瘓警報
                 if (d.system_alert === "system_down" && d.system_alert_ts > lastSysAlertTS) {
                     lastSysAlertTS = d.system_alert_ts;
                     if (audioEnabled) { sounds.system_down.currentTime = 0; sounds.system_down.play(); }
@@ -100,13 +95,12 @@
                         <td>${row.FloatStr}</td>
                     </tr>`;
 
-                    // 🔊 執行音效邏輯
                     let prevTS = playedAudioTS[row.Code] || 0;
                     if (row.AudioTrigger && row.SignalTS > prevTS) {
-                        playedAudioTS[row.Code] = row.SignalTS; // 更新已播紀錄
+                        playedAudioTS[row.Code] = row.SignalTS; 
                         if (audioEnabled && sounds[row.AudioTrigger]) {
                             sounds[row.AudioTrigger].currentTime = 0;
-                            sounds[row.AudioTrigger].play().catch(e => console.log("音效遭瀏覽器阻擋", e));
+                            sounds[row.AudioTrigger].play().catch(e => console.log("音效遭擋", e));
                         }
                     }
                 });
