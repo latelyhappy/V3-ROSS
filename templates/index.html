@@ -2,126 +2,135 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Sniper V19.9 - Tactical Command</title>
+    <title>Sniper V20.0 - Commander Hub</title>
     <style>
-        body { margin: 0; background: #050811; color: #c9d1d9; font-family: sans-serif; overflow: hidden; }
-        .window { position: absolute; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 5px 15px rgba(0,0,0,0.8); }
-        .title-bar { background: #0d1f3d !important; color: #ffffff !important; padding: 6px 10px; font-size: 11px; font-weight: bold; }
+        :root { --yellow: #ffea00; --purple: #a371f7; --green: #3fb950; --red: #f85149; --bg: #050811; --panel: #0d1117; --border: #30363d; }
+        body { margin: 0; background: var(--bg); color: #c9d1d9; font-family: sans-serif; overflow: hidden; }
+        .window { position: absolute; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; box-shadow: 0 5px 15px rgba(0,0,0,0.8); }
+        .title-bar { background: #0d1f3d; color: white; padding: 6px 10px; font-size: 11px; font-weight: bold; }
         .content { flex: 1; padding: 4px; overflow-y: auto; font-size: 10.5px; }
+        
         table { width: 100%; border-collapse: collapse; }
-        th, td { border-bottom: 1px solid #21262d; padding: 4px; text-align: left; }
-        tr:hover { background-color: #161b22; cursor: pointer; }
-        .sym-link { font-weight: bold; font-size: 12px; color: #58a6ff; text-decoration: none; }
-        .sym-link:hover { text-decoration: underline; }
+        th, td { border-bottom: 1px solid #21262d; padding: 6px 4px; text-align: left; }
+        tr:hover { background: #161b22; cursor: pointer; }
         
-        #tactical-bar { position: fixed; top: 0; left: 0; width: 100%; background: #0d1f3d; padding: 8px 20px; box-sizing: border-box; display: flex; gap: 20px; align-items: center; z-index: 9999; border-bottom: 1px solid #30363d; }
-        .t-input { background: #050811; border: 1px solid #58a6ff; color: #c9d1d9; padding: 4px 8px; border-radius: 4px; font-size: 12px; width: 80px; text-align: right; }
+        /* 顏色標籤條 */
+        .status-indicator { width: 5px; padding: 0 !important; }
+        .bg-yellow { background: var(--yellow); }
+        .bg-purple { background: var(--purple); }
+        .bg-green { background: var(--green); }
+        .bg-red { background: var(--red); }
         
-        #audio-btn { background: #f85149; color: white; border: none; padding: 5px 15px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px; }
-        #audio-btn.active { background: #3fb950; }
+        .sym { font-weight: bold; color: #58a6ff; font-size: 13px; }
+        #tactical-bar { position: fixed; top: 0; left: 0; width: 100%; background: #0d1f3d; padding: 8px 20px; display: flex; gap: 20px; align-items: center; z-index: 9999; border-bottom: 1px solid var(--border); }
+        .t-input { background: #050811; border: 1px solid #58a6ff; color: white; padding: 4px; width: 80px; border-radius: 4px; }
         
-        .news-item { margin-bottom: 12px; border-bottom: 1px solid #21262d; padding-bottom: 5px; }
         .news-today { color: #ffa500 !important; font-weight: bold; }
-        .news-time { font-size: 10px; color: #8b949e; margin-right: 5px; }
+        .up { color: var(--green); }
+        .down { color: var(--red); }
     </style>
 </head>
 <body>
     <div id="tactical-bar">
-        <button id="audio-btn" onclick="unlockAudio()">🔇 點擊啟用音效</button>
-        <div><label>💰 總資金 ($):</label> <input type="number" id="inp-acc" class="t-input" onchange="saveSettings()"></div>
-        <div><label>⚠️ 風險 (%):</label> <input type="number" id="inp-risk" class="t-input" step="0.1" onchange="saveSettings()"></div>
+        <button id="audio-btn" style="background:#f85149; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;" onclick="unlockAudio()">🔇 啟用音效</button>
+        <div>💰 總資金: <input type="number" id="inp-acc" class="t-input" onchange="save()"></div>
+        <div>⚠️ 風險%: <input type="number" id="inp-risk" class="t-input" step="0.1" onchange="save()"></div>
+        <span id="sys-status" style="font-size:11px; margin-left:auto;">連線中...</span>
     </div>
 
-    <div class="window" style="top:50px; left:10px; width:550px; height:500px; border: 1px solid #6e40c9;">
-        <div class="title-bar">🚀 實彈狙擊清單 (量比/動能監控)</div>
+    <div class="window" style="top:50px; left:10px; width:620px; height:450px; border: 1px solid #6e40c9;">
+        <div class="title-bar">🚀 實彈狙擊清單 (雙擊代碼開啟圖表)</div>
         <div class="content" id="surge-list"></div>
     </div>
+
+    <div class="window" style="top:510px; left:10px; width:280px; height:350px;">
+        <div class="title-bar">🏆 戰力排行榜 (當前漲幅)</div>
+        <div class="content" id="rank-list"></div>
+    </div>
+
+    <div class="window" style="top:510px; left:300px; width:330px; height:350px;">
+        <div class="title-bar">💎 AI 精選好消息 (今日強勢)</div>
+        <div class="content" id="good-news-list"></div>
+    </div>
     
-    <div class="window" style="top:50px; left:570px; width:500px; height:650px;">
-        <div class="title-bar">📊 戰術詳情與繁體新聞</div>
-        <div class="content" id="detail-list">請選擇標的...</div>
+    <div class="window" style="top:50px; left:640px; width:450px; height:810px;">
+        <div class="title-bar">📊 詳情分析與即時新聞</div>
+        <div class="content" id="detail-list">請點擊標的...</div>
     </div>
 
     <script>
-        let brainDetailsCache = {}, activeSymbol = "", audioEnabled = false, playedAudioTS = {};
+        let brain = {}, activeSym = "", audioOn = false, played = {};
         const sounds = { spark: new Audio('/static/sounds/spark.mp3'), nova: new Audio('/static/sounds/nova.mp3') };
 
-        // 💾 儲存與讀取設定
-        function saveSettings() {
-            localStorage.setItem('acc', document.getElementById('inp-acc').value);
-            localStorage.setItem('risk', document.getElementById('inp-risk').value);
-            if(activeSymbol) loadDetail(activeSymbol);
-        }
-        function loadSettings() {
-            document.getElementById('inp-acc').value = localStorage.getItem('acc') || 20000;
-            document.getElementById('inp-risk').value = localStorage.getItem('risk') || 1.0;
-        }
-
-        function unlockAudio() {
-            audioEnabled = true;
-            document.getElementById('audio-btn').innerText = "🔊 音效已解鎖";
-            document.getElementById('audio-btn').classList.add("active");
-            sounds.spark.play().then(()=>sounds.spark.pause());
-        }
+        function save() { localStorage.setItem('acc', document.getElementById('inp-acc').value); localStorage.setItem('risk', document.getElementById('inp-risk').value); }
+        function unlockAudio() { audioOn = true; document.getElementById('audio-btn').style.background = "#3fb950"; document.getElementById('audio-btn').innerText = "🔊 音效已開"; }
 
         function refresh() {
             fetch('/data?t=' + Date.now()).then(r => r.json()).then(d => {
-                brainDetailsCache = d.details || {};
-                let html = `<table><thead><tr><th>代碼(點擊圖表)</th><th>價格</th><th>訊號</th><th>量比</th></tr></thead><tbody>`;
-                (d.surge || []).forEach(row => {
-                    let style = row.Streak ? 'style="background: rgba(255, 234, 0, 0.1);"' : '';
-                    html += `<tr ${style} onclick="loadDetail('${row.Code}')">
-                        <td><a href="https://www.tradingview.com/chart/?symbol=${row.Code}" target="_blank" class="sym-link">${row.Code}</a></td>
-                        <td>${row.Price}</td>
-                        <td style="color:#f2cc60; font-weight:bold;">${row.Streak}</td>
-                        <td style="color:#3fb950;">${row.RelVol}x</td>
+                brain = d;
+                document.getElementById('sys-status').innerText = `更新時間: ${d.last_update}`;
+                
+                // 渲染狙擊清單
+                let h1 = `<table><thead><tr><th></th><th>代碼</th><th>價格</th><th>漲跌</th><th>訊號</th><th>量比</th><th>浮動</th></tr></thead><tbody>`;
+                d.surge.forEach(r => {
+                    h1 += `<tr onclick="loadDetail('${r.Code}')">
+                        <td class="status-indicator bg-${r.StatusColor}"></td>
+                        <td class="sym" ondblclick="window.open('https://www.tradingview.com/chart/?symbol=${r.Code}')">${r.Code}</td>
+                        <td>${r.Price}</td><td class="${r.Amt.includes('+')?'up':'down'}">${r.Amt}</td>
+                        <td style="color:var(--yellow); font-weight:bold;">${r.Streak}</td>
+                        <td>${r.RelVol}x</td><td>${r.Float}</td>
                     </tr>`;
-                    if (row.AudioTrigger && row.SignalTS > (playedAudioTS[row.Code] || 0)) {
-                        playedAudioTS[row.Code] = row.SignalTS;
-                        if (audioEnabled) { sounds[row.AudioTrigger].currentTime = 0; sounds[row.AudioTrigger].play(); }
+                    if (r.SignalTS > (played[r.Code] || 0) && audioOn) { 
+                        played[r.Code] = r.SignalTS; sounds[r.AudioTrigger].currentTime = 0; sounds[r.AudioTrigger].play(); 
                     }
                 });
-                document.getElementById('surge-list').innerHTML = html + `</tbody></table>`;
-                if(activeSymbol) loadDetail(activeSymbol);
+                document.getElementById('surge-list').innerHTML = h1 + `</tbody></table>`;
+
+                // 渲染排行榜
+                let h2 = `<table><thead><tr><th>名次</th><th>代碼</th><th>漲幅</th></tr></thead><tbody>`;
+                d.leaderboard.forEach((r, i) => {
+                    h2 += `<tr><td>${i+1}</td><td class="sym">${r.Code}</td><td class="up">+${r.Pct.toFixed(2)}%</td></tr>`;
+                });
+                document.getElementById('rank-list').innerHTML = h2 + `</tbody></table>`;
+
+                // 渲染好消息
+                let h3 = `<table><tbody>`;
+                d.good_news.forEach(n => {
+                    h3 += `<tr><td style="font-size:9px;">${n.ticker}</td><td><a href="${n.link}" target="_blank" class="news-today" style="text-decoration:none;">${n.title}</a></td></tr>`;
+                });
+                document.getElementById('good-news-list').innerHTML = h3 + `</tbody></table>`;
+
+                if(activeSym) loadDetail(activeSym);
                 setTimeout(refresh, 4000);
             });
         }
 
         function loadDetail(sym) {
-            activeSymbol = sym; const d = brainDetailsCache[sym]; if(!d) return;
+            activeSym = sym; const d = brain.details[sym]; if(!d) return;
             let acc = parseFloat(document.getElementById('inp-acc').value);
             let risk = parseFloat(document.getElementById('inp-risk').value);
             let shares = Math.floor((acc * (risk/100)) / (d.PriceVal - d.StopLossVal));
             
-            let html = `
-                <div style="text-align:center; padding:10px;">
-                    <h2 style="margin:0; color:#58a6ff;">${sym} <span style="color:#3fb950;">${d.PriceStr}</span></h2>
-                    <div style="display:flex; justify-content:space-around; background:#161b22; padding:8px; margin-top:10px; border-radius:4px;">
-                        <div>量比: <b>${d.RelVol}x</b></div>
-                        <div>今日成交: <b>${d.Volume}</b></div>
-                        <div>浮動股: <b>${d.FloatStr}</b></div>
-                    </div>
-                </div>
-            `;
-            if (d.Signal) {
-                html += `
-                <div style="background:rgba(255,234,0,0.15); border:1px solid #ffea00; padding:12px; margin:10px 0; border-radius:4px; text-align:center;">
-                    <div style="color:#ffea00; font-size:18px; font-weight:bold;">🎯 建議買進: ${shares} 股</div>
-                    <div style="font-size:12px; margin-top:5px;">止損位: $${d.StopLossVal.toFixed(2)}</div>
+            let html = `<div style="text-align:center; padding:10px;">
+                <h2 style="margin:0;">${sym} <span class="${d.ChangeAmt.includes('+')?'up':'down'}">${d.PriceStr} (${d.ChangePct})</span></h2>
+                <div style="background:#161b22; padding:10px; margin-top:10px; border-radius:4px; display:grid; grid-template-columns: 1fr 1fr;">
+                    <div>量比: <b>${d.RelVol}x</b></div><div>成交: <b>${d.Volume}</b></div>
+                    <div>浮動: <b>${d.Float}</b></div><div>止損: <b>$${d.StopLossVal.toFixed(2)}</b></div>
                 </div>`;
-            }
-            html += `<div style="padding:10px;"><h3 style="border-left:4px solid #58a6ff; padding-left:10px;">🗞️ 繁體即時戰報</h3>`;
+            if(d.Signal) html += `<div style="background:rgba(255,234,0,0.2); border:1px solid var(--yellow); padding:10px; margin-top:10px; font-weight:bold; color:var(--yellow);">🎯 建議買進: ${shares} 股</div>`;
+            
+            html += `<h3 style="border-left:4px solid #58a6ff; padding-left:10px; margin-top:20px;">🗞️ 全部即時戰報</h3>`;
             (d.NewsList || []).forEach(n => {
-                let todayClass = n.is_today ? 'news-today' : '';
-                html += `
-                <div class="news-item">
-                    <span class="news-time">${n.time}</span>
-                    <a href="${n.link}" target="_blank" class="${todayClass}" style="text-decoration:none;">${n.title}</a>
-                </div>`;
+                html += `<div style="margin-bottom:10px;"><small>${n.time}</small><br><a href="${n.link}" target="_blank" class="${n.is_today?'news-today':''}" style="text-decoration:none; color:#eee;">${n.title}</a></div>`;
             });
             document.getElementById('detail-list').innerHTML = html + `</div>`;
         }
-        window.onload = () => { loadSettings(); refresh(); };
+
+        window.onload = () => {
+            document.getElementById('inp-acc').value = localStorage.getItem('acc') || 20000;
+            document.getElementById('inp-risk').value = localStorage.getItem('risk') || 1.0;
+            refresh();
+        };
     </script>
 </body>
 </html>

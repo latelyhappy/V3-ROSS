@@ -15,20 +15,28 @@ from deep_translator import GoogleTranslator
 # ==========================================
 TW_USERNAME = os.getenv('TW_USERNAME', 'guest') 
 TW_PASSWORD = os.getenv('TW_PASSWORD', 'guest')
-SCAN_INTERVAL = 15
 PORT = int(os.getenv('PORT', 5000))
 
-MASTER_BRAIN = {"surge": [], "details": {}, "last_update": ""}
-WATCHLIST = ["TSLA", "NVDA", "AAPL", "AMD", "META", "MARA", "RIOT", "COIN", "PLTR", "NNE", "OKLO"]
+MASTER_BRAIN = {
+    "surge": [], 
+    "details": {}, 
+    "leaderboard": [], 
+    "good_news": [],
+    "last_update": ""
+}
+
+# 追蹤名單
+WATCHLIST = ["TSLA", "NVDA", "AAPL", "AMD", "META", "MARA", "RIOT", "COIN", "PLTR", "NNE", "OKLO", "SOXL"]
 cooldown_tracker = {}
 
 app = Flask(__name__)
 
-# --- 📰 新聞獲取 + 繁體翻譯 + 時間判定 ---
+# --- 📰 翻譯與好消息判定器 ---
+GOOD_KEYWORDS = ["成長", "獲利", "升評", "收購", "大漲", "新高", "盈餘", "亮眼", "突破", "買入", "優於"]
+
 def fetch_news_bg(ticker, cell):
     try:
         tz_ny = pytz.timezone('America/New_York')
-        now_ny = datetime.now(tz_ny)
         url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
         res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
         if res.status_code == 200:
@@ -40,32 +48,30 @@ def fetch_news_bg(ticker, cell):
                 try: zh_title = translator.translate(raw_t)
                 except: zh_title = raw_t 
                 
-                pub_date = item.find('pubDate').text
-                dt = parsedate_to_datetime(pub_date).astimezone(tz_ny)
-                is_today = (dt.date() == now_ny.date())
+                dt = parsedate_to_datetime(item.find('pubDate').text).astimezone(tz_ny)
+                is_today = (dt.date() == datetime.now(tz_ny).date())
                 t_str = dt.strftime("%H:%M") if is_today else dt.strftime("%m/%d %H:%M")
                 
-                articles.append({
-                    "title": zh_title, "link": item.find('link').text, 
-                    "time": t_str, "is_today": is_today
-                })
+                news_obj = {"ticker": ticker, "title": zh_title, "link": item.find('link').text, "time": t_str, "is_today": is_today}
+                articles.append(news_obj)
+                
+                # 判定是否為「好消息」
+                if any(k in zh_title for k in GOOD_KEYWORDS) and is_today:
+                    if news_obj not in MASTER_BRAIN["good_news"]:
+                        MASTER_BRAIN["good_news"].insert(0, news_obj)
+            
             cell["NewsList"] = articles
+            MASTER_BRAIN["good_news"] = MASTER_BRAIN["good_news"][:10]
     except: pass
 
 # --- 🔌 數據獲取 ---
 def safe_get_tw_data(tv, symbol):
-    for i in range(3):
-        try:
-            df = tv.get_hist(symbol=symbol, exchange='', interval=Interval.in_1_minute, n_bars=100, extended_session=True)
-            if df is not None and not df.empty:
-                last_time = df.index[-1]
-                if last_time.tz is None: last_time = last_time.tz_localize('UTC')
-                if (datetime.now(last_time.tzinfo) - last_time).total_seconds() > 1800: return None
-                return df
-        except: time.sleep(1)
-    return None
+    try:
+        df = tv.get_hist(symbol=symbol, exchange='', interval=Interval.in_1_minute, n_bars=100, extended_session=True)
+        return df
+    except: return None
 
-# --- 🧠 戰術雷達 ---
+# --- 🧠 戰術雷達主引擎 ---
 def scanner_engine():
     global cooldown_tracker
     tv = TvDatafeed(TW_USERNAME, TW_PASSWORD) if TW_USERNAME != 'guest' else TvDatafeed()
@@ -73,45 +79,60 @@ def scanner_engine():
     while True:
         try:
             now_ts = time.time()
+            current_leaderboard = []
+            
             with ThreadPoolExecutor(max_workers=5) as executor:
                 future_to_ticker = {executor.submit(safe_get_tw_data, tv, ticker): ticker for ticker in WATCHLIST}
                 for future in future_to_ticker:
                     ticker = future_to_ticker[future]
                     df = future.result()
-                    if df is not None:
+                    if df is not None and not df.empty:
                         p = float(df['close'].iloc[-1])
-                        # 計算量比 (RelVol)
+                        o = float(df['open'].iloc[0]) # 盤初價
+                        
+                        change_amt = p - o
+                        change_pct = (change_amt / o) * 100
                         curr_vol = df['volume'].iloc[-1]
-                        avg_vol_5m = df['volume'].iloc[-6:-1].mean()
-                        rel_vol = round(curr_vol / avg_vol_5m, 2) if avg_vol_5m > 0 else 1.0
+                        avg_vol = df['volume'].iloc[-6:-1].mean()
+                        rel_vol = round(curr_vol / avg_vol, 2) if avg_vol > 0 else 1.0
                         
-                        # Ross 策略參數
-                        is_ross_price = 1.0 <= p <= 50.0
-                        vol_spike = rel_vol >= 2.2
-                        is_breakout = p >= df['high'].iloc[-16:-1].max()
+                        # Ross 策略與狀態判定
+                        is_ross_price = 1.0 <= p <= 100.0
+                        is_spark = is_ross_price and rel_vol >= 2.2 and p >= df['high'].iloc[-16:-1].max()
+                        is_diamond = is_ross_price and p > df['close'].tail(10).mean() and not is_spark
                         
-                        tag = "🔥強力點火" if (is_ross_price and vol_spike and is_breakout) else \
-                              ("💎支撐回踩" if (is_ross_price and p > df['close'].tail(10).mean()) else "")
+                        status_color = "yellow" if is_spark else ("purple" if is_diamond else ("green" if change_amt > 0 else "red"))
+                        tag = "🔥強力點火" if is_spark else ("💎支撐回踩" if is_diamond else "")
                         
+                        # 模擬浮動股 (實戰中建議對接 API)
+                        mock_float = f"{random.uniform(2, 15):.1f}M"
+
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": []})
                         cell.update({
-                            "PriceVal": p, "PriceStr": f"${p:.2f}", "StopLossVal": p * 0.98,
-                            "RelVol": rel_vol, "Volume": f"{curr_vol:,.0f}",
-                            "FloatStr": f"{random.uniform(1,15):.1f}M", "Signal": tag
+                            "PriceVal": p, "PriceStr": f"${p:.2f}", "ChangeAmt": f"{change_amt:+.2f}",
+                            "ChangePct": f"{change_pct:+.2f}%", "RelVol": rel_vol,
+                            "Volume": f"{curr_vol:,.0f}", "Float": mock_float, "Signal": tag,
+                            "StatusColor": status_color
                         })
+
+                        # 記錄漲幅排行榜
+                        current_leaderboard.append({"Code": ticker, "Price": p, "Pct": change_pct})
 
                         if tag and (now_ts - cooldown_tracker.get(ticker, 0) > 30):
                             cooldown_tracker[ticker] = now_ts
                             MASTER_BRAIN["surge"].insert(0, {
-                                "Code": ticker, "Price": f"${p:.2f}", "Streak": tag, 
-                                "RelVol": rel_vol, "SignalTS": now_ts,
-                                "AudioTrigger": "nova" if (tag=="🔥強力點火") else "spark"
+                                "Code": ticker, "Price": f"${p:.2f}", "Amt": f"{change_amt:+.2f}",
+                                "Streak": tag, "RelVol": rel_vol, "Float": mock_float,
+                                "StatusColor": status_color, "SignalTS": now_ts,
+                                "AudioTrigger": "nova" if is_spark else "spark"
                             })
                         threading.Thread(target=fetch_news_bg, args=(ticker, cell)).start()
             
-            MASTER_BRAIN["surge"] = MASTER_BRAIN["surge"][:50]
+            # 更新排行榜 (降冪排列)
+            MASTER_BRAIN["leaderboard"] = sorted(current_leaderboard, key=lambda x: x['Pct'], reverse=True)[:10]
+            MASTER_BRAIN["surge"] = MASTER_BRAIN["surge"][:40]
             MASTER_BRAIN["last_update"] = datetime.now().strftime('%H:%M:%S')
-            time.sleep(SCAN_INTERVAL)
+            time.sleep(15)
         except: time.sleep(5)
 
 @app.route('/')
