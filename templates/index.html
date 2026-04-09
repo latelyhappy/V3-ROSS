@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Sniper V23.9 - Central Command</title>
+    <title>Sniper V24.4 - Central Command</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { --yellow: #ffea00; --purple: #a371f7; --green: #3fb950; --red: #f85149; --bg: #050811; --panel: #0d1117; --border: #30363d; --orange: #ffa500; }
@@ -18,7 +18,7 @@
         tr.tr-green { background: rgba(63, 185, 80, 0.1); } .tr-green .status-indicator { background: var(--green); }
         tr.tr-red { background: rgba(248, 81, 73, 0.1); } .tr-red .status-indicator { background: var(--red); }
         .sym { font-weight: bold; color: #58a6ff; font-size: 13px; cursor: pointer; }
-        .float-lbl { color: #8b949e; font-size: 9px; font-weight: normal; margin-left: 3px; }
+        .float-val { color: #8b949e; font-weight: bold; } /* 獨立流通股的顏色 */
         .up { color: var(--green); font-weight: bold; } .down { color: var(--red); font-weight: bold; }
         .news-today { color: var(--orange) !important; font-weight: bold; }
         #tactical-bar { position: fixed; top: 0; left: 0; width: 100%; background: #0d1f3d; padding: 10px 20px; border-bottom: 1px solid var(--border); z-index: 9999; display: flex; align-items: center; }
@@ -35,12 +35,26 @@
 
     <div id="win-log" class="window" style="top:60px; left:10px; width:750px; height:450px;">
         <div class="title-bar">🚀 狙擊歷史日誌 (淨化版：僅顯示點火與滑行)</div>
-        <div class="content"><table id="surge-log-table"><thead><tr><th class="status-indicator"></th><th>時間</th><th>代碼 (流通股)</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th><th>訊號</th></tr></thead><tbody id="surge-log-body"></tbody></table></div>
+        <div class="content">
+            <table id="surge-log-table">
+                <thead>
+                    <tr><th class="status-indicator"></th><th>時間</th><th>代碼</th><th>流通股</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th><th>訊號</th></tr>
+                </thead>
+                <tbody id="surge-log-body"></tbody>
+            </table>
+        </div>
     </div>
 
     <div id="win-rank" class="window" style="top:520px; left:10px; width:600px; height:450px;">
-        <div class="title-bar">🏆 全市場超新星排行 ($1-$30 / Float<50M)</div>
-        <div class="content"><table><thead><tr><th class="status-indicator"></th><th>代碼 (流通股)</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th></tr></thead><tbody id="rank-list"></tbody></table></div>
+        <div class="title-bar">🏆 全市場超新星排行 ($1-$30)</div>
+        <div class="content">
+            <table>
+                <thead>
+                    <tr><th class="status-indicator"></th><th>代碼</th><th>流通股</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th></tr>
+                </thead>
+                <tbody id="rank-list"></tbody>
+            </table>
+        </div>
     </div>
 
     <div id="win-detail" class="window" style="top:60px; left:770px; width:430px; height:910px;">
@@ -55,7 +69,6 @@
         function unlockAudio() { audioOn = true; document.getElementById('audio-btn').style.background = "#3fb950"; document.getElementById('audio-btn').innerText = "🔊 音效已開"; }
         function openTW(s) { window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank'); }
 
-        // 獨立時鐘：每秒跳動，不受後端延遲影響
         setInterval(() => {
             document.getElementById('sys-clock').innerText = new Date().toLocaleTimeString('zh-TW', {timeZone: 'Asia/Taipei', hour12: false});
         }, 1000);
@@ -90,7 +103,6 @@
             });
         }
 
-        // 💡 強化版的心跳刷新機制：加入 catch 防止斷線死鎖
         function refresh() {
             fetch('/data?t=' + Date.now())
                 .then(r => r.json())
@@ -103,10 +115,12 @@
                     d.surge_log.forEach(r => {
                         let det = d.details[r.Code];
                         let icon = det ? (det.IsTrap ? " 💀" : (det.CatScore > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""))) : "";
-                        // 💡 將 Float 補在代碼後面
-                        let symDisp = `${r.Code}<span class="float-lbl">(${r.Float})</span>${icon}`;
+                        
                         h1 += `<tr class="tr-${r.Status}" onclick="loadDetail('${r.Code}')">
-                            <td class="status-indicator"></td><td>${r.Time}</td><td class="sym" ondblclick="openTW('${r.Code}')">${symDisp}</td>
+                            <td class="status-indicator"></td>
+                            <td>${r.Time}</td>
+                            <td class="sym" ondblclick="openTW('${r.Code}')">${r.Code}${icon}</td>
+                            <td class="float-val">${r.Float}</td>
                             <td>${r.Price}</td><td>${r.RelVol}</td><td>${r.Vol}</td><td class="up">${r.Pct}</td><td style="font-weight:bold;">${r.Signal}</td>
                         </tr>`;
                         if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { played[r.SignalTS] = r.SignalTS; sounds[r.Audio].currentTime = 0; sounds[r.Audio].play(); }
@@ -118,22 +132,24 @@
                         let det = d.details[r.Code] || {};
                         let icon = det.IsTrap ? " 💀" : (det.CatScore > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
                         let rv = det.RelVol || r.RelVol;
-                        let symDisp = `${r.Code}<span class="float-lbl">(${r.Float || det.Float})</span>${icon}`;
+                        let floatToUse = r.Float || det.Float || "-";
+                        
                         h2 += `<tr class="tr-${det.Status || r.Status}" onclick="loadDetail('${r.Code}')">
-                            <td class="status-indicator"></td><td class="sym" ondblclick="openTW('${r.Code}')">${symDisp}</td>
+                            <td class="status-indicator"></td>
+                            <td class="sym" ondblclick="openTW('${r.Code}')">${r.Code}${icon}</td>
+                            <td class="float-val">${floatToUse}</td>
                             <td>${r.Price}</td><td>${rv}</td><td>${r.Vol}</td><td class="up">${r.Pct}</td>
                         </tr>`;
                     });
                     document.getElementById('rank-list').innerHTML = h2;
                     if(activeSym) loadDetail(activeSym);
                     
-                    setTimeout(refresh, 5000); // 正常輪迴
+                    setTimeout(refresh, 5000); 
                 })
                 .catch(err => {
                     console.error("Connection lost:", err);
                     document.getElementById('sys-status').innerText = "⚠️ 網路閃斷，正在自動重新連線...";
                     document.getElementById('sys-status').style.color = "var(--red)";
-                    // 💡 如果出錯，依然要在 5 秒後重試，保證永不死鎖！
                     setTimeout(refresh, 5000); 
                 });
         }
