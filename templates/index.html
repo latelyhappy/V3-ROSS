@@ -2,12 +2,12 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Sniper V23.1 - Commander Hub</title>
+    <title>Sniper V23.5 - War Room</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
-        :root { --yellow: #ffea00; --purple: #a371f7; --green: #3fb950; --red: #f85149; --bg: #050811; --panel: #0d1117; --border: #30363d; }
+        :root { --yellow: #ffea00; --purple: #a371f7; --green: #3fb950; --red: #f85149; --bg: #050811; --panel: #0d1117; --border: #30363d; --orange: #ffa500; }
         body { margin: 0; background: var(--bg); color: #c9d1d9; font-family: sans-serif; min-height: 150vh; overflow-x: hidden; }
-        .window { position: absolute; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.5); z-index: 10; }
+        .window { position: absolute; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.5); z-index: 10; min-width: 200px; }
         .title-bar { background: #0d1f3d; color: white; padding: 10px; font-size: 11px; font-weight: bold; cursor: move; }
         .content { flex: 1; padding: 5px; overflow-y: auto; font-size: 10.5px; }
         table { width: 100%; border-collapse: collapse; }
@@ -19,27 +19,28 @@
         tr.tr-red { background: rgba(248, 81, 73, 0.1); } .tr-red .status-indicator { background: var(--red); }
         .sym { font-weight: bold; color: #58a6ff; font-size: 13px; cursor: pointer; }
         .up { color: var(--green); font-weight: bold; } .down { color: var(--red); font-weight: bold; }
+        .news-today { color: var(--orange) !important; font-weight: bold; }
         #tactical-bar { position: fixed; top: 0; left: 0; width: 100%; background: #0d1f3d; padding: 10px 20px; border-bottom: 1px solid var(--border); z-index: 9999; }
     </style>
 </head>
 <body>
     <div id="tactical-bar">
         <button id="audio-btn" style="background:#f85149; color:white; border:none; padding:6px 15px; border-radius:4px; cursor:pointer;" onclick="unlockAudio()">🔇 啟用音效</button>
-        <span id="sys-status" style="margin-left:auto; font-size:11px;">📡 引擎校準中...</span>
+        <span id="sys-status" style="margin-left:auto; font-size:11px;">📡 系統初始化...</span>
     </div>
 
     <div id="win-log" class="window" style="top:60px; left:10px; width:750px; height:450px;">
-        <div class="title-bar">🚀 狙擊日誌 (最新 1000 筆)</div>
-        <div class="content"><table><thead><tr><th class="status-indicator"></th><th>時間</th><th>代碼</th><th>價格</th><th>量比</th><th>成交量</th><th>浮動</th><th>漲幅</th><th>訊號</th></tr></thead><tbody id="surge-log-body"></tbody></table></div>
+        <div class="title-bar">🚀 狙擊歷史日誌 (1000 筆 / Ross 策略條件)</div>
+        <div class="content"><table id="surge-log-table"><thead><tr><th class="status-indicator"></th><th>時間</th><th>代碼</th><th>價格</th><th>量比</th><th>成交量</th><th>浮動</th><th>漲幅</th><th>訊號</th></tr></thead><tbody id="surge-log-body"></tbody></table></div>
     </div>
 
-    <div id="win-rank" class="window" style="top:520px; left:10px; width:500px; height:380px;">
-        <div class="title-bar">🏆 今日漲幅排行榜 (昨日收盤基準)</div>
+    <div id="win-rank" class="window" style="top:520px; left:10px; width:600px; height:450px;">
+        <div class="title-bar">🏆 今日漲幅排行榜 ($1-$30 / 昨日收盤基準)</div>
         <div class="content"><table><thead><tr><th class="status-indicator"></th><th>代碼</th><th>價格</th><th>量比</th><th>成交量</th><th>浮動</th><th>漲幅</th></tr></thead><tbody id="rank-list"></tbody></table></div>
     </div>
 
-    <div id="win-detail" class="window" style="top:60px; left:770px; width:430px; height:850px;">
-        <div class="title-bar">📊 實時分析詳情</div>
+    <div id="win-detail" class="window" style="top:60px; left:770px; width:430px; height:910px;">
+        <div class="title-bar">📊 詳情分析與催化劑鑑定 (雙擊圖表)</div>
         <div class="content" id="detail-list">單擊代碼加載數據...</div>
     </div>
 
@@ -54,38 +55,32 @@
             const wins = ['win-log', 'win-rank', 'win-detail'];
             wins.forEach(id => {
                 const el = document.getElementById(id);
-                const saved = JSON.parse(localStorage.getItem('ly_' + id));
+                const saved = JSON.parse(localStorage.getItem('layout_' + id));
                 if (saved) {
                     el.style.width = saved.w + 'px'; el.style.height = saved.h + 'px';
                     el.style.transform = `translate(${saved.x}px, ${saved.y}px)`;
                     el.setAttribute('data-x', saved.x); el.setAttribute('data-y', saved.y);
                 }
-                interact(el).draggable({ allowFrom: '.title-bar', onmove: dragMove, onend: saveLy })
-                            .resizable({ edges: { left: true, right: true, bottom: true, top: true }, onmove: resMove, onend: saveLy });
+                interact(el).draggable({ allowFrom: '.title-bar', onmove: dragM }).resizable({ edges: { left: true, right: true, bottom: true, top: true }, onmove: resM });
             });
         }
-        function dragMove(event) {
-            const t = event.target;
-            const x = (parseFloat(t.getAttribute('data-x')) || 0) + event.dx;
-            const y = (parseFloat(t.getAttribute('data-y')) || 0) + event.dy;
-            t.style.transform = `translate(${x}px, ${y}px)`;
-            t.setAttribute('data-x', x); t.setAttribute('data-y', y);
+        function dragM(e) {
+            const t = e.target;
+            const x = (parseFloat(t.getAttribute('data-x')) || 0) + e.dx;
+            const y = (parseFloat(t.getAttribute('data-y')) || 0) + e.dy;
+            t.style.transform = `translate(${x}px, ${y}px)`; t.setAttribute('data-x', x); t.setAttribute('data-y', y); saveLy();
         }
-        function resMove(event) {
-            const t = event.target;
-            let x = (parseFloat(t.getAttribute('data-x')) || 0);
-            let y = (parseFloat(t.getAttribute('data-y')) || 0);
-            t.style.width = event.rect.width + 'px'; t.style.height = event.rect.height + 'px';
-            x += event.deltaRect.left; y += event.deltaRect.top;
-            t.style.transform = `translate(${x}px, ${y}px)`;
-            t.setAttribute('data-x', x); t.setAttribute('data-y', y);
+        function resM(e) {
+            const t = e.target; let x = (parseFloat(t.getAttribute('data-x')) || 0); let y = (parseFloat(t.getAttribute('data-y')) || 0);
+            t.style.width = e.rect.width + 'px'; t.style.height = e.rect.height + 'px';
+            x += e.deltaRect.left; y += e.deltaRect.top;
+            t.style.transform = `translate(${x}px, ${y}px)`; t.setAttribute('data-x', x); t.setAttribute('data-y', y); saveLy();
         }
         function saveLy() {
             ['win-log', 'win-rank', 'win-detail'].forEach(id => {
                 const el = document.getElementById(id);
-                const x = parseFloat(el.getAttribute('data-x')) || 0;
-                const y = parseFloat(el.getAttribute('data-y')) || 0;
-                localStorage.setItem('ly_' + id, JSON.stringify({x, y, w: el.offsetWidth, h: el.offsetHeight}));
+                const x = parseFloat(el.getAttribute('data-x')) || 0; const y = parseFloat(el.getAttribute('data-y')) || 0;
+                localStorage.setItem('layout_' + id, JSON.stringify({x, y, w: el.offsetWidth, h: el.offsetHeight}));
             });
         }
 
@@ -93,9 +88,11 @@
             fetch('/data?t=' + Date.now()).then(r => r.json()).then(d => {
                 brain = d;
                 document.getElementById('sys-status').innerText = `最後更新: ${d.last_update}`;
+                
                 let h1 = "";
                 d.surge_log.forEach(r => {
-                    let icon = (d.details[r.Code] && d.details[r.Code].HasNews) ? " <span style='color:orange;'>📰</span>" : "";
+                    let det = d.details[r.Code];
+                    let icon = det ? (det.IsTrap ? " 💀" : (det.CatScore > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""))) : "";
                     h1 += `<tr class="tr-${r.Status}" onclick="loadDetail('${r.Code}')">
                         <td class="status-indicator"></td><td>${r.Time}</td><td class="sym" ondblclick="openTW('${r.Code}')">${r.Code}${icon}</td>
                         <td>${r.Price}</td><td>${r.RelVol}</td><td>${r.Vol}</td><td>${r.Float}</td><td class="up">${r.Pct}</td><td style="font-weight:bold;">${r.Signal}</td>
@@ -108,7 +105,8 @@
 
                 let h2 = "";
                 d.leaderboard.forEach(r => {
-                    let icon = (d.details[r.Code] && d.details[r.Code].HasNews) ? " <span style='color:orange;'>📰</span>" : "";
+                    let det = d.details[r.Code];
+                    let icon = det ? (det.IsTrap ? " 💀" : (det.CatScore > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""))) : "";
                     h2 += `<tr class="tr-${r.Status}" onclick="loadDetail('${r.Code}')">
                         <td class="status-indicator"></td><td class="sym" ondblclick="openTW('${r.Code}')">${r.Code}${icon}</td>
                         <td>${r.Price}</td><td>${r.RelVol}</td><td>${r.Vol}</td><td>${r.Float}</td><td class="up">${r.Pct}</td>
@@ -122,10 +120,20 @@
 
         function loadDetail(sym) {
             activeSym = sym; const d = brain.details[sym]; if(!d) return;
-            let html = `<div style="text-align:center; padding:10px;"><h2 ondblclick="openTW('${sym}')" class="sym" style="font-size:22px;">${sym} ${d.PriceStr}</h2><div style="background:#161b22; padding:15px; border-radius:4px; display:grid; grid-template-columns: 1fr 1fr; gap:12px; font-size:12px;"><div>成交量: <b style="color:var(--yellow);">${d.Vol}</b></div><div>量比: <b>${d.RelVol}</b></div><div>漲幅: <b class="up">${d.ChangePct}</b></div><div>漲跌價: <b class="up">${d.Amt}</b></div><div>流通股: <b>${d.Float}</b></div><div>止損(EMA20): <b>$${d.StopLoss.toFixed(2)}</b></div></div><h3 style="border-left:4px solid #58a6ff; padding-left:10px; margin-top:20px; text-align:left;">🗞️ 最新繁體戰報</h3>`;
+            let trapWarn = d.IsTrap ? `<div style="background:maroon; padding:5px; margin-bottom:10px; border-radius:4px; font-weight:bold;">⚠️ 偵測到增發或負面陷阱字眼</div>` : "";
+            let html = `<div style="text-align:center; padding:10px;">${trapWarn}
+                <h2 ondblclick="openTW('${sym}')" class="sym" style="font-size:24px;">${sym} ${d.Price}</h2>
+                <div style="background:#161b22; padding:15px; border-radius:4px; display:grid; grid-template-columns: 1fr 1fr; gap:12px; font-size:12px;">
+                    <div>成交總量: <b style="color:var(--yellow);">${d.Vol}</b></div><div>當前量比: <b>${d.RelVol}</b></div>
+                    <div>真實漲幅: <b class="up">${d.Pct}</b></div><div>催化強度: <b style="color:orange;">${d.CatScore} Pts</b></div>
+                    <div>流通股: <b>${d.Float}</b></div><div>止損參考: <b>$${d.StopLoss.toFixed(2)}</b></div>
+                </div><h3 style="border-left:4px solid #58a6ff; padding-left:10px; margin-top:20px; text-align:left;">🗞️ 即時催化劑戰報 (台北時間同步)</h3>`;
             (d.NewsList || []).forEach(n => {
-                let color = n.is_today ? "style='color:orange; font-weight:bold;'" : "";
-                html += `<div style="margin-bottom:15px; text-align:left; border-bottom:1px solid #21262d; padding-bottom:10px;"><small ${color}>${n.time} 美東</small><br><a href="${n.link}" target="_blank" style="text-decoration:none; color:#eee; font-size:13px; line-height:1.5;">${n.title}</a></div>`;
+                let colorCls = n.is_today ? "news-today" : "";
+                html += `<div style="margin-bottom:15px; text-align:left; border-bottom:1px solid #21262d; padding-bottom:10px;">
+                    <small class="${colorCls}">${n.time} 美東</small> | <small>Score: ${n.score}</small><br>
+                    <a href="${n.link}" target="_blank" style="text-decoration:none; color:#eee; font-size:13.5px; line-height:1.5;">${n.title}</a>
+                </div>`;
             });
             document.getElementById('detail-list').innerHTML = html + `</div>`;
         }
