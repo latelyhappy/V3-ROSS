@@ -172,30 +172,38 @@ def scanner_engine():
 
                     p = float(df['close'].iloc[-1])
                     o = float(df['open'].iloc[0])
-                    v = float(df['volume'].iloc[-1]) # 當前 1 分鐘成交量
+                    
+                    # --- 💡 核心修復：解決新生 K 線悖論 ---
+                    v_live = float(df['volume'].iloc[-1]) # 當前未完成的 K 線量
+                    v_prev = float(df['volume'].iloc[-2]) # 上一根「已完成」的 K 線量
+                    avg_vol = df['volume'].iloc[-12:-2].mean() # 過去 10 根「已完成」的平均量
+                    
+                    # 量比：取「當下已爆發」或「上一根已確立」的最大值
+                    rel_vol_live = round(v_live / avg_vol, 2) if avg_vol > 0 else 1.0
+                    rel_vol_prev = round(v_prev / avg_vol, 2) if avg_vol > 0 else 1.0
+                    rel_vol = max(rel_vol_live, rel_vol_prev)
+                    
+                    daily_vol = int(df['volume'].sum())
                     
                     stat_data = STATS_MAP.get(ticker, {'prev': o, 'float': 0})
                     prev_close = stat_data['prev']
                     float_str = f"{stat_data['float']:.1f}M"
                     
                     real_pct = ((p - prev_close) / prev_close) * 100
-                    daily_vol = int(df['volume'].sum())
-                    avg_vol = df['volume'].iloc[-11:-1].mean()
-                    rel_vol = round(v / avg_vol, 2) if avg_vol > 0 else 1.0
-                    
                     ema20 = df['close'].ewm(span=20, adjust=False).mean()
                     curr_ema20 = ema20.iloc[-1]
                     
-                    # 💡 [防禦升級 3] 動態資金流警告 (每分鐘交易額 < $50,000 美金)
-                    dollar_vol = p * v
+                    # 💡 修復 1：資金流警告。看「常態均量」或「剛完成的量」，避免被 0.1 秒前的新生 K 線誤導
+                    dollar_vol = p * max(v_prev, avg_vol)
                     is_low_liquidity = dollar_vol < 50000
                     vol_warn = "(⚠️量低)" if is_low_liquidity else ""
 
-                    # 💡 [攻擊升級 1] 🔥 強力點火 (爆發力門檻提高)
-                    is_spark = (rel_vol >= 2.5) and (real_pct > 3.0) and (p >= df['high'].rolling(10).max().iloc[-1])
+                    # 💡 修復 2：點火突破。突破的必須是「過去 10 根『已完成』的最高點」
+                    past_high = df['high'].iloc[-11:-1].max()
+                    is_spark = (rel_vol >= 2.5) and (real_pct > 3.0) and (p >= past_high)
                     
-                    # 💡 [攻擊升級 2] 💎 趨勢滑行 (加入量縮回踩防砸盤)
-                    is_ride = (p >= curr_ema20) and (abs(p - curr_ema20)/curr_ema20 < 0.012) and (rel_vol < 0.8) and (real_pct > 1.0)
+                    # 💡 修復 3：防砸盤量縮。必須確認「上一根已完成」的 K 線真的是量縮，過濾假滑行
+                    is_ride = (p >= curr_ema20) and (abs(p - curr_ema20)/curr_ema20 < 0.012) and (rel_vol_prev < 0.8) and (real_pct > 1.0) and not is_spark
 
                     # 判斷信號層級
                     current_signal = None
