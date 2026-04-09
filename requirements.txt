@@ -5,3 +5,4 @@ pytz
 requests
 deep-translator
 lxml
+playwright

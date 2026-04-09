@@ -9,6 +9,10 @@ from tvDatafeed import TvDatafeed, Interval
 from flask import Flask, jsonify, render_template
 from deep_translator import GoogleTranslator
 
+# 💡 導入裝甲爬蟲武器
+from playwright.sync_api import sync_playwright
+
+# ... [保留原有的 TW_USERNAME, PORT, CATALYST_ARMORY 等設定] ...
 # ==========================================
 # 🛠️ 戰略設定
 # ==========================================
@@ -38,6 +42,7 @@ def format_vol(n):
     if n >= 1_000: return f"{n/1_000:.1f}K"
     return str(int(n))
 
+# ... [保留原有的 fetch_and_score_news 函數] ...
 def fetch_and_score_news(ticker, cell, stats):
     now = time.time()
     if ticker in news_cache and (now - news_cache[ticker] < 900): return
@@ -68,51 +73,61 @@ def fetch_and_score_news(ticker, cell, stats):
             cell["HasNews"] = (total_score > 5); cell["IsTrap"] = has_black
     except: pass
 
-# --- 🛰️ V24.0 雙引擎動態名單 (爬蟲 + API 備援) ---
+
+# --- 🛰️ V24.1 裝甲爬蟲版 (Playwright 突破 Cloudflare) ---
 def update_dynamic_watchlist():
     global DYNAMIC_WATCHLIST, STATS_MAP
     full_pool = []
     
-    # 🕷️ 引擎 A：StockAnalysis 盤前隱形爬蟲
+    # 🕷️ 引擎 A：Playwright 模擬人類行為，強行突破 StockAnalysis
     try:
-        print("🕷️ 嘗試啟動隱形爬蟲 (StockAnalysis)...")
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
-        }
-        url = "https://stockanalysis.com/markets/premarket/gainers/"
-        res = requests.get(url, headers=headers, timeout=8)
-        
-        dfs = pd.read_html(res.text)
-        df = dfs[0]
-        
-        for _, row in df.iterrows():
-            sym = str(row.get('Symbol', '')).strip()
-            if not sym or sym == 'nan': continue
+        print("🕷️ 啟動 Playwright 裝甲爬蟲 (突破 StockAnalysis 防火牆)...")
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-setuid-sandbox'])
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+            page = context.new_page()
             
-            p_str = str(row.get('Premkt. Price', '0')).replace('$','').replace(',','')
-            pct_str = str(row.get('% Change', '0')).replace('%','').replace(',','')
-            vol_str = str(row.get('Pre. Volume', '0')).replace(',','')
-            mc_str = str(row.get('Market Cap', '0'))
+            # 前往盤前排行榜並等待表格渲染
+            page.goto("https://stockanalysis.com/markets/premarket/gainers/", timeout=15000)
+            page.wait_for_selector("table", timeout=8000)
             
-            price = float(p_str) if p_str.replace('.','').isdigit() else 0.0
-            pct = float(pct_str) if pct_str.replace('.','').replace('-','').isdigit() else 0.0
-            vol = int(float(vol_str)) if vol_str.replace('.','').isdigit() else 0
+            # 獲取完整 HTML 交給 Pandas 解析
+            html = page.content()
+            browser.close()
             
-            mc_m = 0.0
-            if 'B' in mc_str: mc_m = float(mc_str.replace('B','')) * 1000
-            elif 'M' in mc_str: mc_m = float(mc_str.replace('M',''))
-            elif 'K' in mc_str: mc_m = float(mc_str.replace('K','')) / 1000
+            dfs = pd.read_html(html)
+            df = dfs[0]
             
-            float_m = (mc_m / price) if price > 0 else 0.0
-            
-            if 1.0 <= price <= 30.0:
-                prev_est = price / (1 + (pct/100)) if pct != -100 else price
-                full_pool.append({"sym": sym, "price": price, "prev": prev_est, "pct": pct, "vol": vol, "float": float_m})
+            for _, row in df.iterrows():
+                sym = str(row.get('Symbol', '')).strip()
+                if not sym or sym == 'nan': continue
                 
-        if full_pool: print(f"✅ 爬蟲成功！抓取到 {len(full_pool)} 檔 $1-$30 盤前妖股。")
+                p_str = str(row.get('Premkt. Price', '0')).replace('$','').replace(',','')
+                pct_str = str(row.get('% Change', '0')).replace('%','').replace(',','')
+                vol_str = str(row.get('Pre. Volume', '0')).replace(',','')
+                mc_str = str(row.get('Market Cap', '0'))
+                
+                price = float(p_str) if p_str.replace('.','').isdigit() else 0.0
+                pct = float(pct_str) if pct_str.replace('.','').replace('-','').isdigit() else 0.0
+                vol = int(float(vol_str)) if vol_str.replace('.','').isdigit() else 0
+                
+                mc_m = 0.0
+                if 'B' in mc_str: mc_m = float(mc_str.replace('B','')) * 1000
+                elif 'M' in mc_str: mc_m = float(mc_str.replace('M',''))
+                elif 'K' in mc_str: mc_m = float(mc_str.replace('K','')) / 1000
+                
+                float_m = (mc_m / price) if price > 0 else 0.0
+                
+                # 嚴格執行 $1-$30 濾網
+                if 1.0 <= price <= 30.0:
+                    prev_est = price / (1 + (pct/100)) if pct != -100 else price
+                    full_pool.append({"sym": sym, "price": price, "prev": prev_est, "pct": pct, "vol": vol, "float": float_m})
+                    
+        if full_pool: print(f"✅ Playwright 爬蟲成功！完美抓取 {len(full_pool)} 檔盤前妖股。")
     except Exception as e:
-        print(f"⚠️ 爬蟲受阻，可能被 Cloudflare 阻擋。啟動備援機制...")
+        print(f"⚠️ Playwright 遭受攔截: {e}。啟動備援機制...")
 
     # 🛰️ 引擎 B：Yahoo API (備援系統)
     if not full_pool:
@@ -160,7 +175,8 @@ def update_dynamic_watchlist():
             })
         MASTER_BRAIN["leaderboard"] = instant_leaderboard
 
-# --- 🧠 戰術雷達主引擎 ---
+
+# ... [保留原有的 scanner_engine 及 Flask 路由設定] ...
 def scanner_engine():
     tv = TvDatafeed()
     try:
