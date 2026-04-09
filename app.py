@@ -98,7 +98,17 @@ def update_dynamic_watchlist():
 
 # --- 🧠 戰術雷達主引擎 ---
 def scanner_engine():
-    tv = TvDatafeed(TW_USERNAME, TW_PASSWORD) if TW_USERNAME != 'guest' else TvDatafeed()
+    # 💡 優先嘗試環境變數登入，失敗則自動切換為 Guest 模式
+    try:
+        if TW_USERNAME != 'guest' and TW_PASSWORD != 'guest':
+            tv = TvDatafeed(TW_USERNAME, TW_PASSWORD)
+            print("🚀 已使用正式帳號登入 TradingView")
+        else:
+            tv = TvDatafeed()
+            print("👤 已使用 Guest 模式啟動雷達")
+    except:
+        tv = TvDatafeed()
+        print("⚠️ 登入失敗，已強制切換為 Guest 模式")
     last_list_update = 0
     while True:
         try:
