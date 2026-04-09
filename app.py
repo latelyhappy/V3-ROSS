@@ -69,7 +69,7 @@ def fetch_and_score_news(ticker, cell, stats):
             cell["HasNews"] = (total_score > 5); cell["IsTrap"] = has_black
     except: pass
 
-# --- 🛰️ 閃電排行榜與真實籌碼獲取 ---
+# --- 🛰️ 閃電排行榜與真實籌碼獲取 (盤前防崩潰版) ---
 def update_dynamic_watchlist():
     global DYNAMIC_WATCHLIST, STATS_MAP
     try:
@@ -80,33 +80,45 @@ def update_dynamic_watchlist():
         full_pool = []
         for q in quotes:
             symbol = q['symbol']
-            price = q.get('regularMarketPrice', 0)
-            market_cap = q.get('marketCap', 0)
+            price = q.get('regularMarketPrice')
             
-            # 💡 計算真實發行股數 (近似 Float) = MarketCap / Price
-            float_shares_m = (market_cap / price) / 1_000_000 if price > 0 else 0
+            # 💡 防禦 1：如果連股價都沒有，直接跳過
+            if price is None or price == 0:
+                continue
             
-            # 💡 戰術過濾：1-30塊 且 流通股 < 50M (Ross 偏好小盤股)
+            # 💡 防禦 2：嚴格處理 Yahoo 回傳 None 的市值問題
+            raw_mc = q.get('marketCap')
+            market_cap = float(raw_mc) if raw_mc is not None else 0.0
+            
+            float_shares_m = (market_cap / price) / 1_000_000
+            
             if 1.0 <= price <= 30.0 and float_shares_m <= 50.0:
+                # 💡 防禦 3：確保漲幅不是 None
+                raw_pct = q.get('regularMarketChangePercent')
+                pct = float(raw_pct) if raw_pct is not None else 0.0
                 prev = q.get('regularMarketPreviousClose', price)
-                pct = q.get('regularMarketChangePercent', 0)
-                full_pool.append({"sym": symbol, "price": price, "prev": prev, "pct": pct, "vol": q.get('regularMarketVolume', 0), "float": float_shares_m})
+                
+                raw_vol = q.get('regularMarketVolume')
+                vol = int(raw_vol) if raw_vol is not None else 0
+                
+                full_pool.append({"sym": symbol, "price": price, "prev": prev, "pct": pct, "vol": vol, "float": float_shares_m})
         
         full_pool = sorted(full_pool, key=lambda x: x['pct'], reverse=True)
         DYNAMIC_WATCHLIST = [x['sym'] for x in full_pool[:30]]
         
         instant_leaderboard = []
         for x in full_pool[:20]:
-            # 儲存到全局字典供 TV K線使用
             STATS_MAP[x['sym']] = {'prev': x['prev'], 'float': x['float']}
-            float_str = f"{x['float']:.1f}M"
+            float_str = f"{x['float']:.1f}M" if x['float'] > 0 else "未知"
             instant_leaderboard.append({
                 "Code": x['sym'], "Price": f"${x['price']:.2f}", "Float": float_str,
                 "Pct": f"{x['pct']:+.2f}%", "Vol": format_vol(x['vol']),
                 "RelVol": "-", "Status": "green"
             })
         MASTER_BRAIN["leaderboard"] = instant_leaderboard
-    except Exception as e: print(f"API Error: {e}")
+        print(f"✅ 名單更新成功！鎖定 {len(DYNAMIC_WATCHLIST)} 檔標的。")
+    except Exception as e: 
+        print(f"❌ API 獲取致命錯誤: {e}")
 
 # --- 🧠 戰術雷達主引擎 ---
 def scanner_engine():
