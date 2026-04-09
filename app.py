@@ -98,17 +98,24 @@ def update_dynamic_watchlist():
 
 # --- 🧠 戰術雷達主引擎 ---
 def scanner_engine():
-    # 💡 優先嘗試環境變數登入，失敗則自動切換為 Guest 模式
+    tv = None
+    # 💡 嚴格驗證模式
     try:
         if TW_USERNAME != 'guest' and TW_PASSWORD != 'guest':
+            # 嘗試登入
             tv = TvDatafeed(TW_USERNAME, TW_PASSWORD)
-            print("🚀 已使用正式帳號登入 TradingView")
+            # 💡 測試抓取一個標的來確認是否真的「有權限」
+            test_df = tv.get_hist(symbol='AAPL', exchange='NASDAQ', interval=Interval.in_1_minute, n_bars=1)
+            if test_df is not None:
+                print("✅ [認證成功] 指揮官，正式帳號已完全接管數據鏈！")
+            else:
+                raise Exception("Login Failed")
         else:
             tv = TvDatafeed()
-            print("👤 已使用 Guest 模式啟動雷達")
-    except:
+            print("👤 [路人模式] 目前使用無登入狀態，數據可能有延遲。")
+    except Exception as e:
         tv = TvDatafeed()
-        print("⚠️ 登入失敗，已強制切換為 Guest 模式")
+        print(f"⚠️ [認證失敗] 帳密無效或觸發 2FA，已強制切換為 Guest 模式。")
     last_list_update = 0
     while True:
         try:
