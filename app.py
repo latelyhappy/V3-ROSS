@@ -28,7 +28,7 @@ CATALYST_ARMORY = {
 
 MASTER_BRAIN = {"surge_log": [], "details": {}, "leaderboard": [], "last_update": ""}
 DYNAMIC_WATCHLIST = []
-PREV_CLOSE_MAP = {}
+STATS_MAP = {} # 💡 新增：用來儲存昨日收盤價與真實浮動股數
 news_cache = {} 
 cooldown_tracker = {}
 app = Flask(__name__)
@@ -39,6 +39,7 @@ def format_vol(n):
     return str(int(n))
 
 def fetch_and_score_news(ticker, cell, stats):
+    # (與 V23.8 相同，保持不變)
     now = time.time()
     if ticker in news_cache and (now - news_cache[ticker] < 900): return
     news_cache[ticker] = now
@@ -64,16 +65,13 @@ def fetch_and_score_news(ticker, cell, stats):
                             if lv == "LEVEL_BLACK": has_black = True
                 total_score += score if is_today else 0
                 articles.append({"ticker": ticker, "title": zh_t, "link": item.find('link').text, "time": dt.strftime("%H:%M"), "is_today": is_today, "score": score})
-            
-            cell["NewsList"] = articles
-            cell["CatScore"] = total_score
-            cell["HasNews"] = (total_score > 5)
-            cell["IsTrap"] = has_black
+            cell["NewsList"] = articles; cell["CatScore"] = total_score
+            cell["HasNews"] = (total_score > 5); cell["IsTrap"] = has_black
     except: pass
 
-# --- 🛰️ 閃電排行榜：直接從 Yahoo 輸出 TOP 20 ---
+# --- 🛰️ 閃電排行榜與真實籌碼獲取 ---
 def update_dynamic_watchlist():
-    global DYNAMIC_WATCHLIST, PREV_CLOSE_MAP
+    global DYNAMIC_WATCHLIST, STATS_MAP
     try:
         url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&scrIds=day_gainers&count=100"
         res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
@@ -83,27 +81,32 @@ def update_dynamic_watchlist():
         for q in quotes:
             symbol = q['symbol']
             price = q.get('regularMarketPrice', 0)
-            if 1.0 <= price <= 30.0:
+            market_cap = q.get('marketCap', 0)
+            
+            # 💡 計算真實發行股數 (近似 Float) = MarketCap / Price
+            float_shares_m = (market_cap / price) / 1_000_000 if price > 0 else 0
+            
+            # 💡 戰術過濾：1-30塊 且 流通股 < 50M (Ross 偏好小盤股)
+            if 1.0 <= price <= 30.0 and float_shares_m <= 50.0:
                 prev = q.get('regularMarketPreviousClose', price)
                 pct = q.get('regularMarketChangePercent', 0)
-                vol = q.get('regularMarketVolume', 0)
-                full_pool.append({"sym": symbol, "price": price, "prev": prev, "pct": pct, "vol": vol})
+                full_pool.append({"sym": symbol, "price": price, "prev": prev, "pct": pct, "vol": q.get('regularMarketVolume', 0), "float": float_shares_m})
         
         full_pool = sorted(full_pool, key=lambda x: x['pct'], reverse=True)
         DYNAMIC_WATCHLIST = [x['sym'] for x in full_pool[:30]]
         
-        # 💡 瞬間生成排行榜，不依賴 TV 的速度
         instant_leaderboard = []
         for x in full_pool[:20]:
-            PREV_CLOSE_MAP[x['sym']] = x['prev']
+            # 儲存到全局字典供 TV K線使用
+            STATS_MAP[x['sym']] = {'prev': x['prev'], 'float': x['float']}
+            float_str = f"{x['float']:.1f}M"
             instant_leaderboard.append({
-                "Code": x['sym'], "Price": f"${x['price']:.2f}", 
+                "Code": x['sym'], "Price": f"${x['price']:.2f}", "Float": float_str,
                 "Pct": f"{x['pct']:+.2f}%", "Vol": format_vol(x['vol']),
-                "RelVol": "-", "Status": "green" # 暫時的 UI 顯示
+                "RelVol": "-", "Status": "green"
             })
         MASTER_BRAIN["leaderboard"] = instant_leaderboard
-        MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
-    except: pass
+    except Exception as e: print(f"API Error: {e}")
 
 # --- 🧠 戰術雷達主引擎 ---
 def scanner_engine():
@@ -117,7 +120,7 @@ def scanner_engine():
     while True:
         try:
             now_ts = time.time()
-            if now_ts - last_list_update > 300: # 每 5 分鐘更新一次大名單
+            if now_ts - last_list_update > 300: 
                 update_dynamic_watchlist()
                 last_list_update = now_ts
 
@@ -131,7 +134,11 @@ def scanner_engine():
                     if df is None or df.empty: continue
 
                     p = float(df['close'].iloc[-1]); o = float(df['open'].iloc[0])
-                    prev_close = PREV_CLOSE_MAP.get(ticker, o)
+                    
+                    # 💡 提取真實數據
+                    stat_data = STATS_MAP.get(ticker, {'prev': o, 'float': 0})
+                    prev_close = stat_data['prev']
+                    float_str = f"{stat_data['float']:.1f}M"
                     
                     real_pct = ((p - prev_close) / prev_close) * 100
                     daily_vol = int(df['volume'].sum())
@@ -142,12 +149,8 @@ def scanner_engine():
                     curr_ema20 = ema20.iloc[-1]
                     is_ema20_up = curr_ema20 > ema20.iloc[-2]
                     
-                    # 🦅 寬鬆版 Ross 策略 & 低量警告
                     vol_warn = "(⚠️量低)" if daily_vol < 200000 else ""
-                    
-                    # 點火：量比>1.5, 漲幅>1.5%
                     is_spark = (rel_vol >= 1.5) and (p >= df['high'].iloc[-11:-1].max()) and (real_pct > 1.5)
-                    # 滑行：與 EMA20 誤差放寬到 1.2%
                     is_ride = is_ema20_up and (abs(p - curr_ema20)/curr_ema20 < 0.012) and (p >= curr_ema20) and (real_pct > 1.0) and not is_spark
                     is_weak = (p < o) or (real_pct < -2.0)
                     
@@ -157,13 +160,12 @@ def scanner_engine():
                     stats = {
                         "Code": ticker, "Price": f"${p:.2f}", "RelVol": f"{rel_vol}x", "Vol": format_vol(daily_vol),
                         "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p-prev_close):+.2f}", "Status": status, "Signal": tag,
-                        "PriceVal": p, "StopLoss": curr_ema20*0.99, "Float": f"{random.uniform(2,15):.1f}M"
+                        "PriceVal": p, "StopLoss": curr_ema20*0.99, "Float": float_str
                     }
                     
                     cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False})
                     cell.update(stats)
 
-                    # 💡 只有 Spark 和 Ride 會寫入日誌！剔除骷髏頭垃圾訊息
                     if tag and (now_ts - cooldown_tracker.get(ticker, 0) > 45):
                         cooldown_tracker[ticker] = now_ts
                         log_entry = {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova" if is_spark else "spark"}
@@ -175,7 +177,7 @@ def scanner_engine():
             
             MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
             time.sleep(5)
-        except Exception as e: time.sleep(10)
+        except Exception as e: time.sleep(10) # 防止全局死鎖
 
 @app.route('/')
 def index(): return render_template('index.html')
