@@ -30,9 +30,6 @@ MASTER_BRAIN = {"surge_log": [], "details": {}, "leaderboard": [], "last_update"
 DYNAMIC_WATCHLIST = []
 STATS_MAP = {} 
 news_cache = {} 
-
-# 💡 [防禦升級 5] 冷卻追蹤器升級：紀錄最後信號的時間與層級
-# 格式: {ticker: {'time': timestamp, 'level': int}} (0: None, 1: 💎Ride, 2: 🔥Spark)
 cooldown_tracker = {}
 
 app = Flask(__name__)
@@ -42,9 +39,9 @@ def format_vol(n):
     if n >= 1_000: return f"{n/1_000:.1f}K"
     return str(int(n))
 
-# 💡 [防禦升級 4] SEC EDGAR 陷阱雷達 (僅在信號觸發時呼叫)
+# --- 🛰️ SEC EDGAR 陷阱掃描 ---
 def check_sec_edgar_traps(ticker):
-    headers = {'User-Agent': 'Sniper_Commander_Bot/24.5 (contact@yourdomain.com)'}
+    headers = {'User-Agent': 'Sniper_Commander_Bot/24.7 (contact@yourdomain.com)'}
     url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=&output=atom"
     try:
         response = requests.get(url, headers=headers, timeout=3)
@@ -60,6 +57,7 @@ def check_sec_edgar_traps(ticker):
     except:
         return False
 
+# --- 📰 新聞與催化劑掃描 ---
 def fetch_and_score_news(ticker, cell, stats):
     now = time.time()
     if ticker in news_cache and (now - news_cache[ticker] < 900): return
@@ -87,11 +85,11 @@ def fetch_and_score_news(ticker, cell, stats):
                 total_score += score if is_today else 0
                 articles.append({"ticker": ticker, "title": zh_t, "link": item.find('link').text, "time": dt.strftime("%H:%M"), "is_today": is_today, "score": score})
             cell["NewsList"] = articles; cell["CatScore"] = total_score
-            # 整合新聞黑名單
             cell["IsTrap"] = has_black 
             cell["HasNews"] = (total_score > 5)
     except: pass
 
+# --- 🛰️ TradingView 盤前雷達直連 ---
 def update_dynamic_watchlist():
     global DYNAMIC_WATCHLIST, STATS_MAP
     try:
@@ -146,6 +144,7 @@ def update_dynamic_watchlist():
     except Exception as e:
         print(f"❌ TV 掃描異常: {e}")
 
+# --- 🧠 戰術雷達主引擎 ---
 def scanner_engine():
     tv = TvDatafeed()
     try:
@@ -168,67 +167,63 @@ def scanner_engine():
                 try:
                     time.sleep(1.0)
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
-                    if df is None or df.empty: continue
+                    if df is None or df.empty or len(df) < 15: continue
 
                     p_live = float(df['close'].iloc[-1])
                     p_prev = float(df['close'].iloc[-2])
-                    o_live = float(df['open'].iloc[-1]) # 需要當前開盤價來判斷轉弱
                     
-                    # 取出歷史資料
                     v_live = float(df['volume'].iloc[-1])
                     v_prev = float(df['volume'].iloc[-2])
                     avg_vol = df['volume'].iloc[-12:-2].mean()
                     
-                    # 量比分開計算
                     rel_vol_live = round(v_live / avg_vol, 2) if avg_vol > 0 else 1.0
                     rel_vol_prev = round(v_prev / avg_vol, 2) if avg_vol > 0 else 1.0
-                    rel_vol_display = max(rel_vol_live, rel_vol_prev) # 💡 顯示給 UI 看的量比，取較大者
+                    rel_vol_display = max(rel_vol_live, rel_vol_prev) 
                     
                     daily_vol = int(df['volume'].sum())
                     
-                    # 💡 修復 2：解決 60-bar 陷阱，如果沒有昨日收盤價，至少取今日最低點
                     stat_data = STATS_MAP.get(ticker, None)
                     if stat_data and stat_data['prev'] > 0:
                         prev_close = stat_data['prev']
                         float_str = f"{stat_data['float']:.1f}M"
                     else:
-                        prev_close = float(df['low'].min()) # 備案：取區間最低點
+                        prev_close = float(df['low'].min()) 
                         float_str = "未知"
                     
                     real_pct = ((p_live - prev_close) / prev_close) * 100
                     
-                    # 💡 核心修復 1：時空校準 (分離 Minute 0 與 Minute 1 的突破判定)
-                    past_high_for_live = df['high'].iloc[-11:-1].max() # 給當前K線用的壓力線
-                    past_high_for_prev = df['high'].iloc[-12:-2].max() # 給上一根K線用的壓力線
+                    ema10 = df['close'].ewm(span=10, adjust=False).mean()
+                    ema20 = df['close'].ewm(span=20, adjust=False).mean()
+                    curr_ema10 = ema10.iloc[-1]
+                    curr_ema20 = ema20.iloc[-1]
                     
-                    # 情境 A：實時動能極強，當下這秒鐘量跟價都達標了
+                    past_high_for_live = df['high'].iloc[-11:-1].max() 
+                    past_high_for_prev = df['high'].iloc[-12:-2].max() 
+                    
                     spark_live = (rel_vol_live >= 2.5) and (p_live >= past_high_for_live)
-                    
-                    # 情境 B：數據延遲補償。上一根確定是爆量突破，且當前價格沒有崩盤 (守在上一根開盤價之上)
                     spark_prev = (rel_vol_prev >= 2.5) and (p_prev >= past_high_for_prev) and (p_live >= df['open'].iloc[-2])
-                    
-                    # 只要滿足任一情境，且漲幅及格，就是強力點火！
                     is_spark = (spark_live or spark_prev) and (real_pct > 3.0)
 
-                    # 💡 資金流警告 (用最大量確保不會因為剛開K線而誤判低流動性)
+                    is_ride = (p_live >= curr_ema20) and (abs(p_live - curr_ema20)/curr_ema20 < 0.012) and (rel_vol_prev < 0.8) and (real_pct > 1.0) and not is_spark
+
+                    is_grind = (curr_ema10 > curr_ema20) and (p_live >= curr_ema10) and (0.5 <= rel_vol_display < 2.5) and (real_pct > 2.0) and not is_spark and not is_ride
+
                     dollar_vol = p_live * max(v_live, v_prev, avg_vol)
                     is_low_liquidity = dollar_vol < 50000
                     vol_warn = "(⚠️量低)" if is_low_liquidity else ""
 
-                    # 💡 趨勢滑行：確保真的有量縮回踩
-                    ema20 = df['close'].ewm(span=20, adjust=False).mean()
-                    curr_ema20 = ema20.iloc[-1]
-                    is_ride = (p_live >= curr_ema20) and (abs(p_live - curr_ema20)/curr_ema20 < 0.012) and (rel_vol_prev < 0.8) and (real_pct > 1.0) and not is_spark
-
-                    # 判斷信號層級
                     current_signal = None
                     current_level = 0
                     status_color = "green"
 
                     if is_spark:
                         current_signal = f"🔥強力點火 {vol_warn}"
-                        current_level = 2
+                        current_level = 3
                         status_color = "yellow"
+                    elif is_grind:
+                        current_signal = f"🚜穩步推升 {vol_warn}"
+                        current_level = 2
+                        status_color = "blue"  
                     elif is_ride:
                         current_signal = f"💎趨勢滑行 {vol_warn}"
                         current_level = 1
@@ -243,10 +238,8 @@ def scanner_engine():
                     cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False})
                     cell.update(stats)
                     
-                    # 背景獲取新聞
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell, stats)).start()
 
-                    # 💡 [防禦升級 5] 信號優先級與冷卻分發
                     if current_signal:
                         last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})
                         time_elapsed = now_ts - last_record['time']
@@ -254,26 +247,24 @@ def scanner_engine():
                         
                         push_signal = False
                         if time_elapsed > 45:
-                            push_signal = True # 冷卻結束，允許推送
+                            push_signal = True 
                         elif current_level > last_level:
-                            push_signal = True # ⚡ 強制覆寫：新信號等級更高 (🔥 覆寫 💎)
+                            push_signal = True 
                             print(f"⚡ [優先級覆寫] {ticker} 動能升級，強制解除冷卻！")
 
                         if push_signal:
-                            # 💡 [防禦升級 4] SEC EDGAR 陷阱掃描 (僅在確定要推送前執行，節省效能)
                             if check_sec_edgar_traps(ticker):
                                 current_signal += " 💀(SEC陷阱)"
-                                cell["IsTrap"] = True # 同步更新 UI 陷阱標示
+                                cell["IsTrap"] = True 
                                 stats["Signal"] = current_signal
 
                             cooldown_tracker[ticker] = {'time': now_ts, 'level': current_level}
                             
-                            log_entry = {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova" if current_level == 2 else "spark"}
+                            log_entry = {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova" if current_level >= 2 else "spark"}
                             MASTER_BRAIN["surge_log"].insert(0, log_entry)
                             MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:500]
 
                 except Exception as ex: 
-                    # print(f"處理 {ticker} 異常: {ex}")
                     continue
             
             MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
