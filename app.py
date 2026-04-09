@@ -74,106 +74,123 @@ def fetch_and_score_news(ticker, cell, stats):
             cell["IsTrap"] = has_black
     except: pass
 
-# --- 🛰️ 廣域動態名單獲取 (鎖定 1-30 塊最強標的) ---
+# --- 🛰️ 深度名單獲取 (鎖定 1-30 塊真實最強標的) ---
 def update_dynamic_watchlist():
     global DYNAMIC_WATCHLIST, PREV_CLOSE_MAP
     try:
         # 💡 拉取多達 100 檔標的，確保 1-30 塊的黑馬不遺漏
         url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&scrIds=day_gainers&count=100"
         res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-        quotes = res.json()['finance']['result'][0]['quotes']
+        data = res.json()
+        quotes = data['finance']['result'][0]['quotes']
         
         full_pool = []
         for q in quotes:
             symbol = q['symbol']
             price = q.get('regularMarketPrice', 0)
             
-            # 💡 嚴格篩選：只針對 1-30 塊
+            # 💡 指揮官指令：嚴格篩選 $1 - $30 股價
             if 1.0 <= price <= 30.0:
                 prev = q.get('regularMarketPreviousClose', price)
-                # 取得 Yahoo 給出的即時漲幅
                 y_pct = q.get('regularMarketChangePercent', 0)
                 full_pool.append({"sym": symbol, "prev": prev, "pct": y_pct})
         
-        # 💡 強制按「真實漲幅」降冪排序
+        # 💡 按 Yahoo 給出的漲幅做初步排序
         full_pool = sorted(full_pool, key=lambda x: x['pct'], reverse=True)
         
-        # 💡 鎖定漲幅最高的前 25-30 檔進入雷達掃描
-        DYNAMIC_WATCHLIST = [x['sym'] for x in full_scan[:30]]
-        for x in full_pool: PREV_CLOSE_MAP[x['sym']] = x['prev']
-        
-        print(f"📡 已鎖定 1-30 塊最強標的，榜首漲幅: {full_pool[0]['pct'] if full_pool else 0}%")
-    except: pass
+        # 💡 鎖定前 35 檔進入深度掃描（為了填滿前 20 檔排行）
+        DYNAMIC_WATCHLIST = [x['sym'] for x in full_pool[:35]]
+        for x in full_pool: 
+            PREV_CLOSE_MAP[x['sym']] = x['prev']
+            
+        print(f"📡 獵場掃描完成，目前最高漲幅: {full_pool[0]['pct'] if full_pool else 0}%")
+    except Exception as e:
+        print(f"⚠️ 名單更新失敗: {e}")
 
-# --- 🧠 戰術雷達 (排行榜顯示校準) ---
+# --- 🧠 戰術雷達主引擎 (Bug 修復與排序優化) ---
 def scanner_engine():
-    # ... (前面的登入與初始化代碼維持不變) ...
-    while True:
-        # ... (掃描細節邏輯維持 V23.5) ...
-        
-        # 💡 排行榜渲染邏輯修正：取前 20 檔，不限任何訊號
-        # 確保排序依據是 real_pct
-        MASTER_BRAIN["leaderboard"] = sorted(current_leaderboard, key=lambda x: float(x['Pct'].replace('%','')), reverse=True)[:20]
-        
-        MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
-        time.sleep(10)
+    # 登入邏輯... (維持 V23.5)
+    tv = None
+    try:
+        if TW_USERNAME != 'guest' and TW_PASSWORD != 'guest':
+            tv = TvDatafeed(TW_USERNAME, TW_PASSWORD)
+        else:
+            tv = TvDatafeed()
+    except:
+        tv = TvDatafeed()
+
     last_list_update = 0
     while True:
+        # 💡 重要：在迴圈最開始就初始化，防止 UnboundLocalError
+        current_leaderboard = [] 
+        
         try:
             now_ts = time.time()
             if now_ts - last_list_update > 600:
                 update_dynamic_watchlist()
                 last_list_update = now_ts
 
-            current_leaderboard = []
+            if not DYNAMIC_WATCHLIST:
+                time.sleep(10)
+                continue
+
             for ticker in DYNAMIC_WATCHLIST:
                 try:
-                    time.sleep(1.2) # 💡 序列呼吸延遲
+                    time.sleep(1.2) # 序列呼吸延遲
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
-                    if df is not None and not df.empty:
-                        p = float(df['close'].iloc[-1]); o = float(df['open'].iloc[0])
-                        prev_close = PREV_CLOSE_MAP.get(ticker, o)
-                        
-                        real_pct = ((p - prev_close) / prev_close) * 100
-                        daily_vol = int(df['volume'].sum())
-                        rel_vol = round(df['volume'].iloc[-1] / df['volume'].iloc[-11:-1].mean(), 2) if df['volume'].iloc[-11:-1].mean() > 0 else 1.0
-                        
-                        # EMA 趨勢滑行系統
-                        ema20 = df['close'].ewm(span=20, adjust=False).mean()
-                        curr_ema20 = ema20.iloc[-1]
-                        is_ema20_up = curr_ema20 > ema20.iloc[-2]
-                        
-                        # Ross 策略邏輯
-                        is_spark = (rel_vol >= 2.0) and (p >= df['high'].iloc[-16:-1].max()) and (real_pct > 3.0)
-                        is_ride = is_ema20_up and (abs(p - curr_ema20)/curr_ema20 < 0.006) and (p > curr_ema20) and (real_pct > 2.0) and not is_spark
-                        is_weak = (p < o) or (real_pct < -2.0)
-                        
-                        tag = "🔥強力點火" if is_spark else ("💎趨勢滑行" if is_ride else ("💀趨勢轉弱" if is_weak else ""))
-                        status = "yellow" if is_spark else ("purple" if is_ride else ("red" if is_weak else "green"))
+                    if df is None or df.empty:
+                        continue
 
-                        stats = {
-                            "Code": ticker, "Price": f"${p:.2f}", "RelVol": f"{rel_vol}x", "Vol": format_vol(daily_vol),
-                            "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p-prev_close):+.2f}", "Status": status, "Signal": tag,
-                            "PriceVal": p, "StopLoss": curr_ema20*0.99, "Float": f"{random.uniform(2,15):.1f}M"
-                        }
-                        
-                        cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False})
-                        cell.update(stats)
-                        current_leaderboard.append(stats)
+                    p = float(df['close'].iloc[-1])
+                    o = float(df['open'].iloc[0])
+                    prev_close = PREV_CLOSE_MAP.get(ticker, o)
+                    
+                    real_pct = ((p - prev_close) / prev_close) * 100
+                    daily_vol = int(df['volume'].sum())
+                    rel_vol = round(df['volume'].iloc[-1] / df['volume'].iloc[-11:-1].mean(), 2) if df['volume'].iloc[-11:-1].mean() > 0 else 1.0
+                    
+                    # EMA 系統
+                    ema20 = df['close'].ewm(span=20, adjust=False).mean()
+                    curr_ema20 = ema20.iloc[-1]
+                    is_ema20_up = curr_ema20 > ema20.iloc[-2]
+                    
+                    # 🦅 Ross 策略訊號 (僅供日誌與顏色顯示)
+                    is_spark = (rel_vol >= 2.0) and (p >= df['high'].iloc[-16:-1].max()) and (real_pct > 3.0)
+                    is_ride = is_ema20_up and (abs(p - curr_ema20)/curr_ema20 < 0.006) and (p > curr_ema20) and (real_pct > 2.0) and not is_spark
+                    is_weak = (p < o) or (real_pct < -2.0)
+                    
+                    tag = "🔥強力點火" if is_spark else ("💎趨勢滑行" if is_ride else ("💀趨勢轉弱" if is_weak else ""))
+                    status = "yellow" if is_spark else ("purple" if is_ride else ("red" if is_weak else "green"))
 
-                        if tag and (now_ts - cooldown_tracker.get(ticker, 0) > 45):
-                            cooldown_tracker[ticker] = now_ts
-                            log_entry = {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova" if is_spark else "spark"}
-                            MASTER_BRAIN["surge_log"].insert(0, log_entry)
-                            MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
-                        
-                        threading.Thread(target=fetch_and_score_news, args=(ticker, cell, stats)).start()
-                except: continue
+                    stats = {
+                        "Code": ticker, "Price": f"${p:.2f}", "RelVol": f"{rel_vol}x", "Vol": format_vol(daily_vol),
+                        "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p-prev_close):+.2f}", "Status": status, "Signal": tag,
+                        "PriceVal": p, "StopLoss": curr_ema20*0.99, "Float": f"{random.uniform(2,15):.1f}M"
+                    }
+                    
+                    cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False})
+                    cell.update(stats)
+                    current_leaderboard.append(stats) # 💡 加入排行榜候選名單
 
-            MASTER_BRAIN["leaderboard"] = sorted(current_leaderboard, key=lambda x: float(x['Pct'].replace('%','')), reverse=True)[:20]
+                    # 日誌邏輯... (維持 V23.5)
+                    if tag and (now_ts - cooldown_tracker.get(ticker, 0) > 45):
+                        cooldown_tracker[ticker] = now_ts
+                        log_entry = {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova" if is_spark else "spark"}
+                        MASTER_BRAIN["surge_log"].insert(0, log_entry)
+                    
+                    threading.Thread(target=fetch_and_score_news, args=(ticker, cell, stats)).start()
+                except:
+                    continue
+
+            # 💡 關鍵：只取出 1-30 塊漲幅前 20 名
+            if current_leaderboard:
+                MASTER_BRAIN["leaderboard"] = sorted(current_leaderboard, key=lambda x: float(x['Pct'].replace('%','')), reverse=True)[:20]
+            
             MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
-            time.sleep(10)
-        except: time.sleep(15)
+            time.sleep(5) # 💡 完成一輪後稍作休息
+        except Exception as e:
+            print(f"❌ 迴圈異常: {e}")
+            time.sleep(15)
 
 @app.route('/')
 def index(): return render_template('index.html')
