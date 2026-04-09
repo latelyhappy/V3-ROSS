@@ -9,10 +9,6 @@ from tvDatafeed import TvDatafeed, Interval
 from flask import Flask, jsonify, render_template
 from deep_translator import GoogleTranslator
 
-# 💡 導入裝甲爬蟲武器
-from playwright.sync_api import sync_playwright
-
-# ... [保留原有的 TW_USERNAME, PORT, CATALYST_ARMORY 等設定] ...
 # ==========================================
 # 🛠️ 戰略設定
 # ==========================================
@@ -42,7 +38,6 @@ def format_vol(n):
     if n >= 1_000: return f"{n/1_000:.1f}K"
     return str(int(n))
 
-# ... [保留原有的 fetch_and_score_news 函數] ...
 def fetch_and_score_news(ticker, cell, stats):
     now = time.time()
     if ticker in news_cache and (now - news_cache[ticker] < 900): return
@@ -73,110 +68,73 @@ def fetch_and_score_news(ticker, cell, stats):
             cell["HasNews"] = (total_score > 5); cell["IsTrap"] = has_black
     except: pass
 
-
-# --- 🛰️ V24.1 裝甲爬蟲版 (Playwright 突破 Cloudflare) ---
+# --- 🛰️ V24.3 王牌特務版 (直連 TradingView 原生雷達) ---
 def update_dynamic_watchlist():
     global DYNAMIC_WATCHLIST, STATS_MAP
-    full_pool = []
-    
-    # 🕷️ 引擎 A：Playwright 模擬人類行為，強行突破 StockAnalysis
     try:
-        print("🕷️ 啟動 Playwright 裝甲爬蟲 (突破 StockAnalysis 防火牆)...")
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-setuid-sandbox'])
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            )
-            page = context.new_page()
-            
-            # 前往盤前排行榜並等待表格渲染
-            page.goto("https://stockanalysis.com/markets/premarket/gainers/", timeout=15000)
-            page.wait_for_selector("table", timeout=8000)
-            
-            # 獲取完整 HTML 交給 Pandas 解析
-            html = page.content()
-            browser.close()
-            
-            dfs = pd.read_html(html)
-            df = dfs[0]
-            
-            for _, row in df.iterrows():
-                sym = str(row.get('Symbol', '')).strip()
-                if not sym or sym == 'nan': continue
-                
-                p_str = str(row.get('Premkt. Price', '0')).replace('$','').replace(',','')
-                pct_str = str(row.get('% Change', '0')).replace('%','').replace(',','')
-                vol_str = str(row.get('Pre. Volume', '0')).replace(',','')
-                mc_str = str(row.get('Market Cap', '0'))
-                
-                price = float(p_str) if p_str.replace('.','').isdigit() else 0.0
-                pct = float(pct_str) if pct_str.replace('.','').replace('-','').isdigit() else 0.0
-                vol = int(float(vol_str)) if vol_str.replace('.','').isdigit() else 0
-                
-                mc_m = 0.0
-                if 'B' in mc_str: mc_m = float(mc_str.replace('B','')) * 1000
-                elif 'M' in mc_str: mc_m = float(mc_str.replace('M',''))
-                elif 'K' in mc_str: mc_m = float(mc_str.replace('K','')) / 1000
-                
-                float_m = (mc_m / price) if price > 0 else 0.0
-                
-                # 嚴格執行 $1-$30 濾網
-                if 1.0 <= price <= 30.0:
-                    prev_est = price / (1 + (pct/100)) if pct != -100 else price
-                    full_pool.append({"sym": sym, "price": price, "prev": prev_est, "pct": pct, "vol": vol, "float": float_m})
-                    
-        if full_pool: print(f"✅ Playwright 爬蟲成功！完美抓取 {len(full_pool)} 檔盤前妖股。")
-    except Exception as e:
-        print(f"⚠️ Playwright 遭受攔截: {e}。啟動備援機制...")
-
-    # 🛰️ 引擎 B：Yahoo API (備援系統)
-    if not full_pool:
-        try:
-            print("🛰️ 啟動 Yahoo API 盤前掃描...")
-            url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&scrIds=day_gainers&count=100"
-            res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-            quotes = res.json()['finance']['result'][0]['quotes']
-            for q in quotes:
-                symbol = q['symbol']
-                pre_price = q.get('preMarketPrice')
-                reg_price = q.get('regularMarketPrice')
-                price = pre_price if (pre_price is not None and pre_price > 0) else reg_price
-                if price is None or price == 0: continue
-                
-                raw_mc = q.get('marketCap')
-                market_cap = float(raw_mc) if raw_mc is not None else 0.0
-                float_shares_m = (market_cap / price) / 1_000_000
-                
-                if 1.0 <= price <= 30.0:
-                    pre_pct = q.get('preMarketChangePercent')
-                    reg_pct = q.get('regularMarketChangePercent')
-                    pct = float(pre_pct) if (pre_pct is not None and pre_pct != 0) else (float(reg_pct) if reg_pct is not None else 0.0)
-                    prev = q.get('regularMarketPreviousClose', price)
-                    raw_vol = q.get('regularMarketVolume', 0)
-                    full_pool.append({"sym": symbol, "price": price, "prev": prev, "pct": pct, "vol": int(raw_vol), "float": float_shares_m})
-            print(f"✅ Yahoo 備援成功！鎖定 {len(full_pool)} 檔標的。")
-        except Exception as e: print(f"❌ 雙引擎皆失效: {e}")
-
-    # --- 排序與資料綁定 ---
-    if full_pool:
-        full_pool = sorted(full_pool, key=lambda x: x['pct'], reverse=True)
-        DYNAMIC_WATCHLIST = [x['sym'] for x in full_pool[:30]]
+        print("👁️ 啟動 TradingView 原生盤前掃描雷達...")
         
-        instant_leaderboard = []
-        for x in full_pool[:20]:
-            STATS_MAP[x['sym']] = {'prev': x['prev'], 'float': x['float']}
-            float_str = f"{x['float']:.1f}M" if x['float'] > 0 else "未知"
-            if x['float'] > 50.0: float_str = f"⚠️{float_str}"
-                
-            instant_leaderboard.append({
-                "Code": x['sym'], "Price": f"${x['price']:.2f}", "Float": float_str,
-                "Pct": f"{x['pct']:+.2f}%", "Vol": format_vol(x['vol']),
-                "RelVol": "-", "Status": "green"
-            })
-        MASTER_BRAIN["leaderboard"] = instant_leaderboard
+        # 💡 TV 隱藏版掃描伺服器
+        url = "https://scanner.tradingview.com/america/scan"
+        
+        # 💡 精準戰術配置：$1-$30、純股票、依盤前漲幅排序
+        payload = {
+            "filter": [
+                {"left": "type", "operation": "in_range", "right": ["stock"]},
+                {"left": "exchange", "operation": "in_range", "right": ["AMEX", "NASDAQ", "NYSE"]},
+                {"left": "premarket_close", "operation": "in_range", "right": [1, 30]},
+                {"left": "premarket_change", "operation": "nempty"}
+            ],
+            "options": {"lang": "en"},
+            "markets": ["america"],
+            "symbols": {"query": {"types": []}, "tickers": []},
+            "columns": ["name", "premarket_close", "close", "premarket_change", "premarket_volume", "market_cap_basic"],
+            "sort": {"sortBy": "premarket_change", "sortOrder": "desc"},
+            "range": [0, 50]
+        }
+        
+        res = requests.post(url, json=payload, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        data = res.json()
+        
+        full_pool = []
+        for item in data.get('data', []):
+            sym = item['d'][0]
+            pre_price = item['d'][1] 
+            reg_price = item['d'][2]
+            price = pre_price if pre_price is not None else reg_price
+            
+            pct = item['d'][3]
+            vol = item['d'][4]
+            mc = item['d'][5]
+            
+            if price and pct is not None:
+                float_m = (mc / price) / 1_000_000 if mc else 0.0
+                prev_est = price / (1 + (pct/100)) if pct != -100 else price
+                full_pool.append({"sym": sym, "price": price, "prev": prev_est, "pct": pct, "vol": int(vol) if vol else 0, "float": float_m})
 
+        if full_pool:
+            DYNAMIC_WATCHLIST = [x['sym'] for x in full_pool[:30]]
+            
+            instant_leaderboard = []
+            for x in full_pool[:20]:
+                STATS_MAP[x['sym']] = {'prev': x['prev'], 'float': x['float']}
+                float_str = f"{x['float']:.1f}M" if x['float'] > 0 else "未知"
+                if x['float'] > 50.0: float_str = f"⚠️{float_str}"
+                    
+                instant_leaderboard.append({
+                    "Code": x['sym'], "Price": f"${x['price']:.2f}", "Float": float_str,
+                    "Pct": f"{x['pct']:+.2f}%", "Vol": format_vol(x['vol']),
+                    "RelVol": "-", "Status": "green"
+                })
+            MASTER_BRAIN["leaderboard"] = instant_leaderboard
+            print(f"✅ TV 原生雷達掃描成功！完美鎖定 {len(DYNAMIC_WATCHLIST)} 檔盤前妖股。")
+        else:
+            print("⚠️ TV 掃描未回傳數據，盤前可能尚無交易。")
 
-# ... [保留原有的 scanner_engine 及 Flask 路由設定] ...
+    except Exception as e:
+        print(f"❌ TV 雷達掃描異常: {e}")
+
+# --- 🧠 戰術雷達主引擎 ---
 def scanner_engine():
     tv = TvDatafeed()
     try:
@@ -188,6 +146,7 @@ def scanner_engine():
     while True:
         try:
             now_ts = time.time()
+            # 每 5 分鐘呼叫一次 TV 掃描器更新大名單
             if now_ts - last_list_update > 300: 
                 update_dynamic_watchlist()
                 last_list_update = now_ts
@@ -216,6 +175,8 @@ def scanner_engine():
                     is_ema20_up = curr_ema20 > ema20.iloc[-2]
                     
                     vol_warn = "(⚠️量低)" if daily_vol < 200000 else ""
+                    
+                    # 💡 戰術訊號判定
                     is_spark = (rel_vol >= 1.5) and (p >= df['high'].iloc[-11:-1].max()) and (real_pct > 1.5)
                     is_ride = is_ema20_up and (abs(p - curr_ema20)/curr_ema20 < 0.012) and (p >= curr_ema20) and (real_pct > 1.0) and not is_spark
                     is_weak = (p < o) or (real_pct < -2.0)
@@ -232,6 +193,7 @@ def scanner_engine():
                     cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False})
                     cell.update(stats)
 
+                    # 紀錄到日誌 (僅顯示點火與滑行)
                     if tag and (now_ts - cooldown_tracker.get(ticker, 0) > 45):
                         cooldown_tracker[ticker] = now_ts
                         log_entry = {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova" if is_spark else "spark"}
