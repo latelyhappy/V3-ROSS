@@ -69,7 +69,7 @@ def fetch_and_score_news(ticker, cell, stats):
             cell["HasNews"] = (total_score > 5); cell["IsTrap"] = has_black
     except: pass
 
-# --- 🛰️ 閃電排行榜與真實籌碼獲取 (盤前防崩潰版) ---
+# --- 🛰️ 閃電排行榜 (盤前精準抓取與軟性過濾版) ---
 def update_dynamic_watchlist():
     global DYNAMIC_WATCHLIST, STATS_MAP
     try:
@@ -80,36 +80,46 @@ def update_dynamic_watchlist():
         full_pool = []
         for q in quotes:
             symbol = q['symbol']
-            price = q.get('regularMarketPrice')
             
-            # 💡 防禦 1：如果連股價都沒有，直接跳過
+            # 💡 戰術升級：優先抓取「盤前價格」，若無才用「昨日收盤價」
+            pre_price = q.get('preMarketPrice')
+            reg_price = q.get('regularMarketPrice')
+            price = pre_price if (pre_price is not None and pre_price > 0) else reg_price
+            
             if price is None or price == 0:
                 continue
             
-            # 💡 防禦 2：嚴格處理 Yahoo 回傳 None 的市值問題
+            # 估算真實籌碼
             raw_mc = q.get('marketCap')
             market_cap = float(raw_mc) if raw_mc is not None else 0.0
-            
             float_shares_m = (market_cap / price) / 1_000_000
             
-            if 1.0 <= price <= 30.0 and float_shares_m <= 50.0:
-                # 💡 防禦 3：確保漲幅不是 None
-                raw_pct = q.get('regularMarketChangePercent')
-                pct = float(raw_pct) if raw_pct is not None else 0.0
-                prev = q.get('regularMarketPreviousClose', price)
+            # 💡 濾網放寬：只要是 1-30 塊就放行，確保雷達有目標
+            if 1.0 <= price <= 30.0:
+                # 💡 戰術升級：優先抓取「盤前真實漲幅」
+                pre_pct = q.get('preMarketChangePercent')
+                reg_pct = q.get('regularMarketChangePercent')
+                pct = float(pre_pct) if (pre_pct is not None and pre_pct != 0) else (float(reg_pct) if reg_pct is not None else 0.0)
                 
+                prev = q.get('regularMarketPreviousClose', price)
                 raw_vol = q.get('regularMarketVolume')
                 vol = int(raw_vol) if raw_vol is not None else 0
                 
                 full_pool.append({"sym": symbol, "price": price, "prev": prev, "pct": pct, "vol": vol, "float": float_shares_m})
         
+        # 依照盤前漲幅重新排序
         full_pool = sorted(full_pool, key=lambda x: x['pct'], reverse=True)
         DYNAMIC_WATCHLIST = [x['sym'] for x in full_pool[:30]]
         
         instant_leaderboard = []
         for x in full_pool[:20]:
             STATS_MAP[x['sym']] = {'prev': x['prev'], 'float': x['float']}
+            
+            # 💡 軟性警告機制：如果籌碼大於 50M，標示警告，但依然讓它上榜
             float_str = f"{x['float']:.1f}M" if x['float'] > 0 else "未知"
+            if x['float'] > 50.0:
+                float_str = f"⚠️{float_str}"
+                
             instant_leaderboard.append({
                 "Code": x['sym'], "Price": f"${x['price']:.2f}", "Float": float_str,
                 "Pct": f"{x['pct']:+.2f}%", "Vol": format_vol(x['vol']),
