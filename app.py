@@ -28,7 +28,7 @@ CATALYST_ARMORY = {
 
 MASTER_BRAIN = {"surge_log": [], "details": {}, "leaderboard": [], "last_update": ""}
 DYNAMIC_WATCHLIST = []
-STATS_MAP = {} # 💡 新增：用來儲存昨日收盤價與真實浮動股數
+STATS_MAP = {} 
 news_cache = {} 
 cooldown_tracker = {}
 app = Flask(__name__)
@@ -39,7 +39,6 @@ def format_vol(n):
     return str(int(n))
 
 def fetch_and_score_news(ticker, cell, stats):
-    # (與 V23.8 相同，保持不變)
     now = time.time()
     if ticker in news_cache and (now - news_cache[ticker] < 900): return
     news_cache[ticker] = now
@@ -69,56 +68,90 @@ def fetch_and_score_news(ticker, cell, stats):
             cell["HasNews"] = (total_score > 5); cell["IsTrap"] = has_black
     except: pass
 
-# --- 🛰️ 閃電排行榜 (盤前精準抓取與軟性過濾版) ---
+# --- 🛰️ V24.0 雙引擎動態名單 (爬蟲 + API 備援) ---
 def update_dynamic_watchlist():
     global DYNAMIC_WATCHLIST, STATS_MAP
+    full_pool = []
+    
+    # 🕷️ 引擎 A：StockAnalysis 盤前隱形爬蟲
     try:
-        url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&scrIds=day_gainers&count=100"
-        res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-        quotes = res.json()['finance']['result'][0]['quotes']
+        print("🕷️ 嘗試啟動隱形爬蟲 (StockAnalysis)...")
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+        }
+        url = "https://stockanalysis.com/markets/premarket/gainers/"
+        res = requests.get(url, headers=headers, timeout=8)
         
-        full_pool = []
-        for q in quotes:
-            symbol = q['symbol']
+        dfs = pd.read_html(res.text)
+        df = dfs[0]
+        
+        for _, row in df.iterrows():
+            sym = str(row.get('Symbol', '')).strip()
+            if not sym or sym == 'nan': continue
             
-            # 💡 戰術升級：優先抓取「盤前價格」，若無才用「昨日收盤價」
-            pre_price = q.get('preMarketPrice')
-            reg_price = q.get('regularMarketPrice')
-            price = pre_price if (pre_price is not None and pre_price > 0) else reg_price
+            p_str = str(row.get('Premkt. Price', '0')).replace('$','').replace(',','')
+            pct_str = str(row.get('% Change', '0')).replace('%','').replace(',','')
+            vol_str = str(row.get('Pre. Volume', '0')).replace(',','')
+            mc_str = str(row.get('Market Cap', '0'))
             
-            if price is None or price == 0:
-                continue
+            price = float(p_str) if p_str.replace('.','').isdigit() else 0.0
+            pct = float(pct_str) if pct_str.replace('.','').replace('-','').isdigit() else 0.0
+            vol = int(float(vol_str)) if vol_str.replace('.','').isdigit() else 0
             
-            # 估算真實籌碼
-            raw_mc = q.get('marketCap')
-            market_cap = float(raw_mc) if raw_mc is not None else 0.0
-            float_shares_m = (market_cap / price) / 1_000_000
+            mc_m = 0.0
+            if 'B' in mc_str: mc_m = float(mc_str.replace('B','')) * 1000
+            elif 'M' in mc_str: mc_m = float(mc_str.replace('M',''))
+            elif 'K' in mc_str: mc_m = float(mc_str.replace('K','')) / 1000
             
-            # 💡 濾網放寬：只要是 1-30 塊就放行，確保雷達有目標
+            float_m = (mc_m / price) if price > 0 else 0.0
+            
             if 1.0 <= price <= 30.0:
-                # 💡 戰術升級：優先抓取「盤前真實漲幅」
-                pre_pct = q.get('preMarketChangePercent')
-                reg_pct = q.get('regularMarketChangePercent')
-                pct = float(pre_pct) if (pre_pct is not None and pre_pct != 0) else (float(reg_pct) if reg_pct is not None else 0.0)
+                prev_est = price / (1 + (pct/100)) if pct != -100 else price
+                full_pool.append({"sym": sym, "price": price, "prev": prev_est, "pct": pct, "vol": vol, "float": float_m})
                 
-                prev = q.get('regularMarketPreviousClose', price)
-                raw_vol = q.get('regularMarketVolume')
-                vol = int(raw_vol) if raw_vol is not None else 0
+        if full_pool: print(f"✅ 爬蟲成功！抓取到 {len(full_pool)} 檔 $1-$30 盤前妖股。")
+    except Exception as e:
+        print(f"⚠️ 爬蟲受阻，可能被 Cloudflare 阻擋。啟動備援機制...")
+
+    # 🛰️ 引擎 B：Yahoo API (備援系統)
+    if not full_pool:
+        try:
+            print("🛰️ 啟動 Yahoo API 盤前掃描...")
+            url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?formatted=false&scrIds=day_gainers&count=100"
+            res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+            quotes = res.json()['finance']['result'][0]['quotes']
+            for q in quotes:
+                symbol = q['symbol']
+                pre_price = q.get('preMarketPrice')
+                reg_price = q.get('regularMarketPrice')
+                price = pre_price if (pre_price is not None and pre_price > 0) else reg_price
+                if price is None or price == 0: continue
                 
-                full_pool.append({"sym": symbol, "price": price, "prev": prev, "pct": pct, "vol": vol, "float": float_shares_m})
-        
-        # 依照盤前漲幅重新排序
+                raw_mc = q.get('marketCap')
+                market_cap = float(raw_mc) if raw_mc is not None else 0.0
+                float_shares_m = (market_cap / price) / 1_000_000
+                
+                if 1.0 <= price <= 30.0:
+                    pre_pct = q.get('preMarketChangePercent')
+                    reg_pct = q.get('regularMarketChangePercent')
+                    pct = float(pre_pct) if (pre_pct is not None and pre_pct != 0) else (float(reg_pct) if reg_pct is not None else 0.0)
+                    prev = q.get('regularMarketPreviousClose', price)
+                    raw_vol = q.get('regularMarketVolume', 0)
+                    full_pool.append({"sym": symbol, "price": price, "prev": prev, "pct": pct, "vol": int(raw_vol), "float": float_shares_m})
+            print(f"✅ Yahoo 備援成功！鎖定 {len(full_pool)} 檔標的。")
+        except Exception as e: print(f"❌ 雙引擎皆失效: {e}")
+
+    # --- 排序與資料綁定 ---
+    if full_pool:
         full_pool = sorted(full_pool, key=lambda x: x['pct'], reverse=True)
         DYNAMIC_WATCHLIST = [x['sym'] for x in full_pool[:30]]
         
         instant_leaderboard = []
         for x in full_pool[:20]:
             STATS_MAP[x['sym']] = {'prev': x['prev'], 'float': x['float']}
-            
-            # 💡 軟性警告機制：如果籌碼大於 50M，標示警告，但依然讓它上榜
             float_str = f"{x['float']:.1f}M" if x['float'] > 0 else "未知"
-            if x['float'] > 50.0:
-                float_str = f"⚠️{float_str}"
+            if x['float'] > 50.0: float_str = f"⚠️{float_str}"
                 
             instant_leaderboard.append({
                 "Code": x['sym'], "Price": f"${x['price']:.2f}", "Float": float_str,
@@ -126,9 +159,6 @@ def update_dynamic_watchlist():
                 "RelVol": "-", "Status": "green"
             })
         MASTER_BRAIN["leaderboard"] = instant_leaderboard
-        print(f"✅ 名單更新成功！鎖定 {len(DYNAMIC_WATCHLIST)} 檔標的。")
-    except Exception as e: 
-        print(f"❌ API 獲取致命錯誤: {e}")
 
 # --- 🧠 戰術雷達主引擎 ---
 def scanner_engine():
@@ -156,8 +186,6 @@ def scanner_engine():
                     if df is None or df.empty: continue
 
                     p = float(df['close'].iloc[-1]); o = float(df['open'].iloc[0])
-                    
-                    # 💡 提取真實數據
                     stat_data = STATS_MAP.get(ticker, {'prev': o, 'float': 0})
                     prev_close = stat_data['prev']
                     float_str = f"{stat_data['float']:.1f}M"
@@ -199,7 +227,7 @@ def scanner_engine():
             
             MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
             time.sleep(5)
-        except Exception as e: time.sleep(10) # 防止全局死鎖
+        except Exception as e: time.sleep(10)
 
 @app.route('/')
 def index(): return render_template('index.html')
