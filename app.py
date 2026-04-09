@@ -170,40 +170,55 @@ def scanner_engine():
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
                     if df is None or df.empty: continue
 
-                    p = float(df['close'].iloc[-1])
-                    o = float(df['open'].iloc[0])
+                    p_live = float(df['close'].iloc[-1])
+                    p_prev = float(df['close'].iloc[-2])
+                    o_live = float(df['open'].iloc[-1]) # 需要當前開盤價來判斷轉弱
                     
-                    # --- 💡 核心修復：解決新生 K 線悖論 ---
-                    v_live = float(df['volume'].iloc[-1]) # 當前未完成的 K 線量
-                    v_prev = float(df['volume'].iloc[-2]) # 上一根「已完成」的 K 線量
-                    avg_vol = df['volume'].iloc[-12:-2].mean() # 過去 10 根「已完成」的平均量
+                    # 取出歷史資料
+                    v_live = float(df['volume'].iloc[-1])
+                    v_prev = float(df['volume'].iloc[-2])
+                    avg_vol = df['volume'].iloc[-12:-2].mean()
                     
-                    # 量比：取「當下已爆發」或「上一根已確立」的最大值
+                    # 量比分開計算
                     rel_vol_live = round(v_live / avg_vol, 2) if avg_vol > 0 else 1.0
                     rel_vol_prev = round(v_prev / avg_vol, 2) if avg_vol > 0 else 1.0
-                    rel_vol = max(rel_vol_live, rel_vol_prev)
+                    rel_vol_display = max(rel_vol_live, rel_vol_prev) # 💡 顯示給 UI 看的量比，取較大者
                     
                     daily_vol = int(df['volume'].sum())
                     
-                    stat_data = STATS_MAP.get(ticker, {'prev': o, 'float': 0})
-                    prev_close = stat_data['prev']
-                    float_str = f"{stat_data['float']:.1f}M"
+                    # 💡 修復 2：解決 60-bar 陷阱，如果沒有昨日收盤價，至少取今日最低點
+                    stat_data = STATS_MAP.get(ticker, None)
+                    if stat_data and stat_data['prev'] > 0:
+                        prev_close = stat_data['prev']
+                        float_str = f"{stat_data['float']:.1f}M"
+                    else:
+                        prev_close = float(df['low'].min()) # 備案：取區間最低點
+                        float_str = "未知"
                     
-                    real_pct = ((p - prev_close) / prev_close) * 100
-                    ema20 = df['close'].ewm(span=20, adjust=False).mean()
-                    curr_ema20 = ema20.iloc[-1]
+                    real_pct = ((p_live - prev_close) / prev_close) * 100
                     
-                    # 💡 修復 1：資金流警告。看「常態均量」或「剛完成的量」，避免被 0.1 秒前的新生 K 線誤導
-                    dollar_vol = p * max(v_prev, avg_vol)
+                    # 💡 核心修復 1：時空校準 (分離 Minute 0 與 Minute 1 的突破判定)
+                    past_high_for_live = df['high'].iloc[-11:-1].max() # 給當前K線用的壓力線
+                    past_high_for_prev = df['high'].iloc[-12:-2].max() # 給上一根K線用的壓力線
+                    
+                    # 情境 A：實時動能極強，當下這秒鐘量跟價都達標了
+                    spark_live = (rel_vol_live >= 2.5) and (p_live >= past_high_for_live)
+                    
+                    # 情境 B：數據延遲補償。上一根確定是爆量突破，且當前價格沒有崩盤 (守在上一根開盤價之上)
+                    spark_prev = (rel_vol_prev >= 2.5) and (p_prev >= past_high_for_prev) and (p_live >= df['open'].iloc[-2])
+                    
+                    # 只要滿足任一情境，且漲幅及格，就是強力點火！
+                    is_spark = (spark_live or spark_prev) and (real_pct > 3.0)
+
+                    # 💡 資金流警告 (用最大量確保不會因為剛開K線而誤判低流動性)
+                    dollar_vol = p_live * max(v_live, v_prev, avg_vol)
                     is_low_liquidity = dollar_vol < 50000
                     vol_warn = "(⚠️量低)" if is_low_liquidity else ""
 
-                    # 💡 修復 2：點火突破。突破的必須是「過去 10 根『已完成』的最高點」
-                    past_high = df['high'].iloc[-11:-1].max()
-                    is_spark = (rel_vol >= 2.5) and (real_pct > 3.0) and (p >= past_high)
-                    
-                    # 💡 修復 3：防砸盤量縮。必須確認「上一根已完成」的 K 線真的是量縮，過濾假滑行
-                    is_ride = (p >= curr_ema20) and (abs(p - curr_ema20)/curr_ema20 < 0.012) and (rel_vol_prev < 0.8) and (real_pct > 1.0) and not is_spark
+                    # 💡 趨勢滑行：確保真的有量縮回踩
+                    ema20 = df['close'].ewm(span=20, adjust=False).mean()
+                    curr_ema20 = ema20.iloc[-1]
+                    is_ride = (p_live >= curr_ema20) and (abs(p_live - curr_ema20)/curr_ema20 < 0.012) and (rel_vol_prev < 0.8) and (real_pct > 1.0) and not is_spark
 
                     # 判斷信號層級
                     current_signal = None
@@ -220,9 +235,9 @@ def scanner_engine():
                         status_color = "purple"
 
                     stats = {
-                        "Code": ticker, "Price": f"${p:.2f}", "RelVol": f"{rel_vol}x", "Vol": format_vol(daily_vol),
-                        "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p-prev_close):+.2f}", "Status": status_color, "Signal": current_signal if current_signal else "",
-                        "PriceVal": p, "StopLoss": curr_ema20*0.99, "Float": float_str
+                        "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": format_vol(daily_vol),
+                        "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, "Signal": current_signal if current_signal else "",
+                        "PriceVal": p_live, "StopLoss": curr_ema20*0.99, "Float": float_str
                     }
                     
                     cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False})
