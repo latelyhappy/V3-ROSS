@@ -67,11 +67,20 @@
         .panel-content { padding: 0; overflow-y: auto; max-height: 500px; font-size: 12px; }
 
         /* 📊 無邊界表格設計 */
+        /* 📊 固定表頭 + 獨立滾動條設計 */
+        .panel-content { padding: 0; overflow-y: auto; max-height: 450px; font-size: 12px; }
+        /* 針對排行榜稍微縮短一點 */
+        #win-rank .panel-content { max-height: 350px; }
+        
         table { width: 100%; border-collapse: collapse; }
-        th { background: rgba(255,255,255,0.01); color: var(--text-muted); font-weight: 500; font-size: 11px; text-transform: uppercase; position: sticky; top: 0; z-index: 10; }
+        th { 
+            background: #161b22; color: var(--text-muted); font-weight: 500; font-size: 11px; 
+            text-transform: uppercase; position: sticky; top: 0; z-index: 10; 
+            box-shadow: 0 1px 0 rgba(48, 54, 61, 1); /* 表頭底線 */
+        }
         th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid rgba(48, 54, 61, 0.5); }
         tr { transition: background 0.1s ease; cursor: pointer; }
-        tr:hover { background: rgba(255,255,255,0.03); }
+        tr:hover { background: rgba(255,255,255,0.05); }
 
         /* 💡 狀態顏色指示器 */
         .status-indicator { width: 4px; padding: 0 !important; }
