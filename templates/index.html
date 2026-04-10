@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V40.2 - Tactical Command</title>
-    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+    <title>Sniper V40.3 - Tactical Command</title>
     <style>
         :root { 
             --yellow: #e3b341; --purple: #a371f7; --green: #3fb950; --red: #f85149; --blue: #58a6ff;
@@ -15,8 +14,9 @@
         body { 
             margin: 0; background: var(--bg-base); color: var(--text-main); 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-            overflow: hidden; /* 防止整個網頁出現多餘滾動條 */
-            padding-top: 50px; user-select: none; /* 防止雙擊時選取到文字 */
+            /* 💡 允許整體頁面上下滾動，以容納 1.5 倍高度 */
+            overflow-y: auto; overflow-x: hidden;
+            padding-top: 50px; user-select: none; 
         }
 
         /* 📡 頂部戰術導航欄 */
@@ -33,30 +33,52 @@
         }
         .ghost-btn:hover, .ghost-btn.active { background: rgba(163, 113, 247, 0.2); border-color: var(--purple); color: #fff; }
 
-        /* 🔲 自由視窗面板 (PC 模式) */
+        /* 🔲 專業網格佈局 (完美對齊，不跑位) */
+        .dashboard-grid {
+            display: grid;
+            /* 左側佔滿剩餘空間，右側固定 480px 寬度 */
+            grid-template-columns: minmax(600px, 1fr) 480px; 
+            /* 分成上下兩列，平分高度 */
+            grid-template-rows: 1fr 1fr; 
+            gap: 20px;
+            padding: 20px;
+            /* 💡 整體高度拉長至螢幕的 1.5 倍 (150vh)，最低不小於 1200px */
+            height: 150vh; 
+            min-height: 1200px;
+            box-sizing: border-box;
+        }
+
+        /* 指定每個面板在網格中的位置 */
+        #win-log { grid-column: 1 / 2; grid-row: 1 / 2; }    /* 左上 */
+        #win-rank { grid-column: 1 / 2; grid-row: 2 / 3; }   /* 左下 */
+        #win-detail { grid-column: 2 / 3; grid-row: 1 / 3; } /* 右側，橫跨上下兩列 */
+
         .window-panel { 
             background: var(--bg-surface); border: 1px solid var(--border); 
             border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; 
-            box-shadow: 0 8px 24px rgba(0,0,0,0.6); position: absolute; /* 絕對定位以利拖曳 */
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
         }
+        
         .panel-header { 
             background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border); 
-            padding: 10px 15px; font-size: 12px; font-weight: bold; color: var(--text-muted);
-            cursor: move; /* 拖曳手把 */ display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 15px; font-size: 13px; font-weight: bold; color: var(--text-muted);
+            display: flex; justify-content: space-between; align-items: center;
         }
+        
         /* 內部滾動區塊 */
         .panel-content { 
-            flex: 1; overflow-y: auto; overflow-x: hidden; padding: 0; position: relative;
+            flex: 1; /* 💡 自動拉伸填滿 1.5 倍的高度 */
+            overflow-y: auto; overflow-x: hidden; padding: 0; position: relative;
         }
 
         /* 📊 固定表頭表格設計 */
         table { width: 100%; border-collapse: collapse; }
         th { 
-            background: #161b22; color: var(--text-muted); font-weight: 500; font-size: 11px; 
-            position: sticky; top: 0; z-index: 10; padding: 10px 8px; text-align: left;
+            background: #161b22; color: var(--text-muted); font-weight: 500; font-size: 12px; 
+            position: sticky; top: 0; z-index: 10; padding: 12px 10px; text-align: left;
             box-shadow: 0 1px 0 rgba(48, 54, 61, 1);
         }
-        td { padding: 8px; text-align: left; border-bottom: 1px solid rgba(48, 54, 61, 0.5); font-size: 12px;}
+        td { padding: 10px; text-align: left; border-bottom: 1px solid rgba(48, 54, 61, 0.5); font-size: 13px;}
         tr { transition: background 0.1s ease; cursor: pointer; }
         tr:hover { background: rgba(255,255,255,0.06); }
 
@@ -68,19 +90,18 @@
         tr.tr-green .status-indicator { background: var(--green); }
         tr.tr-vcp { background: rgba(227, 179, 65, 0.08); } 
 
-        .sym { font-weight: bold; color: var(--text-main); font-size: 14px; }
-        .up { color: var(--green); } .down { color: var(--red); }
+        .sym { font-weight: bold; color: var(--text-main); font-size: 15px; }
+        .up { color: var(--green); font-weight: bold;} 
+        .down { color: var(--red); font-weight: bold;}
         
         /* 📱 手機響應式覆寫 */
         @media (max-width: 1024px) {
-            body { overflow-y: auto; padding: 60px 10px 10px 10px; }
-            .window-panel { 
-                position: relative !important; transform: none !important; 
-                width: 100% !important; height: auto !important; min-height: 400px;
-                margin-bottom: 20px; box-sizing: border-box;
+            .dashboard-grid { 
+                grid-template-columns: 1fr; 
+                grid-template-rows: auto auto auto; 
+                height: auto; 
             }
-            .panel-header { cursor: default; }
-            .panel-content { overflow-y: visible; }
+            #win-log, #win-rank, #win-detail { grid-column: 1 / 2; grid-row: auto; height: 600px; }
         }
     </style>
 </head>
@@ -93,112 +114,48 @@
         <span id="sys-status" style="margin-left:auto; font-size:11px; color: var(--text-muted);">📡 系統初始化...</span>
     </div>
 
-    <div id="win-log" class="window-panel" style="width: 700px; height: 650px;">
-        <div class="panel-header">
-            <span>🚀 即時動能日誌</span>
-            <span style="font-size: 10px; font-weight: normal;">(單擊看新聞 / 雙擊開線圖)</span>
+    <div class="dashboard-grid">
+        
+        <div id="win-log" class="window-panel">
+            <div class="panel-header">
+                <span>🚀 即時動能日誌</span>
+                <span style="font-size: 11px; font-weight: normal; color:var(--text-muted);">單擊看新聞 / 雙擊開線圖</span>
+            </div>
+            <div class="panel-content">
+                <table id="surge-log-table">
+                    <thead><tr><th class="status-indicator"></th><th>時間</th><th>代碼</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th><th>訊號</th></tr></thead>
+                    <tbody id="surge-log-body">
+                        <tr><td colspan="8" style="text-align:center; padding: 40px; color: var(--text-muted);">雷達掃描中... 等待極端動能訊號觸發</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
-        <div class="panel-content">
-            <table id="surge-log-table">
-                <thead><tr><th class="status-indicator"></th><th>時間</th><th>代碼</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th><th>訊號</th></tr></thead>
-                <tbody id="surge-log-body">
-                    <tr><td colspan="8" style="text-align:center; padding: 30px; color: var(--text-muted);">雷達掃描中... 等待極端動能訊號觸發</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
 
-    <div id="win-rank" class="window-panel" style="width: 500px; height: 750px;">
-        <div class="panel-header">
-            <span>🏆 全市場超新星排行 ($1-$30)</span>
-            <span style="font-size: 10px; font-weight: normal;">(單擊看新聞 / 雙擊開線圖)</span>
+        <div id="win-rank" class="window-panel">
+            <div class="panel-header">
+                <span>🏆 全市場超新星排行 ($1-$30)</span>
+                <span style="font-size: 11px; font-weight: normal; color:var(--text-muted);">單擊看新聞 / 雙擊開線圖</span>
+            </div>
+            <div class="panel-content">
+                <table>
+                    <thead><tr><th class="status-indicator"></th><th>代碼</th><th>流通股</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th></tr></thead>
+                    <tbody id="rank-list"></tbody>
+                </table>
+            </div>
         </div>
-        <div class="panel-content">
-            <table>
-                <thead><tr><th class="status-indicator"></th><th>代碼</th><th>流通股</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th></tr></thead>
-                <tbody id="rank-list"></tbody>
-            </table>
-        </div>
-    </div>
 
-    <div id="win-detail" class="window-panel" style="width: 450px; height: 850px;">
-        <div class="panel-header">📊 深度分析與動態風控</div>
-        <div class="panel-content" id="detail-list" style="padding: 15px; user-select: text;">
-            <div style="text-align:center; color: var(--text-muted); padding: 40px 0;">點擊左側代碼載入戰報...</div>
+        <div id="win-detail" class="window-panel">
+            <div class="panel-header">📊 深度分析與動態風控</div>
+            <div class="panel-content" id="detail-list" style="padding: 20px; user-select: text;">
+                <div style="text-align:center; color: var(--text-muted); padding: 60px 0;">點擊左側代碼載入戰報...</div>
+            </div>
         </div>
+        
     </div>
 
     <script>
         let brain = {}, activeSym = "", audioOn = false, played = {};
         const sounds = { spark: new Audio('/static/sounds/spark.mp3'), nova: new Audio('/static/sounds/nova.mp3') };
-
-        // 🎛️ 視窗記憶與拖曳核心
-        function initWindowManager() {
-            if (window.innerWidth <= 1024) return; 
-
-            const wins = ['win-log', 'win-rank', 'win-detail'];
-            
-            // 💡 更新預設座標與高度 (翻倍版)
-            const defaultLayout = {
-                'win-log': {x: 10, y: 60, w: 700, h: 650},
-                'win-rank': {x: 720, y: 60, w: 500, h: 750},
-                'win-detail': {x: 1230, y: 60, w: 450, h: 850}
-            };
-
-            wins.forEach(id => {
-                const el = document.getElementById(id);
-                // 💡 更改記憶體 Key，強制洗掉您舊版的小視窗記憶
-                let saved = JSON.parse(localStorage.getItem('layout_v40_2_' + id));
-                if (!saved) saved = defaultLayout[id];
-
-                if (saved) {
-                    el.style.width = saved.w + 'px'; el.style.height = saved.h + 'px';
-                    el.style.transform = `translate(${saved.x}px, ${saved.y}px)`;
-                    el.setAttribute('data-x', saved.x); el.setAttribute('data-y', saved.y);
-                }
-
-                interact(el)
-                    .draggable({ 
-                        allowFrom: '.panel-header', 
-                        modifiers: [interact.modifiers.restrictRect({restriction: 'parent'})],
-                        onmove: dragMoveListener 
-                    })
-                    .resizable({ 
-                        edges: { left: false, right: true, bottom: true, top: false },
-                        modifiers: [interact.modifiers.restrictSize({min: {width: 300, height: 200}})],
-                        onmove: resizeMoveListener 
-                    });
-            });
-        }
-
-        function dragMoveListener(event) {
-            const target = event.target;
-            const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
-            const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
-            target.style.transform = `translate(${x}px, ${y}px)`;
-            target.setAttribute('data-x', x); target.setAttribute('data-y', y);
-            saveLayout();
-        }
-
-        function resizeMoveListener(event) {
-            const target = event.target;
-            let x = (parseFloat(target.getAttribute('data-x')) || 0);
-            let y = (parseFloat(target.getAttribute('data-y')) || 0);
-            target.style.width = event.rect.width + 'px';
-            target.style.height = event.rect.height + 'px';
-            target.style.transform = `translate(${x}px, ${y}px)`;
-            target.setAttribute('data-x', x); target.setAttribute('data-y', y);
-            saveLayout();
-        }
-
-        function saveLayout() {
-            ['win-log', 'win-rank', 'win-detail'].forEach(id => {
-                const el = document.getElementById(id);
-                const x = parseFloat(el.getAttribute('data-x')) || 0;
-                const y = parseFloat(el.getAttribute('data-y')) || 0;
-                localStorage.setItem('layout_v40_2_' + id, JSON.stringify({x: x, y: y, w: el.offsetWidth, h: el.offsetHeight}));
-            });
-        }
 
         function unlockAudio() { 
             audioOn = true; 
@@ -274,16 +231,13 @@
                 });
         }
 
-        // 💡 [修復核心] 智能墊檔機制：當後端還沒掃出深度數據時，用排行榜基本數據呈現
         function loadDetail(sym) {
             activeSym = sym; 
             let d = brain.details[sym]; 
             let rankData = brain.leaderboard ? brain.leaderboard.find(x => x.Code === sym) : null;
 
-            // 完全沒資料就跳出
             if (!d && !rankData) return; 
 
-            // 如果後端 K 線還沒跑完 (如盤前)，拿排行榜的資料來墊檔
             if (!d && rankData) {
                 d = {
                     Price: rankData.Price, Pct: rankData.Pct, Vol: rankData.Vol, 
@@ -292,46 +246,43 @@
                 };
             }
 
-            let trapWarn = d.IsTrap ? `<div style="background:rgba(248, 81, 73, 0.2); border: 1px solid var(--red); color: var(--red); padding:8px; margin-bottom:15px; border-radius:6px; font-weight:bold;">⚠️ 偵測到 S-1/S-3 增發或陷阱字眼</div>` : "";
-            let waitingMsg = (!brain.details[sym]) ? `<div style="color:var(--yellow); font-size:11px; margin-bottom:10px;">⚠️ K線資料尚未齊全 (可能為盤前)，部分進階數據與新聞待補...</div>` : "";
+            let trapWarn = d.IsTrap ? `<div style="background:rgba(248, 81, 73, 0.2); border: 1px solid var(--red); color: var(--red); padding:10px; margin-bottom:20px; border-radius:6px; font-weight:bold; font-size:14px;">⚠️ 偵測到 S-1/S-3 增發或陷阱字眼</div>` : "";
+            let waitingMsg = (!brain.details[sym]) ? `<div style="color:var(--yellow); font-size:13px; margin-bottom:15px;">⚠️ K線資料尚未齊全 (可能為盤前)，部分進階數據與新聞待補...</div>` : "";
             
             let html = `<div style="text-align:center;">${trapWarn}${waitingMsg}
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
-                    <h2 ondblclick="openTW('${sym}')" class="sym" style="font-size:28px; margin:0; cursor:pointer;">${sym} <span style="font-size:20px; color:var(--text-muted);">${d.Price}</span></h2>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 25px;">
+                    <h2 ondblclick="openTW('${sym}')" class="sym" style="font-size:32px; margin:0; cursor:pointer;">${sym} <span style="font-size:22px; color:var(--text-muted); margin-left:10px;">${d.Price}</span></h2>
                     <button class="ghost-btn" onclick="openTW('${sym}')">在 TV 中開啟 ↗</button>
                 </div>
                 
-                <div style="background: rgba(0,0,0,0.3); padding:15px; border-radius:6px; display:grid; grid-template-columns: 1fr 1fr; gap:12px; font-size:13px; text-align:left; border: 1px solid rgba(255,255,255,0.05);">
-                    <div>成交總量: <b style="color:var(--text-main);">${d.Vol}</b></div>
-                    <div>當前量比: <b style="color:var(--text-main);">${d.RelVol}</b></div>
-                    <div>真實漲幅: <b class="${parseFloat(d.Pct)>0?'up':'down'}">${d.Pct}</b></div>
-                    <div>催化強度: <b style="color:var(--yellow);">${d.CatScore} Pts</b></div>
-                    <div>真實籌碼: <b style="color:var(--text-main);">${d.Float}</b></div>
-                    <div style="border-top: 1px solid var(--border); grid-column: 1 / -1; margin-top: 5px; padding-top: 10px;">
-                        動態風控停損: <b style="color:var(--red); font-size:14px;">$${(d.StopLoss||0).toFixed(2)}</b>
+                <div style="background: rgba(0,0,0,0.3); padding:20px; border-radius:8px; display:grid; grid-template-columns: 1fr 1fr; gap:15px; font-size:14px; text-align:left; border: 1px solid rgba(255,255,255,0.05);">
+                    <div>成交總量: <b style="color:var(--text-main); font-size:15px;">${d.Vol}</b></div>
+                    <div>當前量比: <b style="color:var(--text-main); font-size:15px;">${d.RelVol}</b></div>
+                    <div>真實漲幅: <b class="${parseFloat(d.Pct)>0?'up':'down'}" style="font-size:15px;">${d.Pct}</b></div>
+                    <div>催化強度: <b style="color:var(--yellow); font-size:15px;">${d.CatScore} Pts</b></div>
+                    <div>真實籌碼: <b style="color:var(--text-main); font-size:15px;">${d.Float}</b></div>
+                    <div style="border-top: 1px solid var(--border); grid-column: 1 / -1; margin-top: 10px; padding-top: 15px;">
+                        動態風控停損: <b style="color:var(--red); font-size:18px;">$${(d.StopLoss||0).toFixed(2)}</b>
                     </div>
                 </div>
                 
-                <h3 style="color: var(--text-muted); font-size:12px; text-transform:uppercase; border-bottom:1px solid var(--border); padding-bottom:8px; margin-top:25px; text-align:left;">🗞️ 即時催化劑情報</h3>`;
+                <h3 style="color: var(--text-muted); font-size:14px; text-transform:uppercase; border-bottom:1px solid var(--border); padding-bottom:10px; margin-top:35px; text-align:left;">🗞️ 即時催化劑情報</h3>`;
             
             if (!d.NewsList || d.NewsList.length === 0) {
-                html += `<div style="text-align:left; color:var(--text-muted); font-size: 13px;">${(!brain.details[sym]) ? "掃描排隊中..." : "尚無今日重大新聞。"}</div>`;
+                html += `<div style="text-align:left; color:var(--text-muted); font-size: 14px; padding-top:10px;">${(!brain.details[sym]) ? "掃描排隊中..." : "尚無今日重大新聞。"}</div>`;
             } else {
                 d.NewsList.forEach(n => {
                     let colorCls = n.is_today ? "color: var(--yellow);" : "color: var(--text-muted);";
-                    html += `<div style="margin-bottom:15px; text-align:left;">
-                        <div style="${colorCls} font-size:11px; margin-bottom:4px; font-weight:bold;">${n.time} 美東 | 戰鬥權重: ${n.score}</div>
-                        <a href="${n.link}" target="_blank" style="text-decoration:none; color:var(--blue); font-size:13.5px; line-height:1.5;">${n.title}</a>
+                    html += `<div style="margin-top:20px; margin-bottom:20px; text-align:left; padding: 15px; background: rgba(255,255,255,0.02); border-radius: 6px; border-left: 3px solid var(--border);">
+                        <div style="${colorCls} font-size:12px; margin-bottom:8px; font-weight:bold;">${n.time} 美東 | 戰鬥權重: ${n.score}</div>
+                        <a href="${n.link}" target="_blank" style="text-decoration:none; color:var(--blue); font-size:15px; line-height:1.6;">${n.title}</a>
                     </div>`;
                 });
             }
             document.getElementById('detail-list').innerHTML = html + `</div>`;
         }
         
-        window.onload = () => { 
-            initWindowManager(); 
-            refresh(); 
-        };
+        window.onload = () => { refresh(); };
     </script>
 </body>
 </html>
