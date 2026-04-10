@@ -10,7 +10,7 @@ from flask import Flask, jsonify, render_template
 from deep_translator import GoogleTranslator
 
 # ==========================================
-# 🛠️ 戰略設定
+# 🛠️ 戰略設定與全局記憶體
 # ==========================================
 TW_USERNAME = os.getenv('TW_USERNAME', 'guest') 
 TW_PASSWORD = os.getenv('TW_PASSWORD', 'guest')
@@ -20,9 +20,9 @@ TZ_TW = pytz.timezone('Asia/Taipei')
 TZ_NY = pytz.timezone('America/New_York')
 
 CATALYST_ARMORY = {
-    "LEVEL_RED": {"FDA": 10, "APPROVAL": 10, "批准": 10, "ACQUISITION": 10, "收購": 10, "DOD": 10, "合約": 10, "SQUEEZE": 9, "軋空": 9},
-    "LEVEL_ORANGE": {"EARNINGS": 7, "超越預期": 7, "PHASE 3": 7, "三期": 7, "DRONE": 7, "無人機": 7, "AI": 6},
-    "LEVEL_YELLOW": {"PATENT": 5, "專利": 5, "CLINICAL": 5, "臨床": 5, "CHIP": 5, "晶片": 5},
+    "LEVEL_RED": {"FDA": 10, "APPROVAL": 10, "批准": 10, "ACQUISITION": 10, "收購": 10, "合約": 10, "軋空": 9},
+    "LEVEL_ORANGE": {"EARNINGS": 7, "超越預期": 7, "三期": 7, "AI": 6},
+    "LEVEL_YELLOW": {"PATENT": 5, "專利": 5, "臨床": 5, "晶片": 5},
     "LEVEL_BLACK": {"OFFERING": -30, "增發": -30, "BANKRUPTCY": -50, "破產": -50, "DEFAULT": -20}
 }
 
@@ -31,6 +31,10 @@ DYNAMIC_WATCHLIST = []
 STATS_MAP = {} 
 news_cache = {} 
 cooldown_tracker = {}
+
+# 💡 [V40 核心] 跨週期狀態記憶體
+# 格式: {ticker: {'state': 'VCP'/'None', 'duration': 分鐘數, 'vcp_low': 最低點}}
+STATE_TRACKER = {}
 
 app = Flask(__name__)
 
@@ -41,7 +45,7 @@ def format_vol(n):
 
 # --- 🛰️ SEC EDGAR 陷阱掃描 ---
 def check_sec_edgar_traps(ticker):
-    headers = {'User-Agent': 'Sniper_Commander_Bot/24.7 (contact@yourdomain.com)'}
+    headers = {'User-Agent': 'Sniper_Commander_Bot/40.0 (contact@yourdomain.com)'}
     url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=&output=atom"
     try:
         response = requests.get(url, headers=headers, timeout=3)
@@ -89,11 +93,10 @@ def fetch_and_score_news(ticker, cell, stats):
             cell["HasNews"] = (total_score > 5)
     except: pass
 
-# --- 🛰️ TradingView 盤前雷達直連 ---
+# --- 🛰️ TradingView 盤前雷達 ---
 def update_dynamic_watchlist():
     global DYNAMIC_WATCHLIST, STATS_MAP
     try:
-        print("👁️ 啟動 TradingView 原生盤前掃描雷達...")
         url = "https://scanner.tradingview.com/america/scan"
         payload = {
             "filter": [
@@ -144,7 +147,7 @@ def update_dynamic_watchlist():
     except Exception as e:
         print(f"❌ TV 掃描異常: {e}")
 
-# --- 🧠 戰術雷達主引擎 ---
+# --- 🧠 V40 量化引擎主循環 ---
 def scanner_engine():
     tv = TvDatafeed()
     try:
@@ -167,11 +170,10 @@ def scanner_engine():
                 try:
                     time.sleep(1.0)
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
-                    if df is None or df.empty or len(df) < 15: continue
+                    if df is None or df.empty or len(df) < 25: continue
 
                     p_live = float(df['close'].iloc[-1])
                     p_prev = float(df['close'].iloc[-2])
-                    
                     v_live = float(df['volume'].iloc[-1])
                     v_prev = float(df['volume'].iloc[-2])
                     avg_vol = df['volume'].iloc[-12:-2].mean()
@@ -180,8 +182,17 @@ def scanner_engine():
                     rel_vol_prev = round(v_prev / avg_vol, 2) if avg_vol > 0 else 1.0
                     rel_vol_display = max(rel_vol_live, rel_vol_prev) 
                     
-                    daily_vol = int(df['volume'].sum())
-                    
+                    # 💡 [V40] 波動率 (ATR) 計算
+                    df['tr'] = pd.concat([
+                        df['high'] - df['low'],
+                        (df['high'] - df['close'].shift(1)).abs(),
+                        (df['low'] - df['close'].shift(1)).abs()
+                    ], axis=1).max(axis=1)
+                    df['atr5'] = df['tr'].rolling(5).mean()
+                    df['atr20'] = df['tr'].rolling(20).mean()
+                    atr5 = df['atr5'].iloc[-1]
+                    atr20 = df['atr20'].iloc[-1]
+
                     stat_data = STATS_MAP.get(ticker, None)
                     if stat_data and stat_data['prev'] > 0:
                         prev_close = stat_data['prev']
@@ -197,6 +208,7 @@ def scanner_engine():
                     curr_ema10 = ema10.iloc[-1]
                     curr_ema20 = ema20.iloc[-1]
                     
+                    # 核心條件判斷
                     past_high_for_live = df['high'].iloc[-11:-1].max() 
                     past_high_for_prev = df['high'].iloc[-12:-2].max() 
                     
@@ -204,22 +216,57 @@ def scanner_engine():
                     spark_prev = (rel_vol_prev >= 2.5) and (p_prev >= past_high_for_prev) and (p_live >= df['open'].iloc[-2])
                     is_spark = (spark_live or spark_prev) and (real_pct > 3.0)
 
+                    # 💡 [V40] VCP 壓縮掃描: ATR 收斂 且 量縮 且 均線多頭
+                    is_vcp_compression = (atr5 < atr20 * 0.95) and (rel_vol_prev < 0.85) and (curr_ema10 > curr_ema20)
+                    
                     is_ride = (p_live >= curr_ema20) and (abs(p_live - curr_ema20)/curr_ema20 < 0.012) and (rel_vol_prev < 0.8) and (real_pct > 1.0) and not is_spark
-
                     is_grind = (curr_ema10 > curr_ema20) and (p_live >= curr_ema10) and (0.5 <= rel_vol_display < 2.5) and (real_pct > 2.0) and not is_spark and not is_ride
 
-                    dollar_vol = p_live * max(v_live, v_prev, avg_vol)
-                    is_low_liquidity = dollar_vol < 50000
-                    vol_warn = "(⚠️量低)" if is_low_liquidity else ""
+                    # 💡 [V40] 狀態記憶體更新與動態停損
+                    tracker = STATE_TRACKER.get(ticker, {'state': 'None', 'duration': 0, 'vcp_low': float('inf')})
+                    dynamic_stop = curr_ema20 * 0.99 # 預設常規停損
+                    
+                    if is_spark:
+                        # 如果是從 VCP 爆發出來，套用超級窄損！
+                        if tracker['state'] == 'VCP' and tracker['duration'] >= 3:
+                            dynamic_stop = tracker['vcp_low']
+                        # 爆發後重置記憶體
+                        tracker['state'] = 'None'
+                        tracker['duration'] = 0
+                        tracker['vcp_low'] = float('inf')
+                    elif is_vcp_compression:
+                        if tracker['state'] != 'VCP':
+                            tracker['state'] = 'VCP'
+                            tracker['duration'] = 1
+                            tracker['vcp_low'] = min(df['low'].iloc[-1], df['low'].iloc[-2])
+                        else:
+                            tracker['duration'] += 1
+                            tracker['vcp_low'] = min(tracker['vcp_low'], df['low'].iloc[-1])
+                    else:
+                        # 既沒點火也沒壓縮，重置
+                        tracker['state'] = 'None'
+                        tracker['duration'] = 0
+                        tracker['vcp_low'] = float('inf')
+                    
+                    STATE_TRACKER[ticker] = tracker # 存回全局記憶
 
+                    # 資金流警告
+                    dollar_vol = p_live * max(v_live, v_prev, avg_vol)
+                    vol_warn = "(⚠️量低)" if dollar_vol < 50000 else ""
+
+                    # 💡 [V40] 最終信號判定與分級 (優先級: 🔥4 > ⚡3 > 🚜2 > 💎1)
                     current_signal = None
                     current_level = 0
                     status_color = "green"
 
                     if is_spark:
                         current_signal = f"🔥強力點火 {vol_warn}"
-                        current_level = 3
+                        current_level = 4
                         status_color = "yellow"
+                    elif tracker['state'] == 'VCP' and tracker['duration'] >= 3:
+                        current_signal = f"⚡VCP壓縮鎖定 {vol_warn}"
+                        current_level = 3
+                        status_color = "vcp" # 前端會解析為黃色光暈
                     elif is_grind:
                         current_signal = f"🚜穩步推升 {vol_warn}"
                         current_level = 2
@@ -231,13 +278,13 @@ def scanner_engine():
 
                     stats = {
                         "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": format_vol(daily_vol),
-                        "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, "Signal": current_signal if current_signal else "",
-                        "PriceVal": p_live, "StopLoss": curr_ema20*0.99, "Float": float_str
+                        "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, 
+                        "Signal": current_signal if current_signal else "",
+                        "PriceVal": p_live, "StopLoss": dynamic_stop, "Float": float_str
                     }
                     
                     cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False})
                     cell.update(stats)
-                    
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell, stats)).start()
 
                     if current_signal:
@@ -250,8 +297,7 @@ def scanner_engine():
                             push_signal = True 
                         elif current_level > last_level:
                             push_signal = True 
-                            print(f"⚡ [優先級覆寫] {ticker} 動能升級，強制解除冷卻！")
-
+                        
                         if push_signal:
                             if check_sec_edgar_traps(ticker):
                                 current_signal += " 💀(SEC陷阱)"
@@ -260,7 +306,12 @@ def scanner_engine():
 
                             cooldown_tracker[ticker] = {'time': now_ts, 'level': current_level}
                             
-                            log_entry = {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova" if current_level >= 2 else "spark"}
+                            # 💡 [V40] 靜默追蹤控制：只有 🔥(4) 和 💎(1) 會有音效，VCP與推土機完全靜音
+                            audio_target = None
+                            if current_level == 4: audio_target = "nova"
+                            elif current_level == 1: audio_target = "spark"
+
+                            log_entry = {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": audio_target}
                             MASTER_BRAIN["surge_log"].insert(0, log_entry)
                             MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:500]
 
