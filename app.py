@@ -294,6 +294,17 @@ def scanner_engine():
                     cell.update(stats)
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell, stats)).start()
 
+                    # ==========================================
+                    # 💡 [資料同步修復] 打破 5 分鐘延遲，將即時 K 線價格同步回寫到排行榜！
+                    for rank_item in MASTER_BRAIN["leaderboard"]:
+                        if rank_item["Code"] == ticker:
+                            rank_item["Price"] = f"${p_live:.2f}"
+                            rank_item["Pct"] = f"{real_pct:+.2f}%"
+                            # 讓排行榜的顏色也跟著最新動態變化 (選用)
+                            rank_item["Status"] = status_color if status_color != "green" else rank_item.get("Status", "green")
+                            break
+                    # ==========================================
+
                     if current_signal:
                         last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})
                         time_elapsed = now_ts - last_record['time']
