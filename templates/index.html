@@ -3,84 +3,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V40 - Tactical Command</title>
+    <title>Sniper V40.1 - Tactical Command</title>
+    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
-        /* 🎨 現代化 FinTech 色彩定義 */
         :root { 
-            --yellow: #e3b341; /* 柔和的高光黃 */
-            --purple: #a371f7; /* 參考圖的標誌紫 */
-            --green: #3fb950; 
-            --red: #f85149; 
-            --blue: #58a6ff;
-            --bg-base: #0d1117; /* 深邃底色 */
-            --bg-surface: #161b22; /* 面板底色 */
-            --border: #30363d; /* 低調邊框 */
-            --text-main: #c9d1d9; /* 柔和白字 */
-            --text-muted: #8b949e; /* 灰字 */
+            --yellow: #e3b341; --purple: #a371f7; --green: #3fb950; --red: #f85149; --blue: #58a6ff;
+            --bg-base: #0d1117; --bg-surface: #161b22; --border: #30363d; 
+            --text-main: #c9d1d9; --text-muted: #8b949e; 
         }
         
         body { 
             margin: 0; background: var(--bg-base); color: var(--text-main); 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-            overflow-x: hidden;
-            padding-top: 60px; /* 留給頂部導航欄的空間 */
+            overflow: hidden; /* 防止整個網頁出現多餘滾動條 */
+            padding-top: 50px; user-select: none; /* 防止雙擊時選取到文字 */
         }
 
         /* 📡 頂部戰術導航欄 */
         #tactical-bar { 
             position: fixed; top: 0; left: 0; width: 100%; height: 50px;
-            background: rgba(13, 17, 23, 0.95); backdrop-filter: blur(5px);
-            border-bottom: 1px solid var(--border); z-index: 9999; 
-            display: flex; align-items: center; padding: 0 15px; box-sizing: border-box;
+            background: rgba(13, 17, 23, 0.95); border-bottom: 1px solid var(--border); 
+            z-index: 9999; display: flex; align-items: center; padding: 0 15px; box-sizing: border-box;
         }
 
-        /* 🔘 幽靈按鈕設計 (防刺眼) */
         .ghost-btn {
             background: transparent; border: 1px solid var(--border); color: var(--text-main);
             padding: 6px 15px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold;
-            transition: all 0.2s ease; touch-action: manipulation; /* 手機點擊優化 */
+            transition: all 0.2s ease; touch-action: manipulation;
         }
         .ghost-btn:hover, .ghost-btn.active { background: rgba(163, 113, 247, 0.2); border-color: var(--purple); color: #fff; }
-        .ghost-btn.danger { border-color: var(--red); color: var(--red); }
-        .ghost-btn.danger:hover { background: rgba(248, 81, 73, 0.2); color: #fff; }
 
-        /* 📱 響應式網格佈局 (RWD) */
-        .dashboard-container {
-            display: grid; gap: 15px; padding: 15px; box-sizing: border-box;
-            grid-template-columns: 1fr; /* 手機版：單欄向下堆疊 */
-        }
-        @media (min-width: 1024px) {
-            .dashboard-container { grid-template-columns: 1.8fr 1fr; /* PC版：左大右小雙欄 */ }
-        }
-
-        /* 🔲 現代化卡片面板 */
-        .panel { 
+        /* 🔲 自由視窗面板 (PC 模式) */
+        .window-panel { 
             background: var(--bg-surface); border: 1px solid var(--border); 
             border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.6); position: absolute; /* 絕對定位以利拖曳 */
         }
         .panel-header { 
-            background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border); 
-            padding: 12px 15px; font-size: 13px; font-weight: bold; color: var(--text-muted);
-            text-transform: uppercase; letter-spacing: 0.5px;
+            background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border); 
+            padding: 10px 15px; font-size: 12px; font-weight: bold; color: var(--text-muted);
+            cursor: move; /* 拖曳手把 */ display: flex; justify-content: space-between; align-items: center;
         }
-        .panel-content { padding: 0; overflow-y: auto; max-height: 500px; font-size: 12px; }
+        /* 內部滾動區塊 */
+        .panel-content { 
+            flex: 1; overflow-y: auto; overflow-x: hidden; padding: 0; position: relative;
+        }
 
-        /* 📊 無邊界表格設計 */
-        /* 📊 固定表頭 + 獨立滾動條設計 */
-        .panel-content { padding: 0; overflow-y: auto; max-height: 450px; font-size: 12px; }
-        /* 針對排行榜稍微縮短一點 */
-        #win-rank .panel-content { max-height: 350px; }
-        
+        /* 📊 固定表頭表格設計 */
         table { width: 100%; border-collapse: collapse; }
         th { 
             background: #161b22; color: var(--text-muted); font-weight: 500; font-size: 11px; 
-            text-transform: uppercase; position: sticky; top: 0; z-index: 10; 
-            box-shadow: 0 1px 0 rgba(48, 54, 61, 1); /* 表頭底線 */
+            position: sticky; top: 0; z-index: 10; padding: 10px 8px; text-align: left;
+            box-shadow: 0 1px 0 rgba(48, 54, 61, 1);
         }
-        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid rgba(48, 54, 61, 0.5); }
+        td { padding: 8px; text-align: left; border-bottom: 1px solid rgba(48, 54, 61, 0.5); font-size: 12px;}
         tr { transition: background 0.1s ease; cursor: pointer; }
-        tr:hover { background: rgba(255,255,255,0.05); }
+        tr:hover { background: rgba(255,255,255,0.06); }
 
         /* 💡 狀態顏色指示器 */
         .status-indicator { width: 4px; padding: 0 !important; }
@@ -88,51 +66,65 @@
         tr.tr-purple .status-indicator { background: var(--purple); }
         tr.tr-blue .status-indicator { background: var(--blue); }
         tr.tr-green .status-indicator { background: var(--green); }
-        tr.tr-vcp { background: rgba(227, 179, 65, 0.08); } /* VCP 光暈背景 */
+        tr.tr-vcp { background: rgba(227, 179, 65, 0.08); } 
 
         .sym { font-weight: bold; color: var(--text-main); font-size: 14px; }
         .up { color: var(--green); } .down { color: var(--red); }
-        .float-val { color: var(--text-muted); }
-        .signal-text { font-weight: bold; }
+        
+        /* 📱 手機響應式覆寫 (螢幕小於 1024px 時強制排列，取消絕對定位) */
+        @media (max-width: 1024px) {
+            body { overflow-y: auto; padding: 60px 10px 10px 10px; }
+            .window-panel { 
+                position: relative !important; transform: none !important; 
+                width: 100% !important; height: auto !important; min-height: 300px;
+                margin-bottom: 20px; box-sizing: border-box;
+            }
+            .panel-header { cursor: default; }
+            .panel-content { overflow-y: visible; }
+        }
     </style>
 </head>
 <body>
     <div id="tactical-bar">
-        <button id="audio-btn" class="ghost-btn danger" style="margin-right: 15px;" onclick="unlockAudio()">🔇 點擊啟用音效</button>
+        <button id="audio-btn" class="ghost-btn" style="border-color:var(--red); color:var(--red); margin-right: 15px;" onclick="unlockAudio()">🔇 點擊啟用音效</button>
         <div style="font-size: 13px; color: var(--text-muted); font-family: monospace;">
             TPE: <span id="sys-clock" style="color: var(--text-main); font-weight: bold;">--:--:--</span>
         </div>
         <span id="sys-status" style="margin-left:auto; font-size:11px; color: var(--text-muted);">📡 系統初始化...</span>
     </div>
 
-    <div class="dashboard-container">
-        <div style="display: flex; flex-direction: column; gap: 15px;">
-            <div class="panel" style="flex: 1;">
-                <div class="panel-header">🚀 即時動能日誌</div>
-                <div class="panel-content">
-                    <table id="surge-log-table">
-                        <thead><tr><th class="status-indicator"></th><th>時間</th><th>代碼</th><th>流通股</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th><th>訊號</th></tr></thead>
-                        <tbody id="surge-log-body"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="panel">
-                <div class="panel-header">🏆 盤前/盤中全市場排行 ($1-$30)</div>
-                <div class="panel-content" style="max-height: 300px;">
-                    <table>
-                        <thead><tr><th class="status-indicator"></th><th>代碼</th><th>流通股</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th></tr></thead>
-                        <tbody id="rank-list"></tbody>
-                    </table>
-                </div>
-            </div>
+    <div id="win-log" class="window-panel" style="width: 700px; height: 350px;">
+        <div class="panel-header">
+            <span>🚀 即時動能日誌</span>
+            <span style="font-size: 10px; font-weight: normal;">(單擊看新聞 / 雙擊開線圖)</span>
         </div>
+        <div class="panel-content">
+            <table id="surge-log-table">
+                <thead><tr><th class="status-indicator"></th><th>時間</th><th>代碼</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th><th>訊號</th></tr></thead>
+                <tbody id="surge-log-body">
+                    <tr><td colspan="8" style="text-align:center; padding: 30px; color: var(--text-muted);">雷達掃描中... 等待極端動能訊號觸發</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
 
-        <div class="panel">
-            <div class="panel-header">📊 深度分析與動態風控</div>
-            <div class="panel-content" id="detail-list" style="padding: 15px; max-height: none;">
-                <div style="text-align:center; color: var(--text-muted); padding: 40px 0;">單擊左側代碼載入戰報...</div>
-            </div>
+    <div id="win-rank" class="window-panel" style="width: 500px; height: 400px;">
+        <div class="panel-header">
+            <span>🏆 全市場超新星排行 ($1-$30)</span>
+            <span style="font-size: 10px; font-weight: normal;">(單擊看新聞 / 雙擊開線圖)</span>
+        </div>
+        <div class="panel-content">
+            <table>
+                <thead><tr><th class="status-indicator"></th><th>代碼</th><th>流通股</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th></tr></thead>
+                <tbody id="rank-list"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="win-detail" class="window-panel" style="width: 450px; height: 600px;">
+        <div class="panel-header">📊 深度分析與動態風控</div>
+        <div class="panel-content" id="detail-list" style="padding: 15px; user-select: text;">
+            <div style="text-align:center; color: var(--text-muted); padding: 40px 0;">點擊左側代碼載入戰報...</div>
         </div>
     </div>
 
@@ -140,13 +132,85 @@
         let brain = {}, activeSym = "", audioOn = false, played = {};
         const sounds = { spark: new Audio('/static/sounds/spark.mp3'), nova: new Audio('/static/sounds/nova.mp3') };
 
+        // 🎛️ 視窗記憶與拖曳核心 (interact.js)
+        function initWindowManager() {
+            // 如果是手機，則不啟動拖曳系統
+            if (window.innerWidth <= 1024) return; 
+
+            const wins = ['win-log', 'win-rank', 'win-detail'];
+            
+            // 預設佈局座標 (避免第一次載入時重疊)
+            const defaultLayout = {
+                'win-log': {x: 10, y: 60, w: 700, h: 400},
+                'win-rank': {x: 10, y: 470, w: 700, h: 400},
+                'win-detail': {x: 720, y: 60, w: 450, h: 810}
+            };
+
+            wins.forEach(id => {
+                const el = document.getElementById(id);
+                // 讀取瀏覽器記憶，若無則使用預設
+                let saved = JSON.parse(localStorage.getItem('layout_v40_' + id));
+                if (!saved) saved = defaultLayout[id];
+
+                if (saved) {
+                    el.style.width = saved.w + 'px'; el.style.height = saved.h + 'px';
+                    el.style.transform = `translate(${saved.x}px, ${saved.y}px)`;
+                    el.setAttribute('data-x', saved.x); el.setAttribute('data-y', saved.y);
+                }
+
+                interact(el)
+                    .draggable({ 
+                        allowFrom: '.panel-header', 
+                        modifiers: [interact.modifiers.restrictRect({restriction: 'parent'})],
+                        onmove: dragMoveListener 
+                    })
+                    .resizable({ 
+                        edges: { left: false, right: true, bottom: true, top: false }, // 允許右下角縮放
+                        modifiers: [interact.modifiers.restrictSize({min: {width: 300, height: 200}})],
+                        onmove: resizeMoveListener 
+                    });
+            });
+        }
+
+        function dragMoveListener(event) {
+            const target = event.target;
+            const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
+            const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
+            target.style.transform = `translate(${x}px, ${y}px)`;
+            target.setAttribute('data-x', x); target.setAttribute('data-y', y);
+            saveLayout();
+        }
+
+        function resizeMoveListener(event) {
+            const target = event.target;
+            let x = (parseFloat(target.getAttribute('data-x')) || 0);
+            let y = (parseFloat(target.getAttribute('data-y')) || 0);
+            target.style.width = event.rect.width + 'px';
+            target.style.height = event.rect.height + 'px';
+            target.style.transform = `translate(${x}px, ${y}px)`;
+            target.setAttribute('data-x', x); target.setAttribute('data-y', y);
+            saveLayout();
+        }
+
+        function saveLayout() {
+            ['win-log', 'win-rank', 'win-detail'].forEach(id => {
+                const el = document.getElementById(id);
+                const x = parseFloat(el.getAttribute('data-x')) || 0;
+                const y = parseFloat(el.getAttribute('data-y')) || 0;
+                localStorage.setItem('layout_v40_' + id, JSON.stringify({x: x, y: y, w: el.offsetWidth, h: el.offsetHeight}));
+            });
+        }
+
         function unlockAudio() { 
             audioOn = true; 
             let btn = document.getElementById('audio-btn');
-            btn.className = "ghost-btn active"; 
-            btn.innerText = "🔊 音效已開"; 
+            btn.style.borderColor = "var(--green)"; btn.style.color = "var(--green)";
+            btn.innerText = "🔊 音效已啟用"; 
         }
-        function openTW(s) { window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank'); }
+
+        function openTW(s) { 
+            window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank'); 
+        }
 
         setInterval(() => {
             document.getElementById('sys-clock').innerText = new Date().toLocaleTimeString('zh-TW', {timeZone: 'Asia/Taipei', hour12: false});
@@ -157,35 +221,38 @@
                 .then(r => r.json())
                 .then(d => {
                     brain = d;
-                    document.getElementById('sys-status').innerText = `📡 後端數據最後更新: ${d.last_update}`;
-                    document.getElementById('sys-status').style.color = "var(--text-muted)";
+                    document.getElementById('sys-status').innerText = `📡 數據更新: ${d.last_update}`;
+                    document.getElementById('sys-status').style.color = "var(--green)";
                     
-                    let h1 = "";
-                    d.surge_log.forEach(r => {
-                        let det = d.details[r.Code] || {};
-                        let icon = det.IsTrap ? " 💀" : (det.CatScore > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
-                        // 處理 VCP 光暈背景
-                        let rowClass = r.Status ? `tr-${r.Status}` : "";
-                        if (r.Signal && r.Signal.includes("⚡VCP")) rowClass += " tr-vcp";
-                        
-                        h1 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')">
-                            <td class="status-indicator"></td>
-                            <td style="color: var(--text-muted);">${r.Time}</td>
-                            <td class="sym" ondblclick="openTW('${r.Code}')">${r.Code}${icon}</td>
-                            <td class="float-val">${r.Float}</td>
-                            <td>${r.Price}</td><td>${r.RelVol}</td><td>${r.Vol}</td>
-                            <td class="${parseFloat(r.Pct)>0?'up':'down'}">${r.Pct}</td>
-                            <td class="signal-text">${r.Signal}</td>
-                        </tr>`;
-                        
-                        if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { 
-                            played[r.SignalTS] = r.SignalTS; 
-                            sounds[r.Audio].currentTime = 0; 
-                            sounds[r.Audio].play().catch(e=>console.log("Audio play blocked", e)); 
-                        }
-                    });
-                    document.getElementById('surge-log-body').innerHTML = h1;
+                    // 渲染狙擊日誌
+                    if (d.surge_log.length > 0) {
+                        let h1 = "";
+                        d.surge_log.forEach(r => {
+                            let det = d.details[r.Code] || {};
+                            let icon = det.IsTrap ? " 💀" : (det.CatScore > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
+                            let rowClass = r.Status ? `tr-${r.Status}` : "";
+                            if (r.Signal && r.Signal.includes("⚡VCP")) rowClass += " tr-vcp";
+                            
+                            // 💡 點擊與雙擊事件綁定在整行 (tr) 上
+                            h1 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
+                                <td class="status-indicator"></td>
+                                <td style="color: var(--text-muted);">${r.Time}</td>
+                                <td class="sym">${r.Code}${icon}</td>
+                                <td>${r.Price}</td><td>${r.RelVol}</td><td>${r.Vol}</td>
+                                <td class="${parseFloat(r.Pct)>0?'up':'down'}">${r.Pct}</td>
+                                <td style="font-weight: bold;">${r.Signal}</td>
+                            </tr>`;
+                            
+                            if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { 
+                                played[r.SignalTS] = r.SignalTS; 
+                                sounds[r.Audio].currentTime = 0; 
+                                sounds[r.Audio].play().catch(e=>{}); 
+                            }
+                        });
+                        document.getElementById('surge-log-body').innerHTML = h1;
+                    }
 
+                    // 渲染排行榜
                     let h2 = "";
                     d.leaderboard.forEach(r => {
                         let det = d.details[r.Code] || {};
@@ -193,10 +260,11 @@
                         let rv = det.RelVol || r.RelVol;
                         let floatToUse = r.Float || det.Float || "-";
                         
-                        h2 += `<tr class="tr-${det.Status || r.Status}" onclick="loadDetail('${r.Code}')">
+                        // 💡 點擊與雙擊事件綁定在整行 (tr) 上
+                        h2 += `<tr class="tr-${det.Status || r.Status}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                             <td class="status-indicator"></td>
-                            <td class="sym" ondblclick="openTW('${r.Code}')">${r.Code}${icon}</td>
-                            <td class="float-val">${floatToUse}</td>
+                            <td class="sym">${r.Code}${icon}</td>
+                            <td style="color:var(--text-muted);">${floatToUse}</td>
                             <td>${r.Price}</td><td>${rv}</td><td>${r.Vol}</td>
                             <td class="${parseFloat(r.Pct)>0?'up':'down'}">${r.Pct}</td>
                         </tr>`;
@@ -207,7 +275,7 @@
                     setTimeout(refresh, 5000); 
                 })
                 .catch(err => {
-                    document.getElementById('sys-status').innerText = "⚠️ 網路閃斷，正在自動重新連線...";
+                    document.getElementById('sys-status').innerText = "⚠️ 網路閃斷，自動重連中...";
                     document.getElementById('sys-status').style.color = "var(--red)";
                     setTimeout(refresh, 5000); 
                 });
@@ -215,7 +283,7 @@
 
         function loadDetail(sym) {
             activeSym = sym; const d = brain.details[sym]; if(!d) return;
-            let trapWarn = d.IsTrap ? `<div style="background:rgba(248, 81, 73, 0.2); border: 1px solid var(--red); color: var(--red); padding:8px; margin-bottom:15px; border-radius:6px; font-weight:bold;">⚠️ 偵測到增發或負面陷阱字眼</div>` : "";
+            let trapWarn = d.IsTrap ? `<div style="background:rgba(248, 81, 73, 0.2); border: 1px solid var(--red); color: var(--red); padding:8px; margin-bottom:15px; border-radius:6px; font-weight:bold;">⚠️ 偵測到 S-1/S-3 增發或陷阱字眼</div>` : "";
             
             let html = `<div style="text-align:center;">${trapWarn}
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
@@ -223,14 +291,14 @@
                     <button class="ghost-btn" onclick="openTW('${sym}')">在 TV 中開啟 ↗</button>
                 </div>
                 
-                <div style="background: rgba(0,0,0,0.2); padding:15px; border-radius:6px; display:grid; grid-template-columns: 1fr 1fr; gap:12px; font-size:13px; text-align:left; border: 1px solid var(--border);">
+                <div style="background: rgba(0,0,0,0.3); padding:15px; border-radius:6px; display:grid; grid-template-columns: 1fr 1fr; gap:12px; font-size:13px; text-align:left; border: 1px solid rgba(255,255,255,0.05);">
                     <div>成交總量: <b style="color:var(--text-main);">${d.Vol}</b></div>
                     <div>當前量比: <b style="color:var(--text-main);">${d.RelVol}</b></div>
                     <div>真實漲幅: <b class="${parseFloat(d.Pct)>0?'up':'down'}">${d.Pct}</b></div>
                     <div>催化強度: <b style="color:var(--yellow);">${d.CatScore} Pts</b></div>
                     <div>真實籌碼: <b style="color:var(--text-main);">${d.Float}</b></div>
-                    <div style="border-top: 1px dashed var(--border); grid-column: 1 / -1; margin-top: 5px; padding-top: 10px;">
-                        動態停損: <b style="color:var(--red); font-size:14px;">$${(d.StopLoss||0).toFixed(2)}</b> <span style="color:var(--text-muted); font-size:11px;">(根據最新 VCP 基座計算)</span>
+                    <div style="border-top: 1px solid var(--border); grid-column: 1 / -1; margin-top: 5px; padding-top: 10px;">
+                        動態風控停損: <b style="color:var(--red); font-size:14px;">$${(d.StopLoss||0).toFixed(2)}</b>
                     </div>
                 </div>
                 
@@ -243,13 +311,18 @@
                     let colorCls = n.is_today ? "color: var(--yellow);" : "color: var(--text-muted);";
                     html += `<div style="margin-bottom:15px; text-align:left;">
                         <div style="${colorCls} font-size:11px; margin-bottom:4px; font-weight:bold;">${n.time} 美東 | 戰鬥權重: ${n.score}</div>
-                        <a href="${n.link}" target="_blank" style="text-decoration:none; color:var(--text-main); font-size:13.5px; line-height:1.5;">${n.title}</a>
+                        <a href="${n.link}" target="_blank" style="text-decoration:none; color:var(--blue); font-size:13.5px; line-height:1.5;">${n.title}</a>
                     </div>`;
                 });
             }
             document.getElementById('detail-list').innerHTML = html + `</div>`;
         }
-        window.onload = () => { refresh(); };
+        
+        // 頁面載入完成後初始化
+        window.onload = () => { 
+            initWindowManager(); 
+            refresh(); 
+        };
     </script>
 </body>
 </html>
