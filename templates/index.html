@@ -2,107 +2,146 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>Sniper V24.4 - Central Command</title>
-    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sniper V40 - Tactical Command</title>
     <style>
-        :root { --yellow: #ffea00; --purple: #a371f7; --green: #3fb950; --red: #f85149; --bg: #050811; --panel: #0d1117; --border: #30363d; --orange: #ffa500; }
-        body { margin: 0; background: var(--bg); color: #c9d1d9; font-family: sans-serif; min-height: 150vh; overflow-x: hidden; }
-        .window { position: absolute; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.5); z-index: 10; min-width: 250px; }
-        .title-bar { background: #0d1f3d; color: white; padding: 10px; font-size: 11px; font-weight: bold; cursor: move; }
-        .content { flex: 1; padding: 5px; overflow-y: auto; font-size: 10.5px; }
+        /* 🎨 現代化 FinTech 色彩定義 */
+        :root { 
+            --yellow: #e3b341; /* 柔和的高光黃 */
+            --purple: #a371f7; /* 參考圖的標誌紫 */
+            --green: #3fb950; 
+            --red: #f85149; 
+            --blue: #58a6ff;
+            --bg-base: #0d1117; /* 深邃底色 */
+            --bg-surface: #161b22; /* 面板底色 */
+            --border: #30363d; /* 低調邊框 */
+            --text-main: #c9d1d9; /* 柔和白字 */
+            --text-muted: #8b949e; /* 灰字 */
+        }
+        
+        body { 
+            margin: 0; background: var(--bg-base); color: var(--text-main); 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            overflow-x: hidden;
+            padding-top: 60px; /* 留給頂部導航欄的空間 */
+        }
+
+        /* 📡 頂部戰術導航欄 */
+        #tactical-bar { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 50px;
+            background: rgba(13, 17, 23, 0.95); backdrop-filter: blur(5px);
+            border-bottom: 1px solid var(--border); z-index: 9999; 
+            display: flex; align-items: center; padding: 0 15px; box-sizing: border-box;
+        }
+
+        /* 🔘 幽靈按鈕設計 (防刺眼) */
+        .ghost-btn {
+            background: transparent; border: 1px solid var(--border); color: var(--text-main);
+            padding: 6px 15px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold;
+            transition: all 0.2s ease; touch-action: manipulation; /* 手機點擊優化 */
+        }
+        .ghost-btn:hover, .ghost-btn.active { background: rgba(163, 113, 247, 0.2); border-color: var(--purple); color: #fff; }
+        .ghost-btn.danger { border-color: var(--red); color: var(--red); }
+        .ghost-btn.danger:hover { background: rgba(248, 81, 73, 0.2); color: #fff; }
+
+        /* 📱 響應式網格佈局 (RWD) */
+        .dashboard-container {
+            display: grid; gap: 15px; padding: 15px; box-sizing: border-box;
+            grid-template-columns: 1fr; /* 手機版：單欄向下堆疊 */
+        }
+        @media (min-width: 1024px) {
+            .dashboard-container { grid-template-columns: 1.8fr 1fr; /* PC版：左大右小雙欄 */ }
+        }
+
+        /* 🔲 現代化卡片面板 */
+        .panel { 
+            background: var(--bg-surface); border: 1px solid var(--border); 
+            border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        .panel-header { 
+            background: rgba(255,255,255,0.02); border-bottom: 1px solid var(--border); 
+            padding: 12px 15px; font-size: 13px; font-weight: bold; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .panel-content { padding: 0; overflow-y: auto; max-height: 500px; font-size: 12px; }
+
+        /* 📊 無邊界表格設計 */
         table { width: 100%; border-collapse: collapse; }
-        th, td { border-bottom: 1px solid #21262d; padding: 10px 5px; text-align: left; }
-        .status-indicator { width: 7px; padding: 0 !important; }
-        tr.tr-yellow { background: rgba(255, 234, 0, 0.2); } .tr-yellow .status-indicator { background: var(--yellow); }
-        tr.tr-purple { background: rgba(163, 113, 247, 0.2); } .tr-purple .status-indicator { background: var(--purple); }
-        tr.tr-blue { background: rgba(88, 166, 255, 0.15); } .tr-blue .status-indicator { background: #58a6ff; }
-        tr.tr-green { background: rgba(63, 185, 80, 0.1); } .tr-green .status-indicator { background: var(--green); }
-        tr.tr-red { background: rgba(248, 81, 73, 0.1); } .tr-red .status-indicator { background: var(--red); }
-        .sym { font-weight: bold; color: #58a6ff; font-size: 13px; cursor: pointer; }
-        .float-val { color: #8b949e; font-weight: bold; } /* 獨立流通股的顏色 */
-        .up { color: var(--green); font-weight: bold; } .down { color: var(--red); font-weight: bold; }
-        .news-today { color: var(--orange) !important; font-weight: bold; }
-        #tactical-bar { position: fixed; top: 0; left: 0; width: 100%; background: #0d1f3d; padding: 10px 20px; border-bottom: 1px solid var(--border); z-index: 9999; display: flex; align-items: center; }
+        th { background: rgba(255,255,255,0.01); color: var(--text-muted); font-weight: 500; font-size: 11px; text-transform: uppercase; position: sticky; top: 0; z-index: 10; }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid rgba(48, 54, 61, 0.5); }
+        tr { transition: background 0.1s ease; cursor: pointer; }
+        tr:hover { background: rgba(255,255,255,0.03); }
+
+        /* 💡 狀態顏色指示器 */
+        .status-indicator { width: 4px; padding: 0 !important; }
+        tr.tr-yellow .status-indicator { background: var(--yellow); }
+        tr.tr-purple .status-indicator { background: var(--purple); }
+        tr.tr-blue .status-indicator { background: var(--blue); }
+        tr.tr-green .status-indicator { background: var(--green); }
+        tr.tr-vcp { background: rgba(227, 179, 65, 0.08); } /* VCP 光暈背景 */
+
+        .sym { font-weight: bold; color: var(--text-main); font-size: 14px; }
+        .up { color: var(--green); } .down { color: var(--red); }
+        .float-val { color: var(--text-muted); }
+        .signal-text { font-weight: bold; }
     </style>
 </head>
 <body>
     <div id="tactical-bar">
-        <button id="audio-btn" style="background:#f85149; color:white; border:none; padding:6px 15px; border-radius:4px; cursor:pointer; margin-right: 20px;" onclick="unlockAudio()">🔇 啟用音效</button>
-        <div style="font-size: 14px; font-weight: bold; color: #58a6ff; font-family: monospace;">
-            ⌚ 中央標準時間 (TPE): <span id="sys-clock">--:--:--</span>
+        <button id="audio-btn" class="ghost-btn danger" style="margin-right: 15px;" onclick="unlockAudio()">🔇 點擊啟用音效</button>
+        <div style="font-size: 13px; color: var(--text-muted); font-family: monospace;">
+            TPE: <span id="sys-clock" style="color: var(--text-main); font-weight: bold;">--:--:--</span>
         </div>
-        <span id="sys-status" style="margin-left:auto; font-size:11px;">📡 系統初始化...</span>
+        <span id="sys-status" style="margin-left:auto; font-size:11px; color: var(--text-muted);">📡 系統初始化...</span>
     </div>
 
-    <div id="win-log" class="window" style="top:60px; left:10px; width:750px; height:450px;">
-        <div class="title-bar">🚀 狙擊歷史日誌 (淨化版：僅顯示點火與滑行)</div>
-        <div class="content">
-            <table id="surge-log-table">
-                <thead>
-                    <tr><th class="status-indicator"></th><th>時間</th><th>代碼</th><th>流通股</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th><th>訊號</th></tr>
-                </thead>
-                <tbody id="surge-log-body"></tbody>
-            </table>
-        </div>
-    </div>
+    <div class="dashboard-container">
+        <div style="display: flex; flex-direction: column; gap: 15px;">
+            <div class="panel" style="flex: 1;">
+                <div class="panel-header">🚀 即時動能日誌</div>
+                <div class="panel-content">
+                    <table id="surge-log-table">
+                        <thead><tr><th class="status-indicator"></th><th>時間</th><th>代碼</th><th>流通股</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th><th>訊號</th></tr></thead>
+                        <tbody id="surge-log-body"></tbody>
+                    </table>
+                </div>
+            </div>
 
-    <div id="win-rank" class="window" style="top:520px; left:10px; width:600px; height:450px;">
-        <div class="title-bar">🏆 全市場超新星排行 ($1-$30)</div>
-        <div class="content">
-            <table>
-                <thead>
-                    <tr><th class="status-indicator"></th><th>代碼</th><th>流通股</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th></tr>
-                </thead>
-                <tbody id="rank-list"></tbody>
-            </table>
+            <div class="panel">
+                <div class="panel-header">🏆 盤前/盤中全市場排行 ($1-$30)</div>
+                <div class="panel-content" style="max-height: 300px;">
+                    <table>
+                        <thead><tr><th class="status-indicator"></th><th>代碼</th><th>流通股</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th></tr></thead>
+                        <tbody id="rank-list"></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
-    </div>
 
-    <div id="win-detail" class="window" style="top:60px; left:770px; width:430px; height:910px;">
-        <div class="title-bar">📊 詳情分析與催化劑鑑定 (雙擊圖表)</div>
-        <div class="content" id="detail-list">單擊代碼加載數據...</div>
+        <div class="panel">
+            <div class="panel-header">📊 深度分析與動態風控</div>
+            <div class="panel-content" id="detail-list" style="padding: 15px; max-height: none;">
+                <div style="text-align:center; color: var(--text-muted); padding: 40px 0;">單擊左側代碼載入戰報...</div>
+            </div>
+        </div>
     </div>
 
     <script>
         let brain = {}, activeSym = "", audioOn = false, played = {};
         const sounds = { spark: new Audio('/static/sounds/spark.mp3'), nova: new Audio('/static/sounds/nova.mp3') };
 
-        function unlockAudio() { audioOn = true; document.getElementById('audio-btn').style.background = "#3fb950"; document.getElementById('audio-btn').innerText = "🔊 音效已開"; }
+        function unlockAudio() { 
+            audioOn = true; 
+            let btn = document.getElementById('audio-btn');
+            btn.className = "ghost-btn active"; 
+            btn.innerText = "🔊 音效已開"; 
+        }
         function openTW(s) { window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank'); }
 
         setInterval(() => {
             document.getElementById('sys-clock').innerText = new Date().toLocaleTimeString('zh-TW', {timeZone: 'Asia/Taipei', hour12: false});
         }, 1000);
-
-        function initWindowManager() {
-            const wins = ['win-log', 'win-rank', 'win-detail'];
-            wins.forEach(id => {
-                const el = document.getElementById(id);
-                const saved = JSON.parse(localStorage.getItem('layout_' + id));
-                if (saved) {
-                    el.style.width = saved.w + 'px'; el.style.height = saved.h + 'px';
-                    el.style.transform = `translate(${saved.x}px, ${saved.y}px)`;
-                    el.setAttribute('data-x', saved.x); el.setAttribute('data-y', saved.y);
-                }
-                interact(el).draggable({ allowFrom: '.title-bar', onmove: dragM }).resizable({ edges: { left: true, right: true, bottom: true, top: true }, onmove: resM });
-            });
-        }
-        function dragM(e) {
-            const t = e.target; const x = (parseFloat(t.getAttribute('data-x')) || 0) + e.dx; const y = (parseFloat(t.getAttribute('data-y')) || 0) + e.dy;
-            t.style.transform = `translate(${x}px, ${y}px)`; t.setAttribute('data-x', x); t.setAttribute('data-y', y); saveLy();
-        }
-        function resM(e) {
-            const t = e.target; let x = (parseFloat(t.getAttribute('data-x')) || 0); let y = (parseFloat(t.getAttribute('data-y')) || 0);
-            t.style.width = e.rect.width + 'px'; t.style.height = e.rect.height + 'px';
-            x += e.deltaRect.left; y += e.deltaRect.top;
-            t.style.transform = `translate(${x}px, ${y}px)`; t.setAttribute('data-x', x); t.setAttribute('data-y', y); saveLy();
-        }
-        function saveLy() {
-            ['win-log', 'win-rank', 'win-detail'].forEach(id => {
-                const el = document.getElementById(id); const x = parseFloat(el.getAttribute('data-x')) || 0; const y = parseFloat(el.getAttribute('data-y')) || 0;
-                localStorage.setItem('layout_' + id, JSON.stringify({x, y, w: el.offsetWidth, h: el.offsetHeight}));
-            });
-        }
 
         function refresh() {
             fetch('/data?t=' + Date.now())
@@ -110,21 +149,31 @@
                 .then(d => {
                     brain = d;
                     document.getElementById('sys-status').innerText = `📡 後端數據最後更新: ${d.last_update}`;
-                    document.getElementById('sys-status').style.color = "#c9d1d9";
+                    document.getElementById('sys-status').style.color = "var(--text-muted)";
                     
                     let h1 = "";
                     d.surge_log.forEach(r => {
-                        let det = d.details[r.Code];
-                        let icon = det ? (det.IsTrap ? " 💀" : (det.CatScore > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""))) : "";
+                        let det = d.details[r.Code] || {};
+                        let icon = det.IsTrap ? " 💀" : (det.CatScore > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
+                        // 處理 VCP 光暈背景
+                        let rowClass = r.Status ? `tr-${r.Status}` : "";
+                        if (r.Signal && r.Signal.includes("⚡VCP")) rowClass += " tr-vcp";
                         
-                        h1 += `<tr class="tr-${r.Status}" onclick="loadDetail('${r.Code}')">
+                        h1 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')">
                             <td class="status-indicator"></td>
-                            <td>${r.Time}</td>
+                            <td style="color: var(--text-muted);">${r.Time}</td>
                             <td class="sym" ondblclick="openTW('${r.Code}')">${r.Code}${icon}</td>
                             <td class="float-val">${r.Float}</td>
-                            <td>${r.Price}</td><td>${r.RelVol}</td><td>${r.Vol}</td><td class="up">${r.Pct}</td><td style="font-weight:bold;">${r.Signal}</td>
+                            <td>${r.Price}</td><td>${r.RelVol}</td><td>${r.Vol}</td>
+                            <td class="${parseFloat(r.Pct)>0?'up':'down'}">${r.Pct}</td>
+                            <td class="signal-text">${r.Signal}</td>
                         </tr>`;
-                        if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { played[r.SignalTS] = r.SignalTS; sounds[r.Audio].currentTime = 0; sounds[r.Audio].play(); }
+                        
+                        if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { 
+                            played[r.SignalTS] = r.SignalTS; 
+                            sounds[r.Audio].currentTime = 0; 
+                            sounds[r.Audio].play().catch(e=>console.log("Audio play blocked", e)); 
+                        }
                     });
                     document.getElementById('surge-log-body').innerHTML = h1;
 
@@ -139,7 +188,8 @@
                             <td class="status-indicator"></td>
                             <td class="sym" ondblclick="openTW('${r.Code}')">${r.Code}${icon}</td>
                             <td class="float-val">${floatToUse}</td>
-                            <td>${r.Price}</td><td>${rv}</td><td>${r.Vol}</td><td class="up">${r.Pct}</td>
+                            <td>${r.Price}</td><td>${rv}</td><td>${r.Vol}</td>
+                            <td class="${parseFloat(r.Pct)>0?'up':'down'}">${r.Pct}</td>
                         </tr>`;
                     });
                     document.getElementById('rank-list').innerHTML = h2;
@@ -148,7 +198,6 @@
                     setTimeout(refresh, 5000); 
                 })
                 .catch(err => {
-                    console.error("Connection lost:", err);
                     document.getElementById('sys-status').innerText = "⚠️ 網路閃斷，正在自動重新連線...";
                     document.getElementById('sys-status').style.color = "var(--red)";
                     setTimeout(refresh, 5000); 
@@ -157,24 +206,41 @@
 
         function loadDetail(sym) {
             activeSym = sym; const d = brain.details[sym]; if(!d) return;
-            let trapWarn = d.IsTrap ? `<div style="background:maroon; padding:5px; margin-bottom:10px; border-radius:4px; font-weight:bold;">⚠️ 偵測到增發或負面陷阱字眼</div>` : "";
-            let html = `<div style="text-align:center; padding:10px;">${trapWarn}
-                <h2 ondblclick="openTW('${sym}')" class="sym" style="font-size:24px;">${sym} ${d.Price}</h2>
-                <div style="background:#161b22; padding:15px; border-radius:4px; display:grid; grid-template-columns: 1fr 1fr; gap:12px; font-size:12px;">
-                    <div>成交總量: <b style="color:var(--yellow);">${d.Vol}</b></div><div>當前量比: <b>${d.RelVol}</b></div>
-                    <div>真實漲幅: <b class="up">${d.Pct}</b></div><div>催化強度: <b style="color:orange;">${d.CatScore} Pts</b></div>
-                    <div>真實籌碼: <b>${d.Float}</b></div><div>止損參考: <b>$${(d.StopLoss||0).toFixed(2)}</b></div>
-                </div><h3 style="border-left:4px solid #58a6ff; padding-left:10px; margin-top:20px; text-align:left;">🗞️ 即時催化劑戰報</h3>`;
-            (d.NewsList || []).forEach(n => {
-                let colorCls = n.is_today ? "news-today" : "";
-                html += `<div style="margin-bottom:15px; text-align:left; border-bottom:1px solid #21262d; padding-bottom:10px;">
-                    <small class="${colorCls}">${n.time} 美東</small> | <small>Score: ${n.score}</small><br>
-                    <a href="${n.link}" target="_blank" style="text-decoration:none; color:#eee; font-size:13.5px; line-height:1.5;">${n.title}</a>
-                </div>`;
-            });
+            let trapWarn = d.IsTrap ? `<div style="background:rgba(248, 81, 73, 0.2); border: 1px solid var(--red); color: var(--red); padding:8px; margin-bottom:15px; border-radius:6px; font-weight:bold;">⚠️ 偵測到增發或負面陷阱字眼</div>` : "";
+            
+            let html = `<div style="text-align:center;">${trapWarn}
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
+                    <h2 ondblclick="openTW('${sym}')" class="sym" style="font-size:28px; margin:0; cursor:pointer;">${sym} <span style="font-size:20px; color:var(--text-muted);">${d.Price}</span></h2>
+                    <button class="ghost-btn" onclick="openTW('${sym}')">在 TV 中開啟 ↗</button>
+                </div>
+                
+                <div style="background: rgba(0,0,0,0.2); padding:15px; border-radius:6px; display:grid; grid-template-columns: 1fr 1fr; gap:12px; font-size:13px; text-align:left; border: 1px solid var(--border);">
+                    <div>成交總量: <b style="color:var(--text-main);">${d.Vol}</b></div>
+                    <div>當前量比: <b style="color:var(--text-main);">${d.RelVol}</b></div>
+                    <div>真實漲幅: <b class="${parseFloat(d.Pct)>0?'up':'down'}">${d.Pct}</b></div>
+                    <div>催化強度: <b style="color:var(--yellow);">${d.CatScore} Pts</b></div>
+                    <div>真實籌碼: <b style="color:var(--text-main);">${d.Float}</b></div>
+                    <div style="border-top: 1px dashed var(--border); grid-column: 1 / -1; margin-top: 5px; padding-top: 10px;">
+                        動態停損: <b style="color:var(--red); font-size:14px;">$${(d.StopLoss||0).toFixed(2)}</b> <span style="color:var(--text-muted); font-size:11px;">(根據最新 VCP 基座計算)</span>
+                    </div>
+                </div>
+                
+                <h3 style="color: var(--text-muted); font-size:12px; text-transform:uppercase; border-bottom:1px solid var(--border); padding-bottom:8px; margin-top:25px; text-align:left;">🗞️ 即時催化劑情報</h3>`;
+            
+            if (!d.NewsList || d.NewsList.length === 0) {
+                html += `<div style="text-align:left; color:var(--text-muted); font-size: 13px;">尚無今日重大新聞。</div>`;
+            } else {
+                d.NewsList.forEach(n => {
+                    let colorCls = n.is_today ? "color: var(--yellow);" : "color: var(--text-muted);";
+                    html += `<div style="margin-bottom:15px; text-align:left;">
+                        <div style="${colorCls} font-size:11px; margin-bottom:4px; font-weight:bold;">${n.time} 美東 | 戰鬥權重: ${n.score}</div>
+                        <a href="${n.link}" target="_blank" style="text-decoration:none; color:var(--text-main); font-size:13.5px; line-height:1.5;">${n.title}</a>
+                    </div>`;
+                });
+            }
             document.getElementById('detail-list').innerHTML = html + `</div>`;
         }
-        window.onload = () => { initWindowManager(); refresh(); };
+        window.onload = () => { refresh(); };
     </script>
 </body>
 </html>
