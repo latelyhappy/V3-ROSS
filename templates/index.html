@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V40.1 - Tactical Command</title>
+    <title>Sniper V40.2 - Tactical Command</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
@@ -71,12 +71,12 @@
         .sym { font-weight: bold; color: var(--text-main); font-size: 14px; }
         .up { color: var(--green); } .down { color: var(--red); }
         
-        /* 📱 手機響應式覆寫 (螢幕小於 1024px 時強制排列，取消絕對定位) */
+        /* 📱 手機響應式覆寫 */
         @media (max-width: 1024px) {
             body { overflow-y: auto; padding: 60px 10px 10px 10px; }
             .window-panel { 
                 position: relative !important; transform: none !important; 
-                width: 100% !important; height: auto !important; min-height: 300px;
+                width: 100% !important; height: auto !important; min-height: 400px;
                 margin-bottom: 20px; box-sizing: border-box;
             }
             .panel-header { cursor: default; }
@@ -93,7 +93,7 @@
         <span id="sys-status" style="margin-left:auto; font-size:11px; color: var(--text-muted);">📡 系統初始化...</span>
     </div>
 
-    <div id="win-log" class="window-panel" style="width: 700px; height: 350px;">
+    <div id="win-log" class="window-panel" style="width: 700px; height: 650px;">
         <div class="panel-header">
             <span>🚀 即時動能日誌</span>
             <span style="font-size: 10px; font-weight: normal;">(單擊看新聞 / 雙擊開線圖)</span>
@@ -108,7 +108,7 @@
         </div>
     </div>
 
-    <div id="win-rank" class="window-panel" style="width: 500px; height: 400px;">
+    <div id="win-rank" class="window-panel" style="width: 500px; height: 750px;">
         <div class="panel-header">
             <span>🏆 全市場超新星排行 ($1-$30)</span>
             <span style="font-size: 10px; font-weight: normal;">(單擊看新聞 / 雙擊開線圖)</span>
@@ -121,7 +121,7 @@
         </div>
     </div>
 
-    <div id="win-detail" class="window-panel" style="width: 450px; height: 600px;">
+    <div id="win-detail" class="window-panel" style="width: 450px; height: 850px;">
         <div class="panel-header">📊 深度分析與動態風控</div>
         <div class="panel-content" id="detail-list" style="padding: 15px; user-select: text;">
             <div style="text-align:center; color: var(--text-muted); padding: 40px 0;">點擊左側代碼載入戰報...</div>
@@ -132,24 +132,23 @@
         let brain = {}, activeSym = "", audioOn = false, played = {};
         const sounds = { spark: new Audio('/static/sounds/spark.mp3'), nova: new Audio('/static/sounds/nova.mp3') };
 
-        // 🎛️ 視窗記憶與拖曳核心 (interact.js)
+        // 🎛️ 視窗記憶與拖曳核心
         function initWindowManager() {
-            // 如果是手機，則不啟動拖曳系統
             if (window.innerWidth <= 1024) return; 
 
             const wins = ['win-log', 'win-rank', 'win-detail'];
             
-            // 預設佈局座標 (避免第一次載入時重疊)
+            // 💡 更新預設座標與高度 (翻倍版)
             const defaultLayout = {
-                'win-log': {x: 10, y: 60, w: 700, h: 400},
-                'win-rank': {x: 10, y: 470, w: 700, h: 400},
-                'win-detail': {x: 720, y: 60, w: 450, h: 810}
+                'win-log': {x: 10, y: 60, w: 700, h: 650},
+                'win-rank': {x: 720, y: 60, w: 500, h: 750},
+                'win-detail': {x: 1230, y: 60, w: 450, h: 850}
             };
 
             wins.forEach(id => {
                 const el = document.getElementById(id);
-                // 讀取瀏覽器記憶，若無則使用預設
-                let saved = JSON.parse(localStorage.getItem('layout_v40_' + id));
+                // 💡 更改記憶體 Key，強制洗掉您舊版的小視窗記憶
+                let saved = JSON.parse(localStorage.getItem('layout_v40_2_' + id));
                 if (!saved) saved = defaultLayout[id];
 
                 if (saved) {
@@ -165,7 +164,7 @@
                         onmove: dragMoveListener 
                     })
                     .resizable({ 
-                        edges: { left: false, right: true, bottom: true, top: false }, // 允許右下角縮放
+                        edges: { left: false, right: true, bottom: true, top: false },
                         modifiers: [interact.modifiers.restrictSize({min: {width: 300, height: 200}})],
                         onmove: resizeMoveListener 
                     });
@@ -197,7 +196,7 @@
                 const el = document.getElementById(id);
                 const x = parseFloat(el.getAttribute('data-x')) || 0;
                 const y = parseFloat(el.getAttribute('data-y')) || 0;
-                localStorage.setItem('layout_v40_' + id, JSON.stringify({x: x, y: y, w: el.offsetWidth, h: el.offsetHeight}));
+                localStorage.setItem('layout_v40_2_' + id, JSON.stringify({x: x, y: y, w: el.offsetWidth, h: el.offsetHeight}));
             });
         }
 
@@ -208,9 +207,7 @@
             btn.innerText = "🔊 音效已啟用"; 
         }
 
-        function openTW(s) { 
-            window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank'); 
-        }
+        function openTW(s) { window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank'); }
 
         setInterval(() => {
             document.getElementById('sys-clock').innerText = new Date().toLocaleTimeString('zh-TW', {timeZone: 'Asia/Taipei', hour12: false});
@@ -224,7 +221,6 @@
                     document.getElementById('sys-status').innerText = `📡 數據更新: ${d.last_update}`;
                     document.getElementById('sys-status').style.color = "var(--green)";
                     
-                    // 渲染狙擊日誌
                     if (d.surge_log.length > 0) {
                         let h1 = "";
                         d.surge_log.forEach(r => {
@@ -233,7 +229,6 @@
                             let rowClass = r.Status ? `tr-${r.Status}` : "";
                             if (r.Signal && r.Signal.includes("⚡VCP")) rowClass += " tr-vcp";
                             
-                            // 💡 點擊與雙擊事件綁定在整行 (tr) 上
                             h1 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                                 <td class="status-indicator"></td>
                                 <td style="color: var(--text-muted);">${r.Time}</td>
@@ -252,7 +247,6 @@
                         document.getElementById('surge-log-body').innerHTML = h1;
                     }
 
-                    // 渲染排行榜
                     let h2 = "";
                     d.leaderboard.forEach(r => {
                         let det = d.details[r.Code] || {};
@@ -260,7 +254,6 @@
                         let rv = det.RelVol || r.RelVol;
                         let floatToUse = r.Float || det.Float || "-";
                         
-                        // 💡 點擊與雙擊事件綁定在整行 (tr) 上
                         h2 += `<tr class="tr-${det.Status || r.Status}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                             <td class="status-indicator"></td>
                             <td class="sym">${r.Code}${icon}</td>
@@ -281,11 +274,28 @@
                 });
         }
 
+        // 💡 [修復核心] 智能墊檔機制：當後端還沒掃出深度數據時，用排行榜基本數據呈現
         function loadDetail(sym) {
-            activeSym = sym; const d = brain.details[sym]; if(!d) return;
+            activeSym = sym; 
+            let d = brain.details[sym]; 
+            let rankData = brain.leaderboard ? brain.leaderboard.find(x => x.Code === sym) : null;
+
+            // 完全沒資料就跳出
+            if (!d && !rankData) return; 
+
+            // 如果後端 K 線還沒跑完 (如盤前)，拿排行榜的資料來墊檔
+            if (!d && rankData) {
+                d = {
+                    Price: rankData.Price, Pct: rankData.Pct, Vol: rankData.Vol, 
+                    RelVol: "資料建立中...", Float: rankData.Float || "-", 
+                    StopLoss: 0, CatScore: "未掃描", IsTrap: false, NewsList: []
+                };
+            }
+
             let trapWarn = d.IsTrap ? `<div style="background:rgba(248, 81, 73, 0.2); border: 1px solid var(--red); color: var(--red); padding:8px; margin-bottom:15px; border-radius:6px; font-weight:bold;">⚠️ 偵測到 S-1/S-3 增發或陷阱字眼</div>` : "";
+            let waitingMsg = (!brain.details[sym]) ? `<div style="color:var(--yellow); font-size:11px; margin-bottom:10px;">⚠️ K線資料尚未齊全 (可能為盤前)，部分進階數據與新聞待補...</div>` : "";
             
-            let html = `<div style="text-align:center;">${trapWarn}
+            let html = `<div style="text-align:center;">${trapWarn}${waitingMsg}
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
                     <h2 ondblclick="openTW('${sym}')" class="sym" style="font-size:28px; margin:0; cursor:pointer;">${sym} <span style="font-size:20px; color:var(--text-muted);">${d.Price}</span></h2>
                     <button class="ghost-btn" onclick="openTW('${sym}')">在 TV 中開啟 ↗</button>
@@ -305,7 +315,7 @@
                 <h3 style="color: var(--text-muted); font-size:12px; text-transform:uppercase; border-bottom:1px solid var(--border); padding-bottom:8px; margin-top:25px; text-align:left;">🗞️ 即時催化劑情報</h3>`;
             
             if (!d.NewsList || d.NewsList.length === 0) {
-                html += `<div style="text-align:left; color:var(--text-muted); font-size: 13px;">尚無今日重大新聞。</div>`;
+                html += `<div style="text-align:left; color:var(--text-muted); font-size: 13px;">${(!brain.details[sym]) ? "掃描排隊中..." : "尚無今日重大新聞。"}</div>`;
             } else {
                 d.NewsList.forEach(n => {
                     let colorCls = n.is_today ? "color: var(--yellow);" : "color: var(--text-muted);";
@@ -318,7 +328,6 @@
             document.getElementById('detail-list').innerHTML = html + `</div>`;
         }
         
-        // 頁面載入完成後初始化
         window.onload = () => { 
             initWindowManager(); 
             refresh(); 
