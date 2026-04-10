@@ -170,26 +170,33 @@ def scanner_engine():
                 try:
                     time.sleep(1.0)
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
-                    if df is None or df.empty or len(df) < 25: continue
+                    
+                    # 💡 放寬安全鎖：只要有 10 根 K 線就可以開始掃描 (適合凌晨盤前)
+                    if df is None or df.empty or len(df) < 10: continue
 
                     p_live = float(df['close'].iloc[-1])
                     p_prev = float(df['close'].iloc[-2])
                     v_live = float(df['volume'].iloc[-1])
                     v_prev = float(df['volume'].iloc[-2])
-                    avg_vol = df['volume'].iloc[-12:-2].mean()
+                    
+                    # 💡 動態回溯：如果 K 線不夠 12 根，就用現有長度算平均量
+                    lookback = min(12, len(df))
+                    avg_vol = df['volume'].iloc[-lookback:-2].mean() if lookback > 2 else df['volume'].iloc[-2]
                     
                     rel_vol_live = round(v_live / avg_vol, 2) if avg_vol > 0 else 1.0
                     rel_vol_prev = round(v_prev / avg_vol, 2) if avg_vol > 0 else 1.0
                     rel_vol_display = max(rel_vol_live, rel_vol_prev) 
                     
-                    # 💡 [V40] 波動率 (ATR) 計算
+                    daily_vol = int(df['volume'].sum())
+                    
+                    # 💡 [V40] 波動率 (ATR) 計算 (加入 min_periods 防止 K 線不足時當機)
                     df['tr'] = pd.concat([
                         df['high'] - df['low'],
                         (df['high'] - df['close'].shift(1)).abs(),
                         (df['low'] - df['close'].shift(1)).abs()
                     ], axis=1).max(axis=1)
-                    df['atr5'] = df['tr'].rolling(5).mean()
-                    df['atr20'] = df['tr'].rolling(20).mean()
+                    df['atr5'] = df['tr'].rolling(5, min_periods=3).mean()
+                    df['atr20'] = df['tr'].rolling(20, min_periods=5).mean()
                     atr5 = df['atr5'].iloc[-1]
                     atr20 = df['atr20'].iloc[-1]
 
