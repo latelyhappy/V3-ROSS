@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V40.3 - Tactical Command</title>
+    <title>Sniper V40.4 - Tactical Command</title>
+    <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
             --yellow: #e3b341; --purple: #a371f7; --green: #3fb950; --red: #f85149; --blue: #58a6ff;
@@ -14,7 +15,6 @@
         body { 
             margin: 0; background: var(--bg-base); color: var(--text-main); 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-            /* 💡 允許整體頁面上下滾動，以容納 1.5 倍高度 */
             overflow-y: auto; overflow-x: hidden;
             padding-top: 50px; user-select: none; 
         }
@@ -33,42 +33,41 @@
         }
         .ghost-btn:hover, .ghost-btn.active { background: rgba(163, 113, 247, 0.2); border-color: var(--purple); color: #fff; }
 
-        /* 🔲 專業網格佈局 (完美對齊，不跑位) */
-        .dashboard-grid {
-            display: grid;
-            /* 左側佔滿剩餘空間，右側固定 480px 寬度 */
-            grid-template-columns: minmax(600px, 1fr) 480px; 
-            /* 分成上下兩列，平分高度 */
-            grid-template-rows: 1fr 1fr; 
-            gap: 20px;
-            padding: 20px;
-            /* 💡 整體高度拉長至螢幕的 1.5 倍 (150vh)，最低不小於 1200px */
-            height: 150vh; 
-            min-height: 1200px;
+        /* 🖥️ 戰術桌面 (提供足夠大的空間讓您拖曳視窗) */
+        #workspace {
+            position: relative;
+            width: 100vw;
+            min-height: 150vh; /* 1.5 倍高度戰場 */
+            padding: 10px;
             box-sizing: border-box;
+            overflow: hidden;
         }
 
-        /* 指定每個面板在網格中的位置 */
-        #win-log { grid-column: 1 / 2; grid-row: 1 / 2; }    /* 左上 */
-        #win-rank { grid-column: 1 / 2; grid-row: 2 / 3; }   /* 左下 */
-        #win-detail { grid-column: 2 / 3; grid-row: 1 / 3; } /* 右側，橫跨上下兩列 */
-
+        /* 🔲 自由視窗面板 */
         .window-panel { 
             background: var(--bg-surface); border: 1px solid var(--border); 
             border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; 
-            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.6); position: absolute; /* 絕對定位以利拖曳 */
+            touch-action: none;
+        }
+
+        /* 💡 視窗右下角的「縮放把手」視覺提示 */
+        .window-panel::after {
+            content: ''; position: absolute; bottom: 0; right: 0;
+            width: 15px; height: 15px; cursor: se-resize;
+            background: linear-gradient(135deg, transparent 50%, rgba(139, 148, 158, 0.4) 50%);
+            z-index: 20;
         }
         
         .panel-header { 
             background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border); 
             padding: 12px 15px; font-size: 13px; font-weight: bold; color: var(--text-muted);
-            display: flex; justify-content: space-between; align-items: center;
+            cursor: move; /* 拖曳手把 */ display: flex; justify-content: space-between; align-items: center;
         }
         
         /* 內部滾動區塊 */
         .panel-content { 
-            flex: 1; /* 💡 自動拉伸填滿 1.5 倍的高度 */
-            overflow-y: auto; overflow-x: hidden; padding: 0; position: relative;
+            flex: 1; overflow-y: auto; overflow-x: hidden; padding: 0; position: relative;
         }
 
         /* 📊 固定表頭表格設計 */
@@ -94,14 +93,15 @@
         .up { color: var(--green); font-weight: bold;} 
         .down { color: var(--red); font-weight: bold;}
         
-        /* 📱 手機響應式覆寫 */
+        /* 📱 手機響應式覆寫 (手機無法精確拖曳，強制改為直列排版) */
         @media (max-width: 1024px) {
-            .dashboard-grid { 
-                grid-template-columns: 1fr; 
-                grid-template-rows: auto auto auto; 
-                height: auto; 
+            #workspace { display: flex; flex-direction: column; gap: 20px; }
+            .window-panel { 
+                position: relative !important; transform: none !important; 
+                width: 100% !important; height: 600px !important; margin-bottom: 20px;
             }
-            #win-log, #win-rank, #win-detail { grid-column: 1 / 2; grid-row: auto; height: 600px; }
+            .panel-header { cursor: default; }
+            .window-panel::after { display: none; } /* 隱藏縮放把手 */
         }
     </style>
 </head>
@@ -112,10 +112,10 @@
             TPE: <span id="sys-clock" style="color: var(--text-main); font-weight: bold;">--:--:--</span>
         </div>
         <span id="sys-status" style="margin-left:auto; font-size:11px; color: var(--text-muted);">📡 系統初始化...</span>
+        <span id="save-status" style="margin-left: 15px; font-size:11px; color: var(--blue); opacity: 0; transition: opacity 0.5s;">💾 排版已自動儲存</span>
     </div>
 
-    <div class="dashboard-grid">
-        
+    <div id="workspace">
         <div id="win-log" class="window-panel">
             <div class="panel-header">
                 <span>🚀 即時動能日誌</span>
@@ -150,12 +150,82 @@
                 <div style="text-align:center; color: var(--text-muted); padding: 60px 0;">點擊左側代碼載入戰報...</div>
             </div>
         </div>
-        
     </div>
 
     <script>
         let brain = {}, activeSym = "", audioOn = false, played = {};
         const sounds = { spark: new Audio('/static/sounds/spark.mp3'), nova: new Audio('/static/sounds/nova.mp3') };
+
+        // 🎛️ 視窗記憶與拖曳核心 (interact.js)
+        function initWindowManager() {
+            if (window.innerWidth <= 1024) return; // 手機禁用拖曳
+
+            const wins = ['win-log', 'win-rank', 'win-detail'];
+            
+            // 預設舒適的大尺寸排版 (如果沒有記憶體記錄)
+            const defaultLayout = {
+                'win-log': {x: 15, y: 15, w: 750, h: 450},
+                'win-rank': {x: 15, y: 485, w: 750, h: 550},
+                'win-detail': {x: 785, y: 15, w: 500, h: 1020}
+            };
+
+            wins.forEach(id => {
+                const el = document.getElementById(id);
+                // 讀取瀏覽器記憶 (更改 KEY 強制載入新預設)
+                let saved = JSON.parse(localStorage.getItem('sniper_v40_4_layout_' + id));
+                if (!saved) saved = defaultLayout[id];
+
+                // 套用尺寸與座標
+                el.style.width = saved.w + 'px'; 
+                el.style.height = saved.h + 'px';
+                el.style.transform = `translate(${saved.x}px, ${saved.y}px)`;
+                el.setAttribute('data-x', saved.x); 
+                el.setAttribute('data-y', saved.y);
+
+                interact(el)
+                    .draggable({ 
+                        allowFrom: '.panel-header', 
+                        modifiers: [interact.modifiers.restrictRect({restriction: '#workspace'})],
+                        listeners: { move: dragMoveListener, end: saveLayout } // 💡 結束拖曳時才存檔
+                    })
+                    .resizable({ 
+                        edges: { left: false, right: true, bottom: true, top: false },
+                        modifiers: [interact.modifiers.restrictSize({min: {width: 400, height: 300}})],
+                        listeners: { move: resizeMoveListener, end: saveLayout } // 💡 結束縮放時才存檔
+                    });
+            });
+        }
+
+        function dragMoveListener(event) {
+            const target = event.target;
+            const x = (parseFloat(target.getAttribute('data-x')) || 0) + event.dx;
+            const y = (parseFloat(target.getAttribute('data-y')) || 0) + event.dy;
+            target.style.transform = `translate(${x}px, ${y}px)`;
+            target.setAttribute('data-x', x); target.setAttribute('data-y', y);
+        }
+
+        function resizeMoveListener(event) {
+            const target = event.target;
+            let x = (parseFloat(target.getAttribute('data-x')) || 0);
+            let y = (parseFloat(target.getAttribute('data-y')) || 0);
+            target.style.width = event.rect.width + 'px';
+            target.style.height = event.rect.height + 'px';
+            target.style.transform = `translate(${x}px, ${y}px)`;
+            target.setAttribute('data-x', x); target.setAttribute('data-y', y);
+        }
+
+        function saveLayout() {
+            ['win-log', 'win-rank', 'win-detail'].forEach(id => {
+                const el = document.getElementById(id);
+                const x = parseFloat(el.getAttribute('data-x')) || 0;
+                const y = parseFloat(el.getAttribute('data-y')) || 0;
+                localStorage.setItem('sniper_v40_4_layout_' + id, JSON.stringify({x: x, y: y, w: el.offsetWidth, h: el.offsetHeight}));
+            });
+            // 閃爍儲存成功提示
+            let saveIndicator = document.getElementById('save-status');
+            saveIndicator.style.opacity = 1;
+            setTimeout(() => { saveIndicator.style.opacity = 0; }, 2000);
+        }
 
         function unlockAudio() { 
             audioOn = true; 
@@ -282,7 +352,10 @@
             document.getElementById('detail-list').innerHTML = html + `</div>`;
         }
         
-        window.onload = () => { refresh(); };
+        window.onload = () => { 
+            initWindowManager(); 
+            refresh(); 
+        };
     </script>
 </body>
 </html>
