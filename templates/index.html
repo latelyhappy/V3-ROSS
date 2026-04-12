@@ -83,7 +83,7 @@
 <body>
     <div id="tactical-bar">
         <button id="audio-btn" class="ghost-btn" style="border-color:var(--red); color:var(--red);" onclick="unlockAudio()">🔇 啟用音效</button>
-        <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 隱藏 ETF</button>
+        <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 顯示 ETF</button>
         <button class="ghost-btn" onclick="resetLayout()">🔄 重置版面</button>
         <div style="font-size: 13px; color: var(--text-muted); font-family: monospace; margin-left:10px;">
             TPE: <span id="sys-clock" style="color: var(--text-main); font-weight: bold;">--:--:--</span>
@@ -195,9 +195,18 @@
         function toggleETF() { 
             showETF = !showETF; 
             let btn = document.getElementById('etf-btn');
-            if (showETF) { btn.innerText = "🔘 顯示 ETF"; btn.classList.add("active"); } 
-            else { btn.innerText = "🔘 隱藏 ETF"; btn.classList.remove("active"); }
-            if (Object.keys(brain).length > 0) refreshUI(brain); // 立即重新渲染
+            if (showETF) { 
+                // 當 ETF 被打開時，按鈕變成紅色並提示「隱藏」
+                btn.innerText = "🔘 隱藏 ETF"; 
+                btn.style.borderColor = "var(--red)";
+                btn.style.color = "var(--red)";
+            } else { 
+                // 當 ETF 被隱藏時 (預設狀態)，按鈕恢復原狀並提示「顯示」
+                btn.innerText = "🔘 顯示 ETF"; 
+                btn.style.borderColor = "var(--border)";
+                btn.style.color = "var(--text-main)";
+            }
+            if (Object.keys(brain).length > 0) refreshUI(brain); 
         }
         function unlockAudio() { 
             audioOn = true; 
