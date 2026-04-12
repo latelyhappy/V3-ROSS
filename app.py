@@ -10,7 +10,7 @@ from flask import Flask, jsonify, render_template
 from deep_translator import GoogleTranslator
 
 # ==========================================
-# 🛠️ 戰略設定與全局記憶體 (V41 引擎)
+# 🛠️ 戰略設定與全局記憶體 (V41.1 終極引擎)
 # ==========================================
 TW_USERNAME = os.getenv('TW_USERNAME', 'guest') 
 TW_PASSWORD = os.getenv('TW_PASSWORD', 'guest')
@@ -18,12 +18,12 @@ PORT = int(os.getenv('PORT', 5000))
 TZ_TW = pytz.timezone('Asia/Taipei')
 TZ_NY = pytz.timezone('America/New_York')
 
-# 💡 [V41 升級] 純英文極速軍火庫
+# 💡 [V41.1] 純英文極速軍火庫
 CATALYST_ARMORY = {
-    "LEVEL_RED": {"FDA": 10, "APPROVAL": 10, "ACQUISITION": 10, "BUYOUT": 10, "MERGER": 10, "CONTRACT": 10, "SQUEEZE": 9},
-    "LEVEL_ORANGE": {"EARNINGS": 7, "BEAT": 7, "PHASE 3": 7, "PHASE III": 7, "AI": 6, "ROBOT": 6, "HUMANOID": 6},
-    "LEVEL_YELLOW": {"PATENT": 5, "CLINICAL": 5, "CHIP": 5},
-    "LEVEL_BLACK": {"OFFERING": -30, "DILUTION": -30, "BANKRUPTCY": -50, "CHAPTER 11": -50, "DEFAULT": -20, "DELISTING": -30}
+    'RED': {'keywords': ['FDA', 'APPROVAL', 'ACQUISITION', 'MERGER', 'BUYOUT', 'CONTRACT', 'SQUEEZE'], 'score': 10},
+    'ORANGE': {'keywords': ['EARNINGS', 'BEAT', 'PHASE 3', 'PHASE III', 'AI', 'ARTIFICIAL INTELLIGENCE', 'ROBOT', 'HUMANOID'], 'score': 7},
+    'YELLOW': {'keywords': ['PATENT', 'CLINICAL', 'CHIP', 'SEMICONDUCTOR'], 'score': 5},
+    'BLACK': {'keywords': ['OFFERING', 'DIRECT OFFERING', 'PUBLIC OFFERING', 'BANKRUPTCY', 'DEFAULT', 'DELISTING'], 'score': -50}
 }
 
 MASTER_BRAIN = {"surge_log": [], "details": {}, "leaderboard": [], "top_catalysts": [], "last_update": ""}
@@ -39,9 +39,9 @@ def format_vol(n):
     if n >= 1_000: return f"{n/1_000:.1f}K"
     return str(int(n))
 
-# --- 🛰️ SEC EDGAR 陷阱掃描 ---
-def check_sec_edgar_traps(ticker):
-    headers = {'User-Agent': 'Sniper_Bot_V41/1.0 (contact@yourdomain.com)'}
+# --- 🛰️ SEC EDGAR 陷阱雷達 (精準打擊) ---
+def check_sec_fatal_traps(ticker):
+    headers = {'User-Agent': 'Sniper_Bot_V41/1.1 (contact@yourdomain.com)'}
     url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=&output=atom"
     try:
         res = requests.get(url, headers=headers, timeout=3)
@@ -51,12 +51,13 @@ def check_sec_edgar_traps(ticker):
                 title_elem = entry.find('{http://www.w3.org/2005/Atom}title')
                 if title_elem is not None and title_elem.text:
                     title = title_elem.text.upper()
-                    # 💡 [V41 升級] 解除 8-K 誤殺，僅攔截實質增發
-                    if any(trap in title for trap in ['S-1', 'S-3', '1-A']): return True
+                    # 💡 解除 8-K 誤殺，僅攔截實質增發稀釋
+                    if any(trap in title for trap in ['S-1', 'S-3', 'F-1', 'F-3', '1-A']): 
+                        return True
         return False
     except: return False
 
-# --- 📰 新聞掃描與評分 ---
+# --- 📰 新聞掃描與極速評分 (非同步降級防護) ---
 def fetch_and_score_news(ticker, cell, stats):
     now = time.time()
     if ticker in news_cache and (now - news_cache[ticker] < 900): return
@@ -70,25 +71,29 @@ def fetch_and_score_news(ticker, cell, stats):
             articles = []; total_score = 0; has_black = False
             
             for item in root.findall('./channel/item')[:5]:
-                raw_t = item.find('title').text.upper()
+                raw_t = item.find('title').text
+                raw_t_upper = raw_t.upper()
                 dt = parsedate_to_datetime(item.find('pubDate').text).astimezone(TZ_NY)
                 is_today = (dt.date() == datetime.now(TZ_NY).date())
                 
+                # 💡 [步驟一：極速純英文評分]
                 score = 0
-                for lv, kw_dict in CATALYST_ARMORY.items():
-                    for kw, val in kw_dict.items():
-                        if kw in raw_t:
-                            score += val
-                            if lv == "LEVEL_BLACK": has_black = True
+                for kw in CATALYST_ARMORY['BLACK']['keywords']:
+                    if kw in raw_t_upper: has_black = True; score = -50; break
+                
+                if not has_black:
+                    for lvl in ['RED', 'ORANGE', 'YELLOW']:
+                        for kw in CATALYST_ARMORY[lvl]['keywords']:
+                            if kw in raw_t_upper: score += CATALYST_ARMORY[lvl]['score']
                 
                 total_score += score if is_today else 0
                 
-                # 💡 [V41 升級] 翻譯降級防護
-                try: zh_t = translator.translate(item.find('title').text)
-                except: zh_t = "Translating..." 
+                # 💡 [步驟二：背景翻譯 (若失敗則傳空字串，交由前端降級)]
+                try: zh_t = translator.translate(raw_t)
+                except: zh_t = "" 
                     
                 articles.append({
-                    "ticker": ticker, "title": zh_t, "raw_title": item.find('title').text,
+                    "ticker": ticker, "title": zh_t, "raw_title": raw_t,
                     "link": item.find('link').text, "time": dt.strftime("%H:%M"), 
                     "is_today": is_today, "score": score
                 })
@@ -103,7 +108,6 @@ def get_tactical_status(ticker):
     tracker = STATE_TRACKER.get(ticker, {})
     state = tracker.get('state', 'None')
     if state == 'VCP': return f"⚡ VCP 壓縮中 ({tracker.get('duration', 0)}m)"
-    
     det = MASTER_BRAIN["details"].get(ticker, {})
     sig = det.get('Signal', '')
     if '🔥' in sig: return "🔥 已點火"
@@ -111,25 +115,26 @@ def get_tactical_status(ticker):
     if '💎' in sig: return "💎 趨勢滑行"
     return "⏳ 潛伏中"
 
-# --- 🛰️ 情報聚合器 (模組六) ---
-def build_top_catalysts():
+# --- 🛰️ 情報聚合器 (萃取重磅新聞) ---
+def extract_top_catalysts():
     top_list = []
     for ticker, det in MASTER_BRAIN["details"].items():
         score = det.get("CatScore", 0)
         is_trap = det.get("IsTrap", False)
         news_list = det.get("NewsList", [])
         
-        # 💡 [V41] 嚴格紀律：Score >= 6 且 無陷阱 且 今天有新聞
+        # 嚴格紀律：Score >= 6 且 無陷阱 且 今天有新聞
         if score >= 6 and not is_trap and news_list and news_list[0]['is_today']:
             latest = news_list[0]
             top_list.append({
                 "time": latest["time"],
                 "ticker": ticker,
                 "score": score,
-                "headline": latest["title"],
+                "headline": latest["title"],      # 若為空，前端會處理
                 "raw_headline": latest["raw_title"],
                 "status": get_tactical_status(ticker)
             })
+    # 按分數高低排序，同分看時間
     return sorted(top_list, key=lambda x: (x['score'], x['time']), reverse=True)
 
 # --- 🛰️ TV 盤前雷達 ---
@@ -139,7 +144,7 @@ def update_dynamic_watchlist():
         url = "https://scanner.tradingview.com/america/scan"
         payload = {
             "filter": [
-                {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, # 💡 [V41] 解鎖 ETF
+                {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, # 解鎖 ETF
                 {"left": "exchange", "operation": "in_range", "right": ["AMEX", "NASDAQ", "NYSE"]},
                 {"left": "premarket_close", "operation": "in_range", "right": [1, 30]},
                 {"left": "premarket_change", "operation": "nempty"}
@@ -157,13 +162,11 @@ def update_dynamic_watchlist():
         full_pool = []
         for item in data.get('data', []):
             sym = item['d'][0]
-            pre_price = item['d'][1] 
-            reg_price = item['d'][2]
-            price = pre_price if pre_price is not None else reg_price
+            price = item['d'][1] if item['d'][1] is not None else item['d'][2]
             pct = item['d'][3]
             vol = item['d'][4]
             mc = item['d'][5]
-            asset_type = item['d'][6] # 取得類型 (stock/fund)
+            asset_type = item['d'][6]
             
             if price and pct is not None:
                 float_m = (mc / price) / 1_000_000 if mc else 0.0
@@ -176,7 +179,7 @@ def update_dynamic_watchlist():
             for x in full_pool[:20]:
                 STATS_MAP[x['sym']] = {'prev': x['prev'], 'float': x['float']}
                 float_str = f"{x['float']:.1f}M" if x['float'] > 0 else "未知"
-                if x['type'] == 'fund': float_str = "N/A (ETF)" # 💡 [V41] ETF 防呆
+                if x['type'] == 'fund': float_str = "N/A (ETF)" 
                 elif x['float'] > 50.0: float_str = f"⚠️{float_str}"
                 
                 instant_leaderboard.append({
@@ -303,7 +306,7 @@ def scanner_engine():
                     cell.update(stats)
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell, stats)).start()
 
-                    # 💡 同步更新排行榜價格
+                    # 同步更新排行榜價格
                     for rank_item in MASTER_BRAIN["leaderboard"]:
                         if rank_item["Code"] == ticker:
                             rank_item["Price"] = f"${p_live:.2f}"
@@ -321,7 +324,7 @@ def scanner_engine():
                         elif current_level > last_level: push_signal = True 
                         
                         if push_signal:
-                            if check_sec_edgar_traps(ticker):
+                            if check_sec_fatal_traps(ticker):
                                 current_signal += " 💀(SEC陷阱)"
                                 cell["IsTrap"] = True 
                                 stats["Signal"] = current_signal
@@ -338,8 +341,8 @@ def scanner_engine():
 
                 except: continue
             
-            # 💡 [V41] 在每一圈結尾，打包最新的重磅新聞矩陣
-            MASTER_BRAIN["top_catalysts"] = build_top_catalysts()
+            # 💡 [O(N) 瞬間萃取情報]
+            MASTER_BRAIN["top_catalysts"] = extract_top_catalysts()
             MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
             time.sleep(5)
         except: time.sleep(10)
