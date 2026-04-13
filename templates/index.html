@@ -97,8 +97,8 @@
             <div class="panel-header"><span>🚀 即時動能日誌</span><span style="font-size: 11px; color:var(--text-muted);">單擊看新聞 / 雙擊開圖</span></div>
             <div class="panel-content">
                 <table id="surge-log-table">
-                    <thead><tr><th class="status-indicator"></th><th>時間</th><th>代碼</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th><th>訊號</th></tr></thead>
-                    <tbody id="surge-log-body"><tr><td colspan="8" style="text-align:center; padding: 40px; color: var(--text-muted);">雷達掃描中... 等待極端動能訊號觸發</td></tr></tbody>
+                    <thead><tr><th class="status-indicator"></th><th>時間</th><th>代碼</th><th>流通股</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th><th>訊號</th></tr></thead>
+                    <tbody id="surge-log-body"><tr><td colspan="9" style="text-align:center; padding: 40px; color: var(--text-muted);">雷達掃描中... 等待極端動能訊號觸發</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -239,10 +239,16 @@
                     if (r.Signal && r.Signal.includes("⚡VCP")) rowClass += " tr-vcp";
                     if (isFatal) rowClass += " trap-row"; 
                     
+                    // 💡 加入 ETF 防呆判斷：如果是 ETF，流通股顯示 N/A
+                    let rankData = d.leaderboard.find(x => x.Code === r.Code);
+                    let isETF = rankData && rankData.Type === 'fund';
+                    let floatDisplay = isETF ? '<span style="color:var(--border);">N/A (ETF)</span>' : r.Float;
+
                     h1 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                         <td class="status-indicator"></td>
                         <td style="color: var(--text-muted);">${r.Time}</td>
                         <td class="sym">${r.Code}${icon}</td>
+                        <td style="color: var(--text-muted);">${floatDisplay}</td>
                         <td>${r.Price}</td><td>${r.RelVol}</td><td>${r.Vol}</td>
                         <td class="${parseFloat(r.Pct)>0?'up':'down'}">${r.Pct}</td>
                         <td style="font-weight: bold;">${r.Signal}</td>
