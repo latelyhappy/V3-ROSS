@@ -231,41 +231,44 @@
         }
 
         function refreshUI(d) {
-            document.getElementById('sys-status').innerText = `📡 數據更新: ${d.last_update}`;
-            document.getElementById('sys-status').style.color = "var(--green)";
-            
-            // 1. 日誌
-            if (d.surge_log.length > 0) {
-                let h1 = "";
-                d.surge_log.forEach(r => {
-                    let det = d.details[r.Code] || {};
-                    let isFatal = r.Signal && r.Signal.includes("💀");
-                    let icon = isFatal ? " 💀" : (det.CatScore > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
-                    let rowClass = r.Status ? `tr-${r.Status}` : "";
-                    if (r.Signal && r.Signal.includes("⚡VCP")) rowClass += " tr-vcp";
-                    if (isFatal) rowClass += " trap-row"; 
-                    
-                    // 💡 加入 ETF 防呆判斷：如果是 ETF，流通股顯示 N/A
-                    let rankData = d.leaderboard.find(x => x.Code === r.Code);
-                    let isETF = rankData && rankData.Type === 'fund';
-                    let floatDisplay = isETF ? '<span style="color:var(--border);">N/A (ETF)</span>' : r.Float;
+    // [V41.7 修正] 1. 日誌渲染 (加入 ETF 攔截)
+    let logHTML = "";
+    d.surge_log.forEach(r => {
+        if (r.Type === 'fund' && !showETF) return; // 🛡️ 攔截 ETF
+        logHTML += `<tr class="tr-green" onclick="loadDetail('${r.Code}')">
+            <td class="status-indicator"></td>
+            <td style="color:var(--text-muted);">${r.Time}</td>
+            <td class="sym">${r.Code}</td>
+            <td style="color:var(--text-muted);">${r.Float}</td>
+            <td>${r.Price}</td><td>${r.RelVol}</td><td>${r.Vol}</td>
+            <td class="${parseFloat(r.Pct)>0?'up':'down'}">${r.Pct}</td>
+            <td style="font-weight:bold;">${r.Signal}</td>
+        </tr>`;
+    });
+    document.getElementById('surge-log-body').innerHTML = logHTML;
 
-                    h1 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
-                        <td class="status-indicator"></td>
-                        <td style="color: var(--text-muted);">${r.Time}</td>
-                        <td class="sym">${r.Code}${icon}</td>
-                        <td style="color: var(--text-muted);">${floatDisplay}</td>
-                        <td>${r.Price}</td><td>${r.RelVol}</td><td>${r.Vol}</td>
-                        <td class="${parseFloat(r.Pct)>0?'up':'down'}">${r.Pct}</td>
-                        <td style="font-weight: bold;">${r.Signal}</td>
-                    </tr>`;
-                    
-                    if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { 
-                        played[r.SignalTS] = r.SignalTS; sounds[r.Audio].currentTime = 0; sounds[r.Audio].play().catch(e=>{}); 
-                    }
-                });
-                document.getElementById('surge-log-body').innerHTML = h1;
-            }
+    // [V41.7 修正] 3. 新聞面板渲染 (包含所有量價數據)
+    let newsHTML = "";
+    d.top_catalysts.forEach(n => {
+        if (n.Type === 'fund' && !showETF) return; // 🛡️ 攔截 ETF
+        let latest = n.NewsList[0];
+        let hl = latest.title === "⏳ 翻譯中..." ? `${latest.raw_title} <span class="translating">⏳翻譯中...</span>` : latest.title;
+        let timeColor = latest.is_today ? "#ffa500" : "var(--text-muted)";
+        
+        newsHTML += `<tr class="tr-green" onclick="loadDetail('${n.Code}')">
+            <td class="status-indicator" style="background:${n.CatScore >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
+            <td style="color: ${timeColor}; font-weight: bold; font-size: 11px;">${latest.time}</td>
+            <td class="sym">${n.Code}</td>
+            <td style="color:var(--yellow); font-weight:bold;">${n.CatScore}</td>
+            <td style="font-size:12px; line-height:1.4; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${hl}</td>
+            <td style="color: var(--text-muted);">${n.Float}</td>
+            <td style="color: var(--text-muted);">${n.RelVol}</td>
+            <td style="color: var(--text-muted);">${n.Vol}</td>
+            <td class="${parseFloat(n.Pct)>0?'up':'down'}" style="font-weight:bold;">${n.Pct}</td>
+        </tr>`;
+    });
+    document.getElementById('news-list').innerHTML = newsHTML;
+}
 
             // 2. 排行榜 (ETF 過濾)
             let h2 = "";
