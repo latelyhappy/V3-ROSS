@@ -54,7 +54,14 @@
     "CLINICAL TRIAL": 6,
     "ORDER": 6,
     "STRATEGIC PARTNERSHIP": 8,
-    "SPECIAL DIVIDEND": 7
+    "SPECIAL DIVIDEND": 7,
+    "DATA UPDATE": 6,
+    "INITIAL DATA": 7,
+    "PRESENTATION": 6,
+    "PRESENTS": 6,
+    "ANNOUNCES RESULTS": 7,
+    "CONFERENCE": 5,
+    "數據更新": 6
   },
   "YELLOW": {
     "PATENT GRANTED": 5,

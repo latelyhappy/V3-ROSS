@@ -75,11 +75,16 @@ def calculate_hft_score(headline):
 # --- 💡 [V41.3] 背景翻譯工兵 ---
 def background_translate_worker(ticker, en_headline, master_brain):
     try:
+        # 💡 [V41.5] 執行翻譯
         zh_text = GoogleTranslator(source='auto', target='zh-TW').translate(en_headline)
+        
         if ticker in master_brain['details']:
             news_list = master_brain['details'][ticker].get('NewsList', [])
-            if len(news_list) > 0 and news_list[0].get('raw_title') == en_headline:
-                news_list[0]['title'] = zh_text
+            # 💡 [V41.5 修正] 不再死守 index 0，而是遍歷整份清單尋找匹配的原文
+            for article in news_list:
+                if article.get('raw_title') == en_headline:
+                    article['title'] = zh_text
+                    break # 找到並寫入後立即中斷，節省效能
     except Exception as e:
         print(f"[{ticker}] 翻譯異常: {e}")
 
@@ -146,8 +151,18 @@ def fetch_and_score_news(ticker, cell, stats):
             # 💡 [關鍵修復 2] 只要 3 天內有新聞，就亮起 📰 圖示，讓您保持盤感
             cell["HasNews"] = len(articles) > 0 
 
+            # 💡 [V41.5] 全火力翻譯：針對近 3 天的所有新聞啟動背景翻譯
             if articles:
-                threading.Thread(target=background_translate_worker, args=(ticker, articles[0]['raw_title'], MASTER_BRAIN), daemon=True).start()
+                for art in articles:
+                    # 如果該則新聞還沒翻譯過 (標題是預設的翻譯中)，才啟動工兵
+                    if art['title'] == "⏳ 翻譯中...":
+                        threading.Thread(
+                            target=background_translate_worker, 
+                            args=(ticker, art['raw_title'], MASTER_BRAIN), 
+                            daemon=True
+                        ).start()
+                        # 微量延遲，防止瞬間噴發 20 個請求被 Google 判定為攻擊
+                        time.sleep(0.1)
     except Exception as e: pass
 
 # --- 💡 [V41.3] 焦點新聞萃取器 ---

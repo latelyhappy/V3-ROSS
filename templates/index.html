@@ -114,11 +114,17 @@
         </div>
 
         <div id="win-news" class="window-panel">
-            <div class="panel-header"><span>🗞️ 今日重磅催化劑 (CatScore ≥ 6)</span><span style="font-size: 11px; color:var(--text-muted);">單擊看詳情 / 雙擊開圖</span></div>
+            <div class="panel-header"><span>🗞️ 全情報新聞雷達 (近 3 日)</span><span style="font-size: 11px; color:var(--text-muted);">單擊看詳情 / 雙擊開圖</span></div>
             <div class="panel-content">
                 <table>
-                    <thead><tr><th class="status-indicator"></th><th>時間</th><th>代碼</th><th>評分</th><th>標題</th><th>戰術狀態</th></tr></thead>
-                    <tbody id="news-list"><tr><td colspan="6" style="text-align:center; padding: 40px; color: var(--text-muted);">等待重磅情報...</td></tr></tbody>
+                    <thead>
+                        <tr>
+                            <th class="status-indicator"></th>
+                            <th>時間</th><th>代碼</th><th>評分</th><th>標題</th>
+                            <th>流通股</th><th>量比</th><th>成交量</th><th>漲幅</th>
+                        </tr>
+                    </thead>
+                    <tbody id="news-list"></tbody>
                 </table>
             </div>
         </div>
@@ -296,15 +302,18 @@
 
                 d.top_catalysts.forEach(n => {
                     let hl = n.headline ? `<span title="${n.raw_headline}">${n.headline}</span>` : `<span title="${n.raw_headline}">${n.raw_headline} <span class="translating">⏳翻譯中...</span></span>`;
+                    let timeColor = n.is_today ? "#ffa500" : "var(--text-muted)";
                     
-                    // 💡 第四面板只收錄今日重磅新聞，所以時間一律給予醒目橘色
                     h3 += `<tr class="tr-green" onclick="loadDetail('${n.ticker}')" ondblclick="openTW('${n.ticker}')">
-                        <td class="status-indicator" style="background:var(--yellow);"></td>
-                        <td style="color: #ffa500; font-weight: bold; font-size: 11px;">${n.time}</td>
+                        <td class="status-indicator" style="background:${n.score >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
+                        <td style="color: ${timeColor}; font-weight: bold; font-size: 11px;">${n.time}</td>
                         <td class="sym">${n.ticker}</td>
-                        <td style="color:var(--yellow); font-weight:bold;">${n.score} Pts</td>
-                        <td style="font-size:12px; line-height:1.4; max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${hl}</td>
-                        <td style="font-weight:bold; color:var(--blue);">${n.status}</td>
+                        <td style="color:${n.score >= 6 ? 'var(--yellow)' : 'var(--text-muted)'}; font-weight:bold;">${n.score}</td>
+                        <td style="font-size:12px; line-height:1.4; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${hl}</td>
+                        <td style="color: var(--text-muted);">${n.float}</td>
+                        <td style="color: var(--text-muted);">${n.rel_vol}</td>
+                        <td style="color: var(--text-muted);">${n.vol}</td>
+                        <td class="${parseFloat(n.pct)>0?'up':'down'}" style="font-weight:bold;">${n.pct}</td>
                     </tr>`;
                 });
                 document.getElementById('news-list').innerHTML = h3;
