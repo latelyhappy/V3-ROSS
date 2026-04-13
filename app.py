@@ -214,19 +214,28 @@ def update_dynamic_watchlist():
                 full_pool.append({"sym": sym, "price": price, "prev": prev_est, "pct": pct, "vol": int(vol) if vol else 0, "float": float_m, "type": asset_type})
 
         if full_pool:
+            # 💡 確保雷達與記憶體的數量一致，皆為 30 檔
             DYNAMIC_WATCHLIST = [x['sym'] for x in full_pool[:30]]
             instant_leaderboard = []
-            for x in full_pool[:20]:
-                STATS_MAP[x['sym']] = {'prev': x['prev'], 'float': x['float']}
-                float_str = f"{x['float']:.1f}M" if x['float'] > 0 else "未知"
-                if x['type'] == 'fund': float_str = "N/A (ETF)" 
-                elif x['float'] > 50.0: float_str = f"⚠️{float_str}"
+            
+            for x in full_pool[:30]: # 💡 從 20 修正為 30，確保每檔股票都有籌碼記憶
+                # 預先處理好流通股字串與 ETF 判斷
+                if x['type'] == 'fund':
+                    formatted_float = "N/A (ETF)"
+                else:
+                    formatted_float = f"{x['float']:.1f}M" if x['float'] > 0 else "未知"
+                    if x['float'] > 50.0: formatted_float = f"⚠️{formatted_float}"
                 
-                instant_leaderboard.append({
-                    "Code": x['sym'], "Price": f"${x['price']:.2f}", "Float": float_str,
-                    "Pct": f"{x['pct']:+.2f}%", "Vol": format_vol(x['vol']),
-                    "RelVol": "-", "Status": "green", "Type": x['type']
-                })
+                # 存入全局記憶體，供主迴圈隨時調用
+                STATS_MAP[x['sym']] = {'prev': x['prev'], 'float': x['float'], 'float_str': formatted_float}
+                
+                # 排行榜為了畫面簡潔，依然只顯示前 20 名
+                if len(instant_leaderboard) < 20:
+                    instant_leaderboard.append({
+                        "Code": x['sym'], "Price": f"${x['price']:.2f}", "Float": formatted_float,
+                        "Pct": f"{x['pct']:+.2f}%", "Vol": format_vol(x['vol']),
+                        "RelVol": "-", "Status": "green", "Type": x['type']
+                    })
             MASTER_BRAIN["leaderboard"] = instant_leaderboard
     except: pass
 
@@ -281,7 +290,7 @@ def scanner_engine():
                     stat_data = STATS_MAP.get(ticker, None)
                     if stat_data and stat_data['prev'] > 0:
                         prev_close = stat_data['prev']
-                        float_str = f"{stat_data['float']:.1f}M"
+                        float_str = stat_data['float_str'] # 💡 直接取用我們剛剛格式化好的字串
                     else:
                         prev_close = float(df['low'].min()) 
                         float_str = "未知"
