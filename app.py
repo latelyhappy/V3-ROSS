@@ -112,42 +112,39 @@ def fetch_and_score_news(ticker, cell, stats):
             root = ET.fromstring(res.text)
             articles = []; total_score = 0; has_black = False
             
-            # 💡 [新增] 計算時間閾值 (今天往前推 3 天)
             now_ny = datetime.now(TZ_NY)
             today_date = now_ny.date()
             three_days_ago = today_date - timedelta(days=3)
             
             for item in root.findall('./channel/item'):
-                if len(articles) >= 5: break # 最多保留 5 則有效新聞
+                if len(articles) >= 5: break 
                 
                 dt = parsedate_to_datetime(item.find('pubDate').text).astimezone(TZ_NY)
                 item_date = dt.date()
                 
-                # 💡 [新增] 嚴格過濾：只保留最近 3 天的新聞
                 if item_date < three_days_ago:
                     continue
                     
                 raw_t = item.find('title').text
                 is_today = (item_date == today_date)
                 
-                # 呼叫極速評分引擎
                 score, is_trap = calculate_hft_score(raw_t)
                 if is_trap: has_black = True
                 
-                # 只有今日的新聞才會計入今日總分 CatScore
-                total_score += score if is_today else 0
+                # 💡 [關鍵修復 1] 只要是 3 天內的新聞，全數計入總分，不再限制 is_today
+                total_score += score 
                 
                 articles.append({
                     "ticker": ticker, "title": "⏳ 翻譯中...", "raw_title": raw_t,
                     "link": item.find('link').text, 
-                    "time": dt.strftime("%Y-%m-%d %H:%M"), # 💡 [新增] 完整日期與時間
+                    "time": dt.strftime("%Y-%m-%d %H:%M"), 
                     "is_today": is_today, "score": score
                 })
                 
             cell["NewsList"] = articles; cell["CatScore"] = total_score
             cell["IsTrap"] = has_black 
-            # 💡 只要今天有任何新聞，就亮起 📰 圖示；分數 > 8 則會自動升級為 🔥📰
-            cell["HasNews"] = any(n['is_today'] for n in articles)
+            # 💡 [關鍵修復 2] 只要 3 天內有新聞，就亮起 📰 圖示，讓您保持盤感
+            cell["HasNews"] = len(articles) > 0 
 
             if articles:
                 threading.Thread(target=background_translate_worker, args=(ticker, articles[0]['raw_title'], MASTER_BRAIN), daemon=True).start()
@@ -167,15 +164,15 @@ def extract_top_catalysts(master_brain):
             news_list = data.get('NewsList', [])
             if len(news_list) > 0:
                 latest_news = news_list[0]
-                if latest_news.get('is_today', False): # 確保只顯示今日重磅
-                    top_catalysts.append({
-                        "time": latest_news.get('time', '00:00'),
-                        "ticker": ticker,
-                        "score": score,
-                        "headline": latest_news.get('title', '⏳ 翻譯中...'), 
-                        "raw_headline": latest_news.get('raw_title', 'No Headline'),
-                        "status": tactical_status
-                    })
+                # 💡 [關鍵修復 3] 移除 is_today 的嚴格限制，允許近 3 天的高分催化劑上榜
+                top_catalysts.append({
+                    "time": latest_news.get('time', '00:00'),
+                    "ticker": ticker,
+                    "score": score,
+                    "headline": latest_news.get('title', '⏳ 翻譯中...'), 
+                    "raw_headline": latest_news.get('raw_title', 'No Headline'),
+                    "status": tactical_status
+                })
     return sorted(top_catalysts, key=lambda x: (x['score'], x['time']), reverse=True)
 
 # --- 🛰️ TV 盤前雷達 ---
