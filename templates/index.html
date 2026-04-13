@@ -295,12 +295,12 @@
                 lastTopNewsHeadline = currentLatestHeadline;
 
                 d.top_catalysts.forEach(n => {
-                    // 💡 優雅降級處理：如果中文為空，顯示英文+翻譯中
                     let hl = n.headline ? `<span title="${n.raw_headline}">${n.headline}</span>` : `<span title="${n.raw_headline}">${n.raw_headline} <span class="translating">⏳翻譯中...</span></span>`;
                     
+                    // 💡 第四面板只收錄今日重磅新聞，所以時間一律給予醒目橘色
                     h3 += `<tr class="tr-green" onclick="loadDetail('${n.ticker}')" ondblclick="openTW('${n.ticker}')">
                         <td class="status-indicator" style="background:var(--yellow);"></td>
-                        <td style="color: var(--text-muted);">${n.time}</td>
+                        <td style="color: #ffa500; font-weight: bold; font-size: 11px;">${n.time}</td>
                         <td class="sym">${n.ticker}</td>
                         <td style="color:var(--yellow); font-weight:bold;">${n.score} Pts</td>
                         <td style="font-size:12px; line-height:1.4; max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${hl}</td>
@@ -351,12 +351,16 @@
                 <h3 style="color: var(--text-muted); font-size:14px; text-transform:uppercase; border-bottom:1px solid var(--border); padding-bottom:10px; margin-top:30px; text-align:left;">🗞️ 即時催化劑情報</h3>`;
             
             if (!d.NewsList || d.NewsList.length === 0) {
-                html += `<div style="text-align:left; color:var(--text-muted); font-size: 14px; padding-top:10px;">${(!brain.details[sym]) ? "掃描排隊中..." : "尚無今日重大新聞。"}</div>`;
+                html += `<div style="text-align:left; color:var(--text-muted); font-size: 14px; padding-top:10px;">${(!brain.details[sym]) ? "掃描排隊中..." : "近 3 日尚無重大新聞。"}</div>`;
             } else {
                 d.NewsList.forEach(n => {
-                    let colorCls = n.is_today ? "color: var(--yellow);" : "color: var(--text-muted);";
-                    let hl = n.title ? n.title : `${n.raw_title} <span class="translating">⏳翻譯中...</span>`;
-                    html += `<div style="margin-top:15px; margin-bottom:15px; text-align:left; padding: 15px; background: rgba(255,255,255,0.02); border-radius: 6px; border-left: 3px solid var(--border);">
+                    // 💡 [新增] 當天新聞使用醒目橘色 (#ffa500)，非當天使用低調灰色
+                    let colorCls = n.is_today ? "color: #ffa500;" : "color: var(--text-muted);";
+                    let borderCls = n.is_today ? "3px solid #ffa500" : "3px solid var(--border)";
+                    
+                    let hl = n.title === "⏳ 翻譯中..." ? `${n.raw_title} <span class="translating">⏳翻譯中...</span>` : n.title;
+                    
+                    html += `<div style="margin-top:15px; margin-bottom:15px; text-align:left; padding: 15px; background: rgba(255,255,255,0.02); border-radius: 6px; border-left: ${borderCls};">
                         <div style="${colorCls} font-size:12px; margin-bottom:8px; font-weight:bold;">${n.time} 美東 | 戰鬥權重: ${n.score}</div>
                         <a href="${n.link}" target="_blank" style="text-decoration:none; color:var(--blue); font-size:15px; line-height:1.6;">${hl}</a>
                     </div>`;

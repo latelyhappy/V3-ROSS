@@ -1,5 +1,5 @@
 import time, threading, os, json
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import requests
 import xml.etree.ElementTree as ET
@@ -100,7 +100,7 @@ def check_sec_fatal_traps(ticker):
         return False
     except: return False
 
-# --- 📰 新聞掃描 (整合 HFT 引擎與非同步翻譯) ---
+# --- 📰 新聞掃描 (整合 HFT 引擎、非同步翻譯與 3 日過濾) ---
 def fetch_and_score_news(ticker, cell, stats):
     now = time.time()
     if ticker in news_cache and (now - news_cache[ticker] < 900): return
@@ -112,20 +112,35 @@ def fetch_and_score_news(ticker, cell, stats):
             root = ET.fromstring(res.text)
             articles = []; total_score = 0; has_black = False
             
-            for item in root.findall('./channel/item')[:5]:
-                raw_t = item.find('title').text
-                dt = parsedate_to_datetime(item.find('pubDate').text).astimezone(TZ_NY)
-                is_today = (dt.date() == datetime.now(TZ_NY).date())
+            # 💡 [新增] 計算時間閾值 (今天往前推 3 天)
+            now_ny = datetime.now(TZ_NY)
+            today_date = now_ny.date()
+            three_days_ago = today_date - timedelta(days=3)
+            
+            for item in root.findall('./channel/item'):
+                if len(articles) >= 5: break # 最多保留 5 則有效新聞
                 
-                # 呼叫 V41.3 極速評分引擎
+                dt = parsedate_to_datetime(item.find('pubDate').text).astimezone(TZ_NY)
+                item_date = dt.date()
+                
+                # 💡 [新增] 嚴格過濾：只保留最近 3 天的新聞
+                if item_date < three_days_ago:
+                    continue
+                    
+                raw_t = item.find('title').text
+                is_today = (item_date == today_date)
+                
+                # 呼叫極速評分引擎
                 score, is_trap = calculate_hft_score(raw_t)
                 if is_trap: has_black = True
                 
+                # 只有今日的新聞才會計入今日總分 CatScore
                 total_score += score if is_today else 0
                 
                 articles.append({
                     "ticker": ticker, "title": "⏳ 翻譯中...", "raw_title": raw_t,
-                    "link": item.find('link').text, "time": dt.strftime("%H:%M"), 
+                    "link": item.find('link').text, 
+                    "time": dt.strftime("%Y-%m-%d %H:%M"), # 💡 [新增] 完整日期與時間
                     "is_today": is_today, "score": score
                 })
                 
@@ -133,10 +148,9 @@ def fetch_and_score_news(ticker, cell, stats):
             cell["IsTrap"] = has_black 
             cell["HasNews"] = (total_score > 5)
 
-            # 啟動背景翻譯 (只翻譯最新一則)
             if articles:
                 threading.Thread(target=background_translate_worker, args=(ticker, articles[0]['raw_title'], MASTER_BRAIN), daemon=True).start()
-    except: pass
+    except Exception as e: pass
 
 # --- 💡 [V41.3] 焦點新聞萃取器 ---
 def extract_top_catalysts(master_brain):
