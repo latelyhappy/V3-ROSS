@@ -1,28 +1,90 @@
 {
-  "LEVEL_RED_POWER": {
-    "FDA APPROVAL": 10, "FDA 批准": 10, "ACQUISITION": 10, "收購": 10, "MERGER": 10, "合併": 10,
-    "DOD CONTRACT": 10, "國防部合約": 10, "PENTAGON": 10, "五角大廈": 10, "SHORT SQUEEZE": 9, "軋空": 9,
-    "PHASE 3 POSITIVE": 9, "三期數據亮眼": 9, "EXCLUSIVE LICENSE": 9, "獨家授權": 9, "BREAKTHROUGH": 9, "突破性": 9,
-    "STRATEGIC PARTNERSHIP": 8, "戰略合作": 8, "BUYOUT": 10, "溢價收購": 10
+  "INVERTED_TRAPS": {
+    "DENIES BANKRUPTCY": 50,
+    "NO PLANS FOR OFFERING": 30,
+    "DENIES OFFERING": 30,
+    "REFUTES BANKRUPTCY": 50,
+    "NO PLANS FOR REVERSE SPLIT": 30,
+    "DENIES REVERSE SPLIT": 30,
+    "否認破產": 50,
+    "無增發計畫": 30,
+    "無反向分割計畫": 30
   },
-  "LEVEL_ORANGE_MOMENTUM": {
-    "EARNINGS BEAT": 7, "盈餘超越預期": 7, "RAISED GUIDANCE": 7, "上調展望": 7, "POSITIVE DATA": 7, "正面數據": 7,
-    "AMMUNITION": 8, "砲彈": 8, "SHELLS": 8, "彈藥": 8, "DRONE": 7, "無人機": 7, "UAV": 7, "AI INTEGRATION": 7, "AI 整合": 7,
-    "NVIDIA PARTNER": 8, "輝達夥伴": 8, "CLINICAL TRIAL": 6, "臨床試驗": 6, "TOP-LINE": 7, "初步結果": 7, "ORDER": 6, "訂單": 6
+  "THEMATIC_TRENDS": {
+    "NVIDIA": 6,
+    "NVDA": 6,
+    "AI AGENT": 5,
+    "LIQUID COOLING": 5,
+    "BITCOIN": 5,
+    "BTC": 5,
+    "CRYPTO": 4,
+    "ETF INFLOW": 5,
+    "GLP-1": 6,
+    "WEIGHT LOSS": 5,
+    "OBESITY": 5,
+    "NUCLEAR": 6,
+    "SMR": 5,
+    "URANIUM": 5,
+    "HUMANOID": 5,
+    "ROBOTAXI": 5
   },
-  "LEVEL_YELLOW_INFO": {
-    "PATENT GRANTED": 5, "專利獲批": 5, "FDA FAST TRACK": 5, "快速通道": 5, "ORPHAN DRUG": 5, "孤兒藥": 5,
-    "CHIP": 5, "晶片": 5, "SEMICONDUCTOR": 5, "半導體": 5, "SPACE": 5, "航太": 5, "SATELLITE": 5, "衛星": 5,
-    "LITHIUM": 5, "鋰": 5, "URANIUM": 5, "鈾": 5, "SOLID-STATE": 5, "固態": 5, "EFFICIENCY": 4, "效率提升": 4,
-    "EXPORT": 4, "出口": 4, "IMPORT": 4, "進口": 4, "CUSTOMS": 4, "海關": 4, "REVENUE GROWTH": 4, "營收成長": 4
+  "RED": {
+    "FDA APPROVAL": 10,
+    "ACQUISITION": 10,
+    "MERGER": 10,
+    "BUYOUT": 10,
+    "DOD CONTRACT": 10,
+    "PENTAGON": 10,
+    "SHORT SQUEEZE": 9,
+    "PHASE 3 POSITIVE": 9,
+    "EXCLUSIVE LICENSE": 9,
+    "BREAKTHROUGH": 9,
+    "SHARE BUYBACK": 8,
+    "REPURCHASE PROGRAM": 8
   },
-  "LEVEL_WHITE_GENERAL": {
-    "INSIDER BUY": 3, "內部人買進": 3, "SHARE BUYBACK": 3, "股份回購": 3, "SUSTAINABLE": 2, "永續": 2, 
-    "CLOTHES": 2, "衣服": 2, "VEGETABLE": 2, "蔬菜": 2, "MEAT": 2, "肉類": 2, "WATER": 2, "水資源": 2
+  "ORANGE": {
+    "EARNINGS BEAT": 7,
+    "RAISED GUIDANCE": 7,
+    "POSITIVE DATA": 7,
+    "AMMUNITION": 8,
+    "DRONE": 7,
+    "UAV": 7,
+    "AI INTEGRATION": 7,
+    "NVIDIA PARTNER": 8,
+    "CLINICAL TRIAL": 6,
+    "ORDER": 6,
+    "STRATEGIC PARTNERSHIP": 8,
+    "SPECIAL DIVIDEND": 7
   },
-  "LEVEL_BLACK_DANGER": {
-    "OFFERING": -30, "增發": -30, "DILUTION": -25, "股權稀釋": -25, "FAILED": -20, "失敗": -20,
-    "SEC INVESTIGATION": -25, "SEC 調查": -25, "DELISTING": -40, "退市": -40, "BANKRUPTCY": -50, "破產": -50,
-    "DEFAULT": -20, "違約": -20, "DOWNGRADE": -10, "下調評級": -10, "FRAUD": -30, "詐欺": -30, "CHAPTER 11": -50
+  "YELLOW": {
+    "PATENT GRANTED": 5,
+    "FDA FAST TRACK": 5,
+    "ORPHAN DRUG": 5,
+    "CHIP": 5,
+    "SEMICONDUCTOR": 5,
+    "SPACE": 5,
+    "SATELLITE": 5,
+    "LITHIUM": 5,
+    "SOLID-STATE": 5,
+    "REVENUE GROWTH": 4
+  },
+  "BLACK": {
+    "OFFERING": -30,
+    "PUBLIC OFFERING": -30,
+    "DIRECT OFFERING": -30,
+    "DILUTION": -25,
+    "FAILED": -20,
+    "SEC INVESTIGATION": -25,
+    "DELISTING": -40,
+    "BANKRUPTCY": -50,
+    "DEFAULT": -20,
+    "DOWNGRADE": -10,
+    "FRAUD": -30,
+    "CHAPTER 11": -50,
+    "REVERSE SPLIT": -40,
+    "CLINICAL HOLD": -40,
+    "EARNINGS MISS": -15,
+    "CFO RESIGNS": -20,
+    "CEO RESIGNS": -20
   }
 }

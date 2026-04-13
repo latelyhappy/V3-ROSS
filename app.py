@@ -1,4 +1,4 @@
-import time, threading, os
+import time, threading, os, json
 from datetime import datetime
 import pandas as pd
 import requests
@@ -10,7 +10,7 @@ from flask import Flask, jsonify, render_template
 from deep_translator import GoogleTranslator
 
 # ==========================================
-# 🛠️ 戰略設定與全局記憶體 (V41.1 終極引擎)
+# 🛠️ 戰略設定與全局記憶體 (V41.3 外部軍火庫版)
 # ==========================================
 TW_USERNAME = os.getenv('TW_USERNAME', 'guest') 
 TW_PASSWORD = os.getenv('TW_PASSWORD', 'guest')
@@ -18,14 +18,21 @@ PORT = int(os.getenv('PORT', 5000))
 TZ_TW = pytz.timezone('Asia/Taipei')
 TZ_NY = pytz.timezone('America/New_York')
 
-# 💡 [V41.1] 純英文極速軍火庫
-CATALYST_ARMORY = {
-    'RED': {'keywords': ['FDA', 'APPROVAL', 'ACQUISITION', 'MERGER', 'BUYOUT', 'CONTRACT', 'SQUEEZE'], 'score': 10},
-    'ORANGE': {'keywords': ['EARNINGS', 'BEAT', 'PHASE 3', 'PHASE III', 'AI', 'ARTIFICIAL INTELLIGENCE', 'ROBOT', 'HUMANOID'], 'score': 7},
-    'YELLOW': {'keywords': ['PATENT', 'CLINICAL', 'CHIP', 'SEMICONDUCTOR'], 'score': 5},
-    'BLACK': {'keywords': ['OFFERING', 'DIRECT OFFERING', 'PUBLIC OFFERING', 'BANKRUPTCY', 'DEFAULT', 'DELISTING'], 'score': -50}
-}
+# 💡 從外部 JSON 檔案載入軍火庫
+CATALYST_ARMORY = {}
+armory_path = os.path.join(os.path.dirname(__file__), 'catalysts.json')
+try:
+    with open(armory_path, 'r', encoding='utf-8') as f:
+        CATALYST_ARMORY = json.load(f)
+    print("✅ 成功載入 catalysts.json 軍火庫")
+except FileNotFoundError:
+    print("❌ 警告：找不到 catalysts.json，使用空白預設值！")
+    CATALYST_ARMORY = {"INVERTED_TRAPS":{}, "THEMATIC_TRENDS":{}, "RED":{}, "ORANGE":{}, "YELLOW":{}, "BLACK":{}}
+except json.JSONDecodeError:
+    print("❌ 警告：catalysts.json 格式錯誤，請檢查是否有漏掉逗號或引號！")
+    CATALYST_ARMORY = {"INVERTED_TRAPS":{}, "THEMATIC_TRENDS":{}, "RED":{}, "ORANGE":{}, "YELLOW":{}, "BLACK":{}}
 
+# 全局記憶體宣告
 MASTER_BRAIN = {"surge_log": [], "details": {}, "leaderboard": [], "top_catalysts": [], "last_update": ""}
 DYNAMIC_WATCHLIST = []
 STATS_MAP = {} 
@@ -39,9 +46,46 @@ def format_vol(n):
     if n >= 1_000: return f"{n/1_000:.1f}K"
     return str(int(n))
 
-# --- 🛰️ SEC EDGAR 陷阱雷達 (精準打擊) ---
+# --- 💡 [V41.3] HFT 智能評分引擎 ---
+def calculate_hft_score(headline):
+    text = headline.upper()
+    total_score = 0
+    is_trap = False
+
+    # 1. 複合反轉詞與抹除機制
+    for kw, score in CATALYST_ARMORY["INVERTED_TRAPS"].items():
+        if kw in text:
+            total_score += score
+            text = text.replace(kw, "") # 拔除引信
+
+    # 2. 陷阱掃描
+    for kw, score in CATALYST_ARMORY["BLACK"].items():
+        if kw in text:
+            return -50, True
+
+    # 3. 利多與熱點掃描
+    if not is_trap:
+        for category in ["RED", "ORANGE", "YELLOW", "THEMATIC_TRENDS"]:
+            for kw, score in CATALYST_ARMORY[category].items():
+                if kw in text:
+                    total_score += score
+                    
+    return total_score, is_trap
+
+# --- 💡 [V41.3] 背景翻譯工兵 ---
+def background_translate_worker(ticker, en_headline, master_brain):
+    try:
+        zh_text = GoogleTranslator(source='auto', target='zh-TW').translate(en_headline)
+        if ticker in master_brain['details']:
+            news_list = master_brain['details'][ticker].get('NewsList', [])
+            if len(news_list) > 0 and news_list[0].get('raw_title') == en_headline:
+                news_list[0]['title'] = zh_text
+    except Exception as e:
+        print(f"[{ticker}] 翻譯異常: {e}")
+
+# --- 🛰️ SEC EDGAR 陷阱雷達 ---
 def check_sec_fatal_traps(ticker):
-    headers = {'User-Agent': 'Sniper_Bot_V41/1.1 (contact@yourdomain.com)'}
+    headers = {'User-Agent': 'Sniper_Bot_V41/1.3 (contact@yourdomain.com)'}
     url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=&output=atom"
     try:
         res = requests.get(url, headers=headers, timeout=3)
@@ -51,13 +95,12 @@ def check_sec_fatal_traps(ticker):
                 title_elem = entry.find('{http://www.w3.org/2005/Atom}title')
                 if title_elem is not None and title_elem.text:
                     title = title_elem.text.upper()
-                    # 💡 解除 8-K 誤殺，僅攔截實質增發稀釋
                     if any(trap in title for trap in ['S-1', 'S-3', 'F-1', 'F-3', '1-A']): 
                         return True
         return False
     except: return False
 
-# --- 📰 新聞掃描與極速評分 (非同步降級防護) ---
+# --- 📰 新聞掃描 (整合 HFT 引擎與非同步翻譯) ---
 def fetch_and_score_news(ticker, cell, stats):
     now = time.time()
     if ticker in news_cache and (now - news_cache[ticker] < 900): return
@@ -67,33 +110,21 @@ def fetch_and_score_news(ticker, cell, stats):
         res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
         if res.status_code == 200:
             root = ET.fromstring(res.text)
-            translator = GoogleTranslator(source='auto', target='zh-TW')
             articles = []; total_score = 0; has_black = False
             
             for item in root.findall('./channel/item')[:5]:
                 raw_t = item.find('title').text
-                raw_t_upper = raw_t.upper()
                 dt = parsedate_to_datetime(item.find('pubDate').text).astimezone(TZ_NY)
                 is_today = (dt.date() == datetime.now(TZ_NY).date())
                 
-                # 💡 [步驟一：極速純英文評分]
-                score = 0
-                for kw in CATALYST_ARMORY['BLACK']['keywords']:
-                    if kw in raw_t_upper: has_black = True; score = -50; break
-                
-                if not has_black:
-                    for lvl in ['RED', 'ORANGE', 'YELLOW']:
-                        for kw in CATALYST_ARMORY[lvl]['keywords']:
-                            if kw in raw_t_upper: score += CATALYST_ARMORY[lvl]['score']
+                # 呼叫 V41.3 極速評分引擎
+                score, is_trap = calculate_hft_score(raw_t)
+                if is_trap: has_black = True
                 
                 total_score += score if is_today else 0
                 
-                # 💡 [步驟二：背景翻譯 (若失敗則傳空字串，交由前端降級)]
-                try: zh_t = translator.translate(raw_t)
-                except: zh_t = "" 
-                    
                 articles.append({
-                    "ticker": ticker, "title": zh_t, "raw_title": raw_t,
+                    "ticker": ticker, "title": "⏳ 翻譯中...", "raw_title": raw_t,
                     "link": item.find('link').text, "time": dt.strftime("%H:%M"), 
                     "is_today": is_today, "score": score
                 })
@@ -101,41 +132,36 @@ def fetch_and_score_news(ticker, cell, stats):
             cell["NewsList"] = articles; cell["CatScore"] = total_score
             cell["IsTrap"] = has_black 
             cell["HasNews"] = (total_score > 5)
+
+            # 啟動背景翻譯 (只翻譯最新一則)
+            if articles:
+                threading.Thread(target=background_translate_worker, args=(ticker, articles[0]['raw_title'], MASTER_BRAIN), daemon=True).start()
     except: pass
 
-# --- 🧠 戰術狀態轉換器 ---
-def get_tactical_status(ticker):
-    tracker = STATE_TRACKER.get(ticker, {})
-    state = tracker.get('state', 'None')
-    if state == 'VCP': return f"⚡ VCP 壓縮中 ({tracker.get('duration', 0)}m)"
-    det = MASTER_BRAIN["details"].get(ticker, {})
-    sig = det.get('Signal', '')
-    if '🔥' in sig: return "🔥 已點火"
-    if '🚜' in sig: return "🚜 穩步推升"
-    if '💎' in sig: return "💎 趨勢滑行"
-    return "⏳ 潛伏中"
-
-# --- 🛰️ 情報聚合器 (萃取重磅新聞) ---
-def extract_top_catalysts():
-    top_list = []
-    for ticker, det in MASTER_BRAIN["details"].items():
-        score = det.get("CatScore", 0)
-        is_trap = det.get("IsTrap", False)
-        news_list = det.get("NewsList", [])
+# --- 💡 [V41.3] 焦點新聞萃取器 ---
+def extract_top_catalysts(master_brain):
+    top_catalysts = []
+    for ticker, data in master_brain.get('details', {}).items():
+        score = data.get('CatScore', 0)
+        is_trap = data.get('IsTrap', False)
         
-        # 嚴格紀律：Score >= 6 且 無陷阱 且 今天有新聞
-        if score >= 6 and not is_trap and news_list and news_list[0]['is_today']:
-            latest = news_list[0]
-            top_list.append({
-                "time": latest["time"],
-                "ticker": ticker,
-                "score": score,
-                "headline": latest["title"],      # 若為空，前端會處理
-                "raw_headline": latest["raw_title"],
-                "status": get_tactical_status(ticker)
-            })
-    # 按分數高低排序，同分看時間
-    return sorted(top_list, key=lambda x: (x['score'], x['time']), reverse=True)
+        if score >= 6 and not is_trap:
+            raw_signal = data.get('Signal', '')
+            tactical_status = raw_signal if raw_signal else "⏳ 潛伏中"
+            
+            news_list = data.get('NewsList', [])
+            if len(news_list) > 0:
+                latest_news = news_list[0]
+                if latest_news.get('is_today', False): # 確保只顯示今日重磅
+                    top_catalysts.append({
+                        "time": latest_news.get('time', '00:00'),
+                        "ticker": ticker,
+                        "score": score,
+                        "headline": latest_news.get('title', '⏳ 翻譯中...'), 
+                        "raw_headline": latest_news.get('raw_title', 'No Headline'),
+                        "status": tactical_status
+                    })
+    return sorted(top_catalysts, key=lambda x: (x['score'], x['time']), reverse=True)
 
 # --- 🛰️ TV 盤前雷達 ---
 def update_dynamic_watchlist():
@@ -144,7 +170,7 @@ def update_dynamic_watchlist():
         url = "https://scanner.tradingview.com/america/scan"
         payload = {
             "filter": [
-                {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, # 解鎖 ETF
+                {"left": "type", "operation": "in_range", "right": ["stock", "fund"]},
                 {"left": "exchange", "operation": "in_range", "right": ["AMEX", "NASDAQ", "NYSE"]},
                 {"left": "premarket_close", "operation": "in_range", "right": [1, 30]},
                 {"left": "premarket_change", "operation": "nempty"}
@@ -190,7 +216,7 @@ def update_dynamic_watchlist():
             MASTER_BRAIN["leaderboard"] = instant_leaderboard
     except: pass
 
-# --- 🧠 V41 主引擎迴圈 ---
+# --- 🧠 主引擎迴圈 ---
 def scanner_engine():
     tv = TvDatafeed()
     try:
@@ -306,7 +332,6 @@ def scanner_engine():
                     cell.update(stats)
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell, stats)).start()
 
-                    # 同步更新排行榜價格
                     for rank_item in MASTER_BRAIN["leaderboard"]:
                         if rank_item["Code"] == ticker:
                             rank_item["Price"] = f"${p_live:.2f}"
@@ -341,8 +366,8 @@ def scanner_engine():
 
                 except: continue
             
-            # 💡 [O(N) 瞬間萃取情報]
-            MASTER_BRAIN["top_catalysts"] = extract_top_catalysts()
+            # 更新模組五：焦點新聞萃取
+            MASTER_BRAIN["top_catalysts"] = extract_top_catalysts(MASTER_BRAIN)
             MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
             time.sleep(5)
         except: time.sleep(10)
