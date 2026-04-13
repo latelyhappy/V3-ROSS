@@ -146,7 +146,8 @@ def fetch_and_score_news(ticker, cell, stats):
                 
             cell["NewsList"] = articles; cell["CatScore"] = total_score
             cell["IsTrap"] = has_black 
-            cell["HasNews"] = (total_score > 5)
+            # 💡 只要今天有任何新聞，就亮起 📰 圖示；分數 > 8 則會自動升級為 🔥📰
+            cell["HasNews"] = any(n['is_today'] for n in articles)
 
             if articles:
                 threading.Thread(target=background_translate_worker, args=(ticker, articles[0]['raw_title'], MASTER_BRAIN), daemon=True).start()
