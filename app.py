@@ -179,16 +179,27 @@ def update_dynamic_watchlist():
                 STATS_MAP[sym] = {'prev': prev_est, 'float_str': f_str, 'type': t}
     except: pass
 
+# --- 🧠 全自動 NLP 熱點收索引擎 ---
 def auto_trend_updater():
     STOP_WORDS = {"THE", "TO", "OF", "IN", "FOR", "A", "AND", "IS", "ON", "WITH", "BY", "AS", "AT", "FROM", "IT", "THAT", "THIS", "AN", "BE", "NEW", "UP", "OUT", "ITS", "ARE", "HAS"}
+    
+    # 💡 核心修復 1：開機先休眠 60 秒，讓主掃描器有充足時間去 TradingView 建立名單
+    print("⏳ [NLP引擎] 開機預熱中，等待主雷達提供目標名單...")
+    time.sleep(60)
+    
     while True:
         try:
+            with brain_lock:
+                target_tickers = DYNAMIC_WATCHLIST.copy()
+            
+            # 💡 核心修復 2：如果名單還是空的，不要去睡 24 小時，等 10 秒再檢查一次
+            if not target_tickers:
+                time.sleep(10)
+                continue
+
             print("🔍 [NLP引擎] 開始自動收索全網近期熱點新聞...")
             all_words = []
             
-            with brain_lock:
-                target_tickers = DYNAMIC_WATCHLIST.copy()
-                
             for ticker in target_tickers:
                 try:
                     url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
@@ -223,7 +234,7 @@ def auto_trend_updater():
         except Exception as e:
             print(f"🚨 [NLP引擎] 掃描發生異常: {e}")
             
-        time.sleep(86400) 
+        time.sleep(86400) # 休眠 24 小時 
 
 def scanner_engine():
     tv = TvDatafeed()
