@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V41.15 - Full Armor Command</title>
+    <title>Sniper V41.16 - Full Armor Command</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
@@ -91,6 +91,7 @@
                         <th onclick="setSort('news', 'CatScore')">評分 <span id="sort-news-CatScore">▼</span></th>
                         <th>標題</th>
                         <th onclick="setSort('news', 'Float')">流通股 <span id="sort-news-Float"></span></th>
+                        <th onclick="setSort('news', 'Price')">價格 <span id="sort-news-Price"></span></th>
                         <th onclick="setSort('news', 'RelVol')">量比 <span id="sort-news-RelVol"></span></th>
                         <th onclick="setSort('news', 'Vol')">成交量 <span id="sort-news-Vol"></span></th>
                         <th onclick="setSort('news', 'Pct')">漲幅 <span id="sort-news-Pct"></span></th>
@@ -113,7 +114,6 @@
         const sounds = { spark: new Audio('/static/sounds/spark.mp3'), nova: new Audio('/static/sounds/nova.mp3') };
         let rankCfg = { col: 'Pct', asc: false }, newsCfg = { col: 'CatScore', asc: false };
 
-        // 💡 終極防呆解析器：確保數字不會因為 .includes 崩潰
         function parseValue(val, col) {
             if (val === undefined || val === null || val === '-') return -999999;
             if (typeof val === 'string' && val.includes('N/A')) return -999999;
@@ -176,7 +176,7 @@
                 .then(r => r.json())
                 .then(d => { brain = d; refreshUI(d); setTimeout(refresh, 5000); })
                 .catch(e => { 
-                    console.error("UI Render Exception:", e); // 💡 除錯：如果有問題會印在瀏覽器後台
+                    console.error("UI Render Exception:", e);
                     document.getElementById('sys-status').innerText = "⚠️ 網路閃斷，重連中..."; 
                     document.getElementById('sys-status').style.color = "var(--red)"; 
                     setTimeout(refresh, 5000); 
@@ -225,7 +225,7 @@
             });
             document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-muted);">無符合標的</td></tr>`;
 
-            // 3. 新聞 (完全無當機版)
+            // 3. 新聞 (新增價格欄位)
             let h3 = "";
             if (d.top_catalysts && d.top_catalysts.length > 0) {
                 let fVN = d.top_catalysts.find(n => n.NewsList && n.NewsList.length > 0);
@@ -248,18 +248,20 @@
                     let hl = latest.title === "⏳ 翻譯中..." ? `${latest.raw_title} <span class="translating">⏳翻譯中...</span>` : latest.title;
                     let f_Score = n.CatScore !== undefined ? n.CatScore : (n.score || 0);
                     let f_Pct = n.Pct || "-";
+                    let f_Price = n.Price || "-"; // 💡 提取價格
 
                     h3 += `<tr class="tr-green" onclick="loadDetail('${n.Code||n.ticker}')" ondblclick="openTW('${n.Code||n.ticker}')">
                         <td class="status-indicator" style="background:${f_Score >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
                         <td style="color:${latest.is_today?'#ffa500':'var(--text-muted)'}; font-weight:bold; font-size:11px;">${latest.time||'-'}</td>
                         <td class="sym">${n.Code||n.ticker}</td><td style="color:${f_Score>=6?'var(--yellow)':'var(--text-muted)'}; font-weight:bold;">${f_Score}</td>
                         <td style="font-size:12px; line-height:1.4; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${hl}</td>
-                        <td style="color:var(--text-muted);">${n.Type==='fund'?'N/A':(n.Float||"-")}</td><td style="color:var(--text-muted);">${n.RelVol||"-"}</td>
+                        <td style="color:var(--text-muted);">${n.Type==='fund'?'N/A':(n.Float||"-")}</td>
+                        <td>${f_Price}</td> <td style="color:var(--text-muted);">${n.RelVol||"-"}</td>
                         <td style="color:var(--text-muted);">${n.Vol||"-"}</td><td class="${parseFloat(f_Pct)>0?'up':'down'}" style="font-weight:bold;">${f_Pct}</td>
                     </tr>`;
                 });
-                document.getElementById('news-list').innerHTML = h3 || `<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--text-muted);">符合條件之情報已過濾</td></tr>`;
-            } else { document.getElementById('news-list').innerHTML = `<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--text-muted);">今日尚無重大情報</td></tr>`; }
+                document.getElementById('news-list').innerHTML = h3 || `<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--text-muted);">符合條件之情報已過濾</td></tr>`;
+            } else { document.getElementById('news-list').innerHTML = `<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--text-muted);">今日尚無重大情報</td></tr>`; }
             if(activeSym) loadDetail(activeSym);
         }
 
