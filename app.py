@@ -382,7 +382,10 @@ def scanner_engine():
 def index(): return render_template('index.html')
 @app.route('/data')
 def data():
-    with brain_lock: safe_brain = copy.deepcopy(MASTER_BRAIN)
+    with brain_lock: 
+        safe_brain = copy.deepcopy(MASTER_BRAIN)
+        # 💡 新增這行：把動態學習到的詞彙一併打包送給前端！
+        safe_brain["live_trends"] = get_live_trends() 
     return jsonify(safe_brain)
 
 if __name__ == '__main__':

@@ -82,14 +82,13 @@
 </head>
 <body>
     <div id="tactical-bar">
-        <button id="audio-btn" class="ghost-btn" style="border-color:var(--red); color:var(--red);" onclick="unlockAudio()">🔇 啟用音效</button>
-        <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 顯示 ETF / 槓桿</button>
-        <button class="ghost-btn" onclick="resetLayout()">🔄 重置版面</button>
-        <div style="font-size: 13px; color: var(--text-muted); font-family: monospace; margin-left:10px;">
-            TPE: <span id="sys-clock" style="color: var(--text-main); font-weight: bold;">--:--:--</span>
-        </div>
-        <span id="sys-status" style="margin-left:auto; font-size:11px; color: var(--text-muted);">📡 系統初始化...</span>
-        <span id="save-status" style="margin-left: 15px; font-size:11px; color: var(--blue); opacity: 0; transition: opacity 0.5s;">💾 儲存成功</span>
+        <button id="audio-btn" class="ghost-btn" style="color:var(--red);" onclick="unlockAudio()">🔇 啟用音效</button>
+        <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 顯示 ETF</button>
+        
+        <button class="ghost-btn" style="border-color:var(--blue); color:var(--blue);" onclick="showAITrends()">🧠 查看 AI 學習詞彙</button>
+        
+        <div style="font-size:13px; color:var(--text-muted); margin-left:10px;">TPE: <span id="sys-clock" style="color:#fff;">--:--:--</span></div>
+        <span id="sys-status" style="margin-left:auto; font-size:11px;">📡 系統初始化...</span>
     </div>
 
     <div id="workspace">
@@ -219,6 +218,27 @@
             btn.style.borderColor = "var(--green)"; btn.style.color = "var(--green)"; btn.innerText = "🔊 音效已啟用"; 
         }
         function openTW(s) { window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank'); }
+
+        // 💡 顯示 AI 學習詞彙的函數
+        function showAITrends() {
+            if (!brain || !brain.live_trends) {
+                return alert("📡 系統尚未載入學習數據，請稍後再試...");
+            }
+            
+            let trends = brain.live_trends;
+            let keys = Object.keys(trends);
+            
+            if (keys.length === 0) {
+                return alert("📉 目前 trends.json 為空，今日 NLP 引擎尚未提煉出新詞彙。");
+            }
+            
+            let msg = "🔥 近期 NLP 引擎自動提煉的高頻核彈詞彙：\n\n";
+            keys.forEach(k => {
+                msg += `► 【 ${k} 】 (自動賦予權重: +${trends[k]}分)\n`;
+            });
+            
+            alert(msg);
+        }
 
         setInterval(() => { document.getElementById('sys-clock').innerText = new Date().toLocaleTimeString('zh-TW', {timeZone: 'Asia/Taipei', hour12: false}); }, 1000);
 
