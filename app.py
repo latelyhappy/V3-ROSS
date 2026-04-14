@@ -140,15 +140,18 @@ def fetch_and_score_news(ticker, cell):
                         time.sleep(0.5) 
     except: pass
 
+# --- 💡 焦點新聞萃取器 (解鎖 3 日情報) ---
 def extract_top_catalysts(master_brain):
     top_list = []
-    with brain_lock:
-        for ticker, data in master_brain.get('details', {}).items():
-            if data.get('NewsList', []):
-                top_list.append(data)
+    # 如果您有使用 brain_lock，請加上 with brain_lock:；若無則直接執行下方迴圈
+    for ticker, data in master_brain.get('details', {}).items():
+        # 💡 只要有抓到新聞就允許上榜，移除 is_today 的嚴格限制
+        if data.get('NewsList', []):
+            top_list.append(data)
     try:
         return sorted(top_list, key=lambda x: (x.get('CatScore', 0), x['NewsList'][0].get('time', '00:00')), reverse=True)
-    except: return top_list
+    except:
+        return top_list
 
 def update_dynamic_watchlist():
     global DYNAMIC_WATCHLIST, STATS_MAP

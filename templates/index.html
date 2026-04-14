@@ -188,7 +188,7 @@
             if (Object.keys(brain).length > 0) refreshUI(brain); 
         }
 
-        // 💡 顯示 AI 學習詞彙 (具備防呆機制)
+        // 💡 顯示 AI 學習詞彙
         function showAITrends() {
             if (!brain || !brain.live_trends) return alert("📡 系統尚未載入學習數據，請稍後再試...");
             let trends = brain.live_trends;
@@ -255,12 +255,10 @@
             target.style.transform = `translate(${x}px, ${y}px)`;
             target.setAttribute('data-x', x); target.setAttribute('data-y', y);
         }
-        
         function saveLayout() {
             ['win-log', 'win-rank', 'win-news', 'win-detail'].forEach(id => {
                 const el = document.getElementById(id);
-                // 🛡️ 防呆鎖：就算 HTML 損壞，也不會讓 JS 當機導致拖曳黏住
-                if (!el) return; 
+                if (!el) return;
                 const x = parseFloat(el.getAttribute('data-x')) || 0; const y = parseFloat(el.getAttribute('data-y')) || 0;
                 localStorage.setItem('sniper_v41_1_layout_' + id, JSON.stringify({x: x, y: y, w: el.offsetWidth, h: el.offsetHeight}));
             });
@@ -333,7 +331,7 @@
             });
             document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="9" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
 
-            // 2. 排行榜面板渲染 (動態排序版)
+            // 2. 排行榜面板渲染 
             let h2 = "";
             let rankData = [...(d.leaderboard || [])].filter(r => !(r?.Type === 'fund' && !showETF));
             
@@ -367,7 +365,7 @@
             });
             document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="7" style="text-align:center; padding: 20px; color: var(--text-muted);">無符合條件之標的</td></tr>`;
 
-            // 3. 情報聚合器與新聞音效 (動態排序版)
+            // 3. 情報聚合器與新聞音效
             let h3 = "";
             if (d.top_catalysts && d.top_catalysts.length > 0) {
                 let firstValidNews = d.top_catalysts.find(n => n.NewsList && n.NewsList.length > 0);
@@ -419,7 +417,7 @@
                         <td class="${parseFloat(f_Pct)>0?'up':'down'}" style="font-weight:bold;">${f_Pct}</td>
                     </tr>`;
                 });
-                document.getElementById('news-list').innerHTML = h3;
+                document.getElementById('news-list').innerHTML = h3 || `<tr><td colspan="9" style="text-align:center; padding: 20px; color: var(--text-muted);">符合條件之新聞情報已過濾</td></tr>`;
             } else {
                 document.getElementById('news-list').innerHTML = `<tr><td colspan="9" style="text-align:center; padding: 20px; color: var(--text-muted);">今日尚無重大情報</td></tr>`;
             }
@@ -427,7 +425,6 @@
             if(activeSym) loadDetail(activeSym);
         }
 
-        // 4. 戰情報告
         function loadDetail(sym) {
             activeSym = sym;
             let d = (brain.details && brain.details[sym]) ? brain.details[sym] : null; 
