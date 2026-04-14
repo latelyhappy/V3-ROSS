@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V41.1 - Full Armor Command</title>
+    <title>Sniper V41.9 - Full Armor Command</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
@@ -200,7 +200,6 @@
 
         function resetLayout() { localStorage.clear(); location.reload(); }
         
-        // 💡 修正後的 ETF 切換邏輯 (預設是隱藏的)
         function toggleETF() { 
             showETF = !showETF; 
             let btn = document.getElementById('etf-btn');
@@ -231,69 +230,73 @@
         }
 
         function refreshUI(d) {
-            document.getElementById('sys-status').innerText = `📡 數據更新: ${d.last_update}`;
+            // 🛡️ 絕對防禦：如果後端傳回空值，直接中斷執行，防止 JS 引擎報錯崩潰！
+            if (!d) return; 
+
+            document.getElementById('sys-status').innerText = `📡 數據更新: ${d.last_update || '--:--:--'}`;
             document.getElementById('sys-status').style.color = "var(--green)";
             
-            // 1. 日誌
-            if (d.surge_log.length > 0) {
-                let h1 = "";
-                d.surge_log.forEach(r => {
-                    let det = d.details[r.Code] || {};
-                    let isFatal = r.Signal && r.Signal.includes("💀");
-                    let icon = isFatal ? " 💀" : (det.CatScore > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
-                    let rowClass = r.Status ? `tr-${r.Status}` : "";
-                    if (r.Signal && r.Signal.includes("⚡VCP")) rowClass += " tr-vcp";
-                    if (isFatal) rowClass += " trap-row"; 
-                    
-                    // 💡 加入 ETF 防呆判斷：如果是 ETF，流通股顯示 N/A
-                    let rankData = d.leaderboard.find(x => x.Code === r.Code);
-                    let isETF = rankData && rankData.Type === 'fund';
-                    let floatDisplay = isETF ? '<span style="color:var(--border);">N/A (ETF)</span>' : r.Float;
+            // 1. 日誌面板渲染
+            let h1 = "";
+            (d.surge_log || []).forEach(r => {
+                // 💡 ETF 隱藏邏輯
+                if (r.Type === 'fund' && !showETF) return; 
 
-                    h1 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
-                        <td class="status-indicator"></td>
-                        <td style="color: var(--text-muted);">${r.Time}</td>
-                        <td class="sym">${r.Code}${icon}</td>
-                        <td style="color: var(--text-muted);">${floatDisplay}</td>
-                        <td>${r.Price}</td><td>${r.RelVol}</td><td>${r.Vol}</td>
-                        <td class="${parseFloat(r.Pct)>0?'up':'down'}">${r.Pct}</td>
-                        <td style="font-weight: bold;">${r.Signal}</td>
-                    </tr>`;
-                    
-                    if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { 
-                        played[r.SignalTS] = r.SignalTS; sounds[r.Audio].currentTime = 0; sounds[r.Audio].play().catch(e=>{}); 
-                    }
-                });
-                document.getElementById('surge-log-body').innerHTML = h1;
-            }
+                let det = (d.details && d.details[r.Code]) ? d.details[r.Code] : {};
+                let isFatal = r.Signal && r.Signal.includes("💀");
+                let icon = isFatal ? " 💀" : ((det.CatScore || 0) > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
+                let rowClass = r.Status ? `tr-${r.Status}` : "";
+                if (r.Signal && r.Signal.includes("⚡VCP")) rowClass += " tr-vcp";
+                if (isFatal) rowClass += " trap-row"; 
+                
+                // 💡 處理 Undefined，用 "-" 代替
+                let floatDisplay = r.Type === 'fund' ? '<span style="color:var(--border);">N/A (ETF)</span>' : (r.Float || '-');
 
-            // 2. 排行榜 (ETF 過濾)
+                h1 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
+                    <td class="status-indicator"></td>
+                    <td style="color: var(--text-muted);">${r.Time || '-'}</td>
+                    <td class="sym">${r.Code}${icon}</td>
+                    <td style="color: var(--text-muted);">${floatDisplay}</td>
+                    <td>${r.Price || '-'}</td><td>${r.RelVol || '-'}</td><td>${r.Vol || '-'}</td>
+                    <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct || '-'}</td>
+                    <td style="font-weight: bold;">${r.Signal || '-'}</td>
+                </tr>`;
+                
+                if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { 
+                    played[r.SignalTS] = r.SignalTS; sounds[r.Audio].currentTime = 0; sounds[r.Audio].play().catch(e=>{}); 
+                }
+            });
+            document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="9" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
+
+            // 2. 排行榜面板渲染
             let h2 = "";
-            d.leaderboard.forEach(r => {
+            (d.leaderboard || []).forEach(r => {
                 if (r.Type === 'fund' && !showETF) return; 
                 
-                let det = d.details[r.Code] || {};
+                let det = (d.details && d.details[r.Code]) ? d.details[r.Code] : {};
                 let isFatal = det.IsTrap;
-                let icon = isFatal ? " 💀" : (det.CatScore > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
-                let rv = det.RelVol || r.RelVol;
+                let icon = isFatal ? " 💀" : ((det.CatScore || 0) > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
+                let rv = det.RelVol || r.RelVol || '-';
                 let floatToUse = r.Type === 'fund' ? `<span style="color:var(--border);">N/A (ETF)</span>` : (r.Float || det.Float || "-");
-                let rowClass = `tr-${det.Status || r.Status}`;
+                let rowClass = `tr-${det.Status || r.Status || 'green'}`;
                 if (isFatal) rowClass += " trap-row";
 
                 h2 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                     <td class="status-indicator"></td>
                     <td class="sym">${r.Code}${icon}</td>
                     <td style="color:var(--text-muted);">${floatToUse}</td>
-                    <td>${r.Price}</td><td>${rv}</td><td>${r.Vol}</td>
-                    <td class="${parseFloat(r.Pct)>0?'up':'down'}">${r.Pct}</td>
+                    <td>${r.Price || '-'}</td><td>${rv}</td><td>${r.Vol || '-'}</td>
+                    <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct || '-'}</td>
                 </tr>`;
             });
             document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="7" style="text-align:center; padding: 20px; color: var(--text-muted);">無符合條件之標的</td></tr>`;
 
             // 3. 情報聚合器與新聞音效
+            let h3 = "";
             if (d.top_catalysts && d.top_catalysts.length > 0) {
-                let h3 = "";
-                let currentLatestHeadline = d.top_catalysts[0].headline || d.top_catalysts[0].raw_headline;
+                // 💡 防錯處理最新標題提取
+                let firstValidNews = d.top_catalysts.find(n => n.NewsList && n.NewsList.length > 0);
+                let currentLatestHeadline = firstValidNews ? (firstValidNews.NewsList[0].headline || firstValidNews.NewsList[0].raw_title) : "";
 
                 if (lastTopNewsHeadline !== "" && lastTopNewsHeadline !== currentLatestHeadline && audioOn) {
                     sounds.nova.currentTime = 0; sounds.nova.play().catch(e=>{});
@@ -301,35 +304,52 @@
                 lastTopNewsHeadline = currentLatestHeadline;
 
                 d.top_catalysts.forEach(n => {
-                    let hl = n.headline ? `<span title="${n.raw_headline}">${n.headline}</span>` : `<span title="${n.raw_headline}">${n.raw_headline} <span class="translating">⏳翻譯中...</span></span>`;
-                    let timeColor = n.is_today ? "#ffa500" : "var(--text-muted)";
+                    if (n.Type === 'fund' && !showETF) return; 
                     
-                    h3 += `<tr class="tr-green" onclick="loadDetail('${n.ticker}')" ondblclick="openTW('${n.ticker}')">
-                        <td class="status-indicator" style="background:${n.score >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
-                        <td style="color: ${timeColor}; font-weight: bold; font-size: 11px;">${n.time}</td>
-                        <td class="sym">${n.ticker}</td>
-                        <td style="color:${n.score >= 6 ? 'var(--yellow)' : 'var(--text-muted)'}; font-weight:bold;">${n.score}</td>
+                    let newsList = n.NewsList || [];
+                    if (newsList.length === 0) return; // 🛡️ 絕對防禦：沒有新聞資料的直接跳過，防止 undefined 錯誤
+
+                    let latest = newsList[0];
+                    let hl = latest.title === "⏳ 翻譯中..." ? `${latest.raw_title} <span class="translating">⏳翻譯中...</span>` : latest.title;
+                    let timeColor = latest.is_today ? "#ffa500" : "var(--text-muted)";
+                    
+                    // 💡 防禦 undefined 量價資料，如果沒資料則顯示 "-"
+                    let symCode = n.Code || n.ticker || '-';
+                    let f_Float = n.Type === 'fund' ? '<span style="color:var(--border);">N/A (ETF)</span>' : (n.Float || "-");
+                    let f_RelVol = n.RelVol || "-";
+                    let f_Vol = n.Vol || "-";
+                    let f_Pct = n.Pct || "-";
+                    let f_Score = n.CatScore !== undefined ? n.CatScore : (n.score || 0);
+
+                    h3 += `<tr class="tr-green" onclick="loadDetail('${symCode}')" ondblclick="openTW('${symCode}')">
+                        <td class="status-indicator" style="background:${f_Score >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
+                        <td style="color: ${timeColor}; font-weight: bold; font-size: 11px;">${latest.time || '-'}</td>
+                        <td class="sym">${symCode}</td>
+                        <td style="color:${f_Score >= 6 ? 'var(--yellow)' : 'var(--text-muted)'}; font-weight:bold;">${f_Score}</td>
                         <td style="font-size:12px; line-height:1.4; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${hl}</td>
-                        <td style="color: var(--text-muted);">${n.float}</td>
-                        <td style="color: var(--text-muted);">${n.rel_vol}</td>
-                        <td style="color: var(--text-muted);">${n.vol}</td>
-                        <td class="${parseFloat(n.pct)>0?'up':'down'}" style="font-weight:bold;">${n.pct}</td>
+                        <td style="color: var(--text-muted);">${f_Float}</td>
+                        <td style="color: var(--text-muted);">${f_RelVol}</td>
+                        <td style="color: var(--text-muted);">${f_Vol}</td>
+                        <td class="${parseFloat(f_Pct)>0?'up':'down'}" style="font-weight:bold;">${f_Pct}</td>
                     </tr>`;
                 });
-                document.getElementById('news-list').innerHTML = h3;
             }
+            document.getElementById('news-list').innerHTML = h3 || `<tr><td colspan="9" style="text-align:center; padding: 20px; color: var(--text-muted);">今日尚無重大情報</td></tr>`;
 
             if(activeSym) loadDetail(activeSym);
         }
 
         // 4. 戰情報告與血條/蓄力條
         function loadDetail(sym) {
-            activeSym = sym; let d = brain.details[sym]; let rankData = brain.leaderboard ? brain.leaderboard.find(x => x.Code === sym) : null;
+            activeSym = sym; 
+            let d = (brain.details && brain.details[sym]) ? brain.details[sym] : null; 
+            let rankData = brain.leaderboard ? brain.leaderboard.find(x => x.Code === sym) : null;
+            
             if (!d && !rankData) return; 
-            if (!d && rankData) d = { Price: rankData.Price, Pct: rankData.Pct, Vol: rankData.Vol, RelVol: "資料建立中...", Float: rankData.Type==='fund' ? "N/A (ETF)" : (rankData.Float||"-"), StopLoss: 0, CatScore: "未掃描", IsTrap: false, NewsList: [] };
+            if (!d && rankData) d = { Price: rankData.Price, Pct: rankData.Pct, Vol: rankData.Vol, RelVol: "-", Float: rankData.Type==='fund' ? "N/A (ETF)" : (rankData.Float||"-"), StopLoss: 0, CatScore: 0, IsTrap: false, NewsList: [] };
 
             let trapWarn = d.IsTrap ? `<div style="background:rgba(248, 81, 73, 0.2); border: 1px solid var(--red); color: var(--red); padding:10px; margin-bottom:20px; border-radius:6px; font-weight:bold; font-size:14px; animation: blood-pulse 1s infinite;">🩸 致命警告：偵測到 S-1/S-3 增發稀釋文件，莊家準備倒貨</div>` : "";
-            let waitingMsg = (!brain.details[sym]) ? `<div style="color:var(--yellow); font-size:13px; margin-bottom:15px;">⚠️ K線資料尚未齊全 (可能為盤前)，部分進階數據與新聞待補...</div>` : "";
+            let waitingMsg = (!d.Price || d.Price === "-") ? `<div style="color:var(--yellow); font-size:13px; margin-bottom:15px;">⚠️ K線資料尚未齊全 (可能為盤前)，部分進階數據與新聞待補...</div>` : "";
             
             let vcpBarHTML = "";
             if (d.Signal && d.Signal.includes("VCP")) {
@@ -343,15 +363,15 @@
 
             let html = `<div style="text-align:center;">${trapWarn}${waitingMsg}
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
-                    <h2 ondblclick="openTW('${sym}')" class="sym" style="font-size:32px; margin:0; cursor:pointer;">${sym} <span style="font-size:22px; color:var(--text-muted); margin-left:10px;">${d.Price}</span></h2>
+                    <h2 ondblclick="openTW('${sym}')" class="sym" style="font-size:32px; margin:0; cursor:pointer;">${sym} <span style="font-size:22px; color:var(--text-muted); margin-left:10px;">${d.Price || '-'}</span></h2>
                     <button class="ghost-btn" onclick="openTW('${sym}')">在 TV 中開啟 ↗</button>
                 </div>
                 <div style="background: rgba(0,0,0,0.3); padding:20px; border-radius:8px; display:grid; grid-template-columns: 1fr 1fr; gap:15px; font-size:14px; text-align:left; border: 1px solid rgba(255,255,255,0.05);">
-                    <div>成交總量: <b style="color:var(--text-main); font-size:15px;">${d.Vol}</b></div>
-                    <div>當前量比: <b style="color:var(--text-main); font-size:15px;">${d.RelVol}</b></div>
-                    <div>真實漲幅: <b class="${parseFloat(d.Pct)>0?'up':'down'}" style="font-size:15px;">${d.Pct}</b></div>
-                    <div>催化強度: <b style="color:var(--yellow); font-size:15px;">${d.CatScore} Pts</b></div>
-                    <div style="grid-column: 1 / -1;">真實籌碼: <b style="color:var(--text-main); font-size:15px;">${d.Float}</b></div>
+                    <div>成交總量: <b style="color:var(--text-main); font-size:15px;">${d.Vol || '-'}</b></div>
+                    <div>當前量比: <b style="color:var(--text-main); font-size:15px;">${d.RelVol || '-'}</b></div>
+                    <div>真實漲幅: <b class="${parseFloat(d.Pct||0)>0?'up':'down'}" style="font-size:15px;">${d.Pct || '-'}</b></div>
+                    <div>催化強度: <b style="color:var(--yellow); font-size:15px;">${d.CatScore || 0} Pts</b></div>
+                    <div style="grid-column: 1 / -1;">真實籌碼: <b style="color:var(--text-main); font-size:15px;">${d.Float || '-'}</b></div>
                     <div style="border-top: 1px solid var(--border); grid-column: 1 / -1; margin-top: 5px; padding-top: 15px;">
                         動態風控停損: <b style="color:var(--red); font-size:18px;">$${(d.StopLoss||0).toFixed(2)}</b>
                         ${vcpBarHTML}
@@ -360,13 +380,11 @@
                 <h3 style="color: var(--text-muted); font-size:14px; text-transform:uppercase; border-bottom:1px solid var(--border); padding-bottom:10px; margin-top:30px; text-align:left;">🗞️ 即時催化劑情報</h3>`;
             
             if (!d.NewsList || d.NewsList.length === 0) {
-                html += `<div style="text-align:left; color:var(--text-muted); font-size: 14px; padding-top:10px;">${(!brain.details[sym]) ? "掃描排隊中..." : "近 3 日尚無重大新聞。"}</div>`;
+                html += `<div style="text-align:left; color:var(--text-muted); font-size: 14px; padding-top:10px;">近 3 日尚無重大新聞。</div>`;
             } else {
                 d.NewsList.forEach(n => {
-                    // 💡 [新增] 當天新聞使用醒目橘色 (#ffa500)，非當天使用低調灰色
                     let colorCls = n.is_today ? "color: #ffa500;" : "color: var(--text-muted);";
                     let borderCls = n.is_today ? "3px solid #ffa500" : "3px solid var(--border)";
-                    
                     let hl = n.title === "⏳ 翻譯中..." ? `${n.raw_title} <span class="translating">⏳翻譯中...</span>` : n.title;
                     
                     html += `<div style="margin-top:15px; margin-bottom:15px; text-align:left; padding: 15px; background: rgba(255,255,255,0.02); border-radius: 6px; border-left: ${borderCls};">

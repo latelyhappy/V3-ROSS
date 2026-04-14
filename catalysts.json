@@ -1,5 +1,6 @@
 {
   "INVERTED_TRAPS": {
+    "_註記": "【防護罩】遇到這些『否認』字眼，後面的陷阱詞會被系統抹除，並轉為加分利多",
     "DENIES BANKRUPTCY": 50,
     "NO PLANS FOR OFFERING": 30,
     "DENIES OFFERING": 30,
@@ -11,6 +12,7 @@
     "無反向分割計畫": 30
   },
   "THEMATIC_TRENDS": {
+    "_註記": "【資金風口】熱門題材放大器。只要有這些字，基礎分數會再疊加",
     "NVIDIA": 6,
     "NVDA": 6,
     "AI AGENT": 5,
@@ -29,6 +31,7 @@
     "ROBOTAXI": 5
   },
   "RED": {
+    "_註記": "【核彈級利多】(權重 8-10分) 一擊必殺的重磅消息，包含併購、FDA批准、生技關鍵數據(如ALLO的MRD)、實質買回股票",
     "FDA APPROVAL": 10,
     "ACQUISITION": 10,
     "MERGER": 10,
@@ -36,13 +39,19 @@
     "DOD CONTRACT": 10,
     "PENTAGON": 10,
     "SHORT SQUEEZE": 9,
-    "PHASE 3 POSITIVE": 9,
+    "FUTILITY": 10,
+    "MRD": 10,
+    "INTERIM": 9,
+    "PIVOTAL": 8,
+    "PHASE 3": 9,
+    "PHASE III": 9,
     "EXCLUSIVE LICENSE": 9,
     "BREAKTHROUGH": 9,
     "SHARE BUYBACK": 8,
     "REPURCHASE PROGRAM": 8
   },
   "ORANGE": {
+    "_註記": "【強勢動能】(權重 6-8分) 財報超預期、重要合作夥伴、軍工無人機題材、以及生技的初步數據更新",
     "EARNINGS BEAT": 7,
     "RAISED GUIDANCE": 7,
     "POSITIVE DATA": 7,
@@ -64,8 +73,9 @@
     "數據更新": 6
   },
   "YELLOW": {
-    "PATENT GRANTED": 5,
-    "FDA FAST TRACK": 5,
+    "_註記": "【常規利多】(權重 4-5分) 專利獲批、太空、半導體、固態電池等硬體題材",
+    "PATENT": 5,
+    "FAST TRACK": 5,
     "ORPHAN DRUG": 5,
     "CHIP": 5,
     "SEMICONDUCTOR": 5,
@@ -76,6 +86,7 @@
     "REVENUE GROWTH": 4
   },
   "BLACK": {
+    "_註記": "【散戶絞肉機】(權重 -15 ~ -50分) 踩到直接判死刑的陷阱：增發、破產、反向分割、臨床暫停、高管辭職",
     "OFFERING": -30,
     "PUBLIC OFFERING": -30,
     "DIRECT OFFERING": -30,
