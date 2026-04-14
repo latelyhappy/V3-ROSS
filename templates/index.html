@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V41.9 - Full Armor Command</title>
+    <title>Sniper V41.13 - Full Armor Command</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
@@ -58,21 +58,22 @@
         tr.tr-green .status-indicator { background: var(--green); }
         tr.tr-vcp { background: rgba(227, 179, 65, 0.08); } 
         
-        /* 🩸 致命血條警告特效 */
         .trap-row { animation: blood-pulse 1.5s infinite; }
         @keyframes blood-pulse { 0% {background: transparent;} 50% {background: rgba(248, 81, 73, 0.2);} 100% {background: transparent;} }
         
-        /* ⏳ 翻譯降級特效 */
         .translating { color: #8b949e; animation: text-pulse 2s infinite; font-size: 11px; padding: 2px 6px; background: rgba(255,255,255,0.05); border-radius: 4px; margin-left: 5px; }
         @keyframes text-pulse { 0% {opacity: 0.4;} 50% {opacity: 1;} 100% {opacity: 0.4;} }
 
-        /* ⚡ VCP 蓄力條 */
         .vcp-bar-container { width: 100%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-top: 5px; overflow: hidden; }
         .vcp-bar { height: 100%; transition: width 0.5s ease, background 0.5s ease; }
 
         .sym { font-weight: bold; color: var(--text-main); font-size: 15px; }
         .up { color: var(--green); font-weight: bold;} .down { color: var(--red); font-weight: bold;}
         
+        /* 排序游標指示 */
+        th[onclick] { cursor: pointer; user-select: none; }
+        th[onclick]:hover { color: #fff; background: rgba(255,255,255,0.05); }
+
         @media (max-width: 1024px) {
             #workspace { display: flex; flex-direction: column; gap: 20px; }
             .window-panel { position: relative !important; transform: none !important; width: 100% !important; height: 500px !important; margin-bottom: 20px; }
@@ -82,13 +83,15 @@
 </head>
 <body>
     <div id="tactical-bar">
-        <button id="audio-btn" class="ghost-btn" style="color:var(--red);" onclick="unlockAudio()">🔇 啟用音效</button>
-        <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 顯示 ETF</button>
-        
+        <button id="audio-btn" class="ghost-btn" style="border-color:var(--red); color:var(--red);" onclick="unlockAudio()">🔇 啟用音效</button>
+        <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 顯示 ETF / 槓桿</button>
         <button class="ghost-btn" style="border-color:var(--blue); color:var(--blue);" onclick="showAITrends()">🧠 查看 AI 學習詞彙</button>
-        
-        <div style="font-size:13px; color:var(--text-muted); margin-left:10px;">TPE: <span id="sys-clock" style="color:#fff;">--:--:--</span></div>
-        <span id="sys-status" style="margin-left:auto; font-size:11px;">📡 系統初始化...</span>
+        <button class="ghost-btn" onclick="resetLayout()">🔄 重置版面</button>
+        <div style="font-size: 13px; color: var(--text-muted); font-family: monospace; margin-left:10px;">
+            TPE: <span id="sys-clock" style="color: var(--text-main); font-weight: bold;">--:--:--</span>
+        </div>
+        <span id="sys-status" style="margin-left:auto; font-size:11px; color: var(--text-muted);">📡 系統初始化...</span>
+        <span id="save-status" style="margin-left: 15px; font-size:11px; color: var(--blue); opacity: 0; transition: opacity 0.5s;">💾 儲存成功</span>
     </div>
 
     <div id="workspace">
@@ -108,29 +111,34 @@
                 <table>
                     <thead><tr>
                         <th class="status-indicator"></th>
-                        <th style="cursor:pointer;" onclick="setSort('rank', 'Code')">代碼 <span id="sort-rank-Code"></span></th>
-                        <th style="cursor:pointer;" onclick="setSort('rank', 'Float')">流通股 <span id="sort-rank-Float"></span></th>
-                        <th style="cursor:pointer;" onclick="setSort('rank', 'Price')">價格 <span id="sort-rank-Price"></span></th>
-                        <th style="cursor:pointer;" onclick="setSort('rank', 'RelVol')">量比 <span id="sort-rank-RelVol"></span></th>
-                        <th style="cursor:pointer;" onclick="setSort('rank', 'Vol')">成交量 <span id="sort-rank-Vol"></span></th>
-                        <th style="cursor:pointer;" onclick="setSort('rank', 'Pct')">漲幅 <span id="sort-rank-Pct">▼</span></th>
+                        <th onclick="setSort('rank', 'Code')">代碼 <span id="sort-rank-Code"></span></th>
+                        <th onclick="setSort('rank', 'Float')">流通股 <span id="sort-rank-Float"></span></th>
+                        <th onclick="setSort('rank', 'Price')">價格 <span id="sort-rank-Price"></span></th>
+                        <th onclick="setSort('rank', 'RelVol')">量比 <span id="sort-rank-RelVol"></span></th>
+                        <th onclick="setSort('rank', 'Vol')">成交量 <span id="sort-rank-Vol"></span></th>
+                        <th onclick="setSort('rank', 'Pct')">漲幅 <span id="sort-rank-Pct">▼</span></th>
                     </tr></thead>
+                    <tbody id="rank-list"></tbody>
+                </table>
             </div>
         </div>
 
         <div id="win-news" class="window-panel">
             <div class="panel-header"><span>🗞️ 全情報新聞雷達 (近 3 日)</span><span style="font-size: 11px; color:var(--text-muted);">單擊看詳情 / 雙擊開圖</span></div>
             <div class="panel-content">
-                <<thead><tr>
+                <table>
+                    <thead><tr>
                         <th class="status-indicator"></th>
-                        <th style="cursor:pointer;" onclick="setSort('news', 'time')">時間 <span id="sort-news-time"></span></th>
-                        <th style="cursor:pointer;" onclick="setSort('news', 'Code')">代碼 <span id="sort-news-Code"></span></th>
-                        <th style="cursor:pointer;" onclick="setSort('news', 'CatScore')">評分 <span id="sort-news-CatScore">▼</span></th>
-                        <th>標題</th> <th style="cursor:pointer;" onclick="setSort('news', 'Float')">流通股 <span id="sort-news-Float"></span></th>
-                        <th style="cursor:pointer;" onclick="setSort('news', 'RelVol')">量比 <span id="sort-news-RelVol"></span></th>
-                        <th style="cursor:pointer;" onclick="setSort('news', 'Vol')">成交量 <span id="sort-news-Vol"></span></th>
-                        <th style="cursor:pointer;" onclick="setSort('news', 'Pct')">漲幅 <span id="sort-news-Pct"></span></th>
+                        <th onclick="setSort('news', 'time')">時間 <span id="sort-news-time"></span></th>
+                        <th onclick="setSort('news', 'Code')">代碼 <span id="sort-news-Code"></span></th>
+                        <th onclick="setSort('news', 'CatScore')">評分 <span id="sort-news-CatScore">▼</span></th>
+                        <th>標題</th> <th onclick="setSort('news', 'Float')">流通股 <span id="sort-news-Float"></span></th>
+                        <th onclick="setSort('news', 'RelVol')">量比 <span id="sort-news-RelVol"></span></th>
+                        <th onclick="setSort('news', 'Vol')">成交量 <span id="sort-news-Vol"></span></th>
+                        <th onclick="setSort('news', 'Pct')">漲幅 <span id="sort-news-Pct"></span></th>
                     </tr></thead>
+                    <tbody id="news-list"></tbody>
+                </table>
             </div>
         </div>
 
@@ -143,19 +151,21 @@
     </div>
 
     <script>
-        // 💡 預設 showETF = false，完全隱藏槓桿 ETF
         let brain = {}, activeSym = "", audioOn = false, played = {}, showETF = false;
-        // 💡 排序狀態紀錄 (預設排行為漲幅降冪，新聞為評分降冪)
+        let lastTopNewsHeadline = ""; 
+        const sounds = { spark: new Audio('/static/sounds/spark.mp3'), nova: new Audio('/static/sounds/nova.mp3') };
+
+        // 💡 排序狀態紀錄
         let rankCfg = { col: 'Pct', asc: false };
         let newsCfg = { col: 'CatScore', asc: false };
 
-        // 💡 智能數值解析器 (能看懂 18.5M, 721K, +329%, ⚠️ 等符號)
+        // 💡 智能數值解析器
         function parseValue(val, col) {
             if (!val || val === '-' || val.includes('N/A')) return -999999;
-            if (col === 'Code' || col === 'time') return val.toString(); // 文字排序
+            if (col === 'Code' || col === 'time') return val.toString(); 
             
             let str = val.toString();
-            let num = parseFloat(str.replace(/[^0-9.-]/g, '')) || 0; // 拔除文字，只留數字和負號
+            let num = parseFloat(str.replace(/[^0-9.-]/g, '')) || 0; 
             if (col === 'Vol' || col === 'Float') {
                 if (str.includes('M')) return num * 1000000;
                 if (str.includes('K')) return num * 1000;
@@ -163,24 +173,40 @@
             return num;
         }
 
-        // 💡 點擊切換排序邏輯
+        // 💡 切換排序邏輯
         function setSort(table, col) {
             let cfg = table === 'rank' ? rankCfg : newsCfg;
             if (cfg.col === col) {
-                cfg.asc = !cfg.asc; // 同欄位點擊，切換正逆序
+                cfg.asc = !cfg.asc; 
             } else {
                 cfg.col = col;
-                cfg.asc = false; // 切換新欄位，預設由大到小
+                cfg.asc = false; 
             }
-            
-            // 清空所有箭頭，更新點擊的箭頭
             document.querySelectorAll(`[id^="sort-${table}-"]`).forEach(el => el.innerText = "");
             document.getElementById(`sort-${table}-${col}`).innerText = cfg.asc ? "▲" : "▼";
             
-            if (Object.keys(brain).length > 0) refreshUI(brain); // 立刻重新渲染
+            if (Object.keys(brain).length > 0) refreshUI(brain); 
         }
-        let lastTopNewsHeadline = ""; 
-        const sounds = { spark: new Audio('/static/sounds/spark.mp3'), nova: new Audio('/static/sounds/nova.mp3') };
+
+        // 💡 顯示 AI 學習詞彙 (具備防呆機制)
+        function showAITrends() {
+            if (!brain || !brain.live_trends) return alert("📡 系統尚未載入學習數據，請稍後再試...");
+            let trends = brain.live_trends;
+            let keys = Object.keys(trends);
+            if (keys.length === 0) return alert("📉 目前 trends.json 為空，今日 NLP 引擎尚未提煉出新詞彙。");
+            
+            let msg = `🔥 近期 NLP 引擎自動提煉的高頻核彈詞彙：\n📅 學習完成時間 (TPE)：${brain.trends_date || '未知'}\n\n`;
+            let formatError = false;
+            
+            keys.forEach(k => {
+                let val = trends[k];
+                if (typeof val === 'object') formatError = true;
+                else msg += `► 【 ${k} 】 (權重: +${val}分)\n`;
+            });
+            
+            if (formatError) msg = "⚠️ 系統警告：偵測到 trends.json 格式異常！系統讀取到了 BLACK, RED 等分類標籤。請手動將 trends.json 的內容完全清空 (改成 {} )，NLP 引擎會在下一次掃描時自動修復！";
+            alert(msg);
+        }
 
         function initWindowManager() {
             if (window.innerWidth <= 1024) return; 
@@ -194,6 +220,7 @@
 
             wins.forEach(id => {
                 const el = document.getElementById(id);
+                if (!el) return;
                 let saved = JSON.parse(localStorage.getItem('sniper_v41_1_layout_' + id));
                 if (!saved) saved = defaultLayout[id];
 
@@ -223,77 +250,48 @@
             const target = event.target;
             let x = (parseFloat(target.getAttribute('data-x')) || 0);
             let y = (parseFloat(target.getAttribute('data-y')) || 0);
-            target.style.width = event.rect.width + 'px'; target.style.height = event.rect.height + 'px';
+            target.style.width = event.rect.width + 'px';
+            target.style.height = event.rect.height + 'px';
             target.style.transform = `translate(${x}px, ${y}px)`;
             target.setAttribute('data-x', x); target.setAttribute('data-y', y);
         }
+        
         function saveLayout() {
             ['win-log', 'win-rank', 'win-news', 'win-detail'].forEach(id => {
                 const el = document.getElementById(id);
+                // 🛡️ 防呆鎖：就算 HTML 損壞，也不會讓 JS 當機導致拖曳黏住
+                if (!el) return; 
                 const x = parseFloat(el.getAttribute('data-x')) || 0; const y = parseFloat(el.getAttribute('data-y')) || 0;
                 localStorage.setItem('sniper_v41_1_layout_' + id, JSON.stringify({x: x, y: y, w: el.offsetWidth, h: el.offsetHeight}));
             });
             let ind = document.getElementById('save-status');
-            ind.style.opacity = 1; setTimeout(() => { ind.style.opacity = 0; }, 2000);
+            ind.style.opacity = 1;
+            setTimeout(() => { ind.style.opacity = 0; }, 2000);
         }
 
         function resetLayout() { localStorage.clear(); location.reload(); }
         
         function toggleETF() { 
-            showETF = !showETF; 
+            showETF = !showETF;
             let btn = document.getElementById('etf-btn');
             if (showETF) { 
-                btn.innerText = "🔘 隱藏 ETF / 槓桿"; 
+                btn.innerText = "🔘 隱藏 ETF / 槓桿";
                 btn.style.borderColor = "var(--red)"; btn.style.color = "var(--red)";
             } else { 
-                btn.innerText = "🔘 顯示 ETF / 槓桿"; 
+                btn.innerText = "🔘 顯示 ETF / 槓桿";
                 btn.style.borderColor = "var(--border)"; btn.style.color = "var(--text-main)";
             }
-            if (Object.keys(brain).length > 0) refreshUI(brain); 
+            if (Object.keys(brain).length > 0) refreshUI(brain);
         }
 
         function unlockAudio() { 
-            audioOn = true; 
+            audioOn = true;
             let btn = document.getElementById('audio-btn');
-            btn.style.borderColor = "var(--green)"; btn.style.color = "var(--green)"; btn.innerText = "🔊 音效已啟用"; 
+            btn.style.borderColor = "var(--green)"; btn.style.color = "var(--green)"; btn.innerText = "🔊 音效已啟用";
         }
         function openTW(s) { window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank'); }
 
-        // 💡 顯示 AI 學習詞彙的函數 (V41.13 日期與防呆版)
-        function showAITrends() {
-            if (!brain || !brain.live_trends) {
-                return alert("📡 系統尚未載入學習數據，請稍後再試...");
-            }
-            
-            let trends = brain.live_trends;
-            let keys = Object.keys(trends);
-            
-            if (keys.length === 0) {
-                return alert("📉 目前 trends.json 為空，今日 NLP 引擎尚未提煉出新詞彙。");
-            }
-            
-            let msg = `🔥 近期 NLP 引擎自動提煉的高頻核彈詞彙：\n📅 學習完成時間 (TPE)：${brain.trends_date || '未知'}\n\n`;
-            let formatError = false;
-            
-            keys.forEach(k => {
-                let val = trends[k];
-                // 🛡️ 防呆診斷：如果讀取到的是物件 (例如 BLACK: {...})
-                if (typeof val === 'object') {
-                    formatError = true;
-                } else {
-                    msg += `► 【 ${k} 】 (自動賦予權重: +${val}分)\n`;
-                }
-            });
-            
-            if (formatError) {
-                msg = "⚠️ 系統警告：偵測到 trends.json 格式異常！\n\n系統讀取到了 BLACK, RED 等分類標籤，這代表目前的 trends.json 裡面裝錯了 catalysts.json 的內容。\n\n💡 解決方案：請手動將 trends.json 的內容完全清空 (改成 {} )，NLP 引擎會在下一次掃描時自動填入正確的單字！";
-            }
-            
-            alert(msg);
-        }
-
         setInterval(() => { document.getElementById('sys-clock').innerText = new Date().toLocaleTimeString('zh-TW', {timeZone: 'Asia/Taipei', hour12: false}); }, 1000);
-
         function refresh() {
             fetch('/data?t=' + Date.now())
                 .then(r => r.json())
@@ -302,47 +300,43 @@
         }
 
         function refreshUI(d) {
-            // 🛡️ 防禦1：如果後端資料斷線，直接跳出不執行
-            if (!d || !d.details) return; 
-            
+            if (!d) return;
             document.getElementById('sys-status').innerText = `📡 數據更新: ${d.last_update || '--:--:--'}`;
             document.getElementById('sys-status').style.color = "var(--green)";
             
-            // 1. 日誌 (加入 ?. 防禦)
-            if (d.surge_log && d.surge_log.length > 0) {
-                let h1 = "";
-                d.surge_log.forEach(r => {
-                    if (r?.Type === 'fund' && !showETF) return; 
+            // 1. 日誌面板渲染
+            let h1 = "";
+            (d.surge_log || []).forEach(r => {
+                if (r.Type === 'fund' && !showETF) return; 
 
-                    let det = d.details[r?.Code] || {};
-                    let isFatal = r?.Signal && r.Signal.includes("💀");
-                    let icon = isFatal ? " 💀" : ((det.CatScore || 0) > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
-                    let rowClass = r?.Status ? `tr-${r.Status}` : "";
-                    if (r?.Signal && r.Signal.includes("⚡VCP")) rowClass += " tr-vcp";
-                    if (isFatal) rowClass += " trap-row"; 
-                    
-                    let floatDisplay = r?.Type === 'fund' ? '<span style="color:var(--border);">N/A (ETF)</span>' : (r?.Float || '-');
+                let det = (d.details && d.details[r.Code]) ? d.details[r.Code] : {};
+                let isFatal = r.Signal && r.Signal.includes("💀");
+                let icon = isFatal ? " 💀" : ((det.CatScore || 0) > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
+                let rowClass = r.Status ? `tr-${r.Status}` : "";
+                if (r.Signal && r.Signal.includes("⚡VCP")) rowClass += " tr-vcp";
+                if (isFatal) rowClass += " trap-row"; 
+                let floatDisplay = r.Type === 'fund' ? '<span style="color:var(--border);">N/A (ETF)</span>' : (r.Float || '-');
 
-                    h1 += `<tr class="${rowClass}" onclick="loadDetail('${r?.Code}')" ondblclick="openTW('${r?.Code}')">
-                        <td class="status-indicator"></td>
-                        <td style="color: var(--text-muted);">${r?.Time || '-'}</td>
-                        <td class="sym">${r?.Code}${icon}</td>
-                        <td style="color: var(--text-muted);">${floatDisplay}</td>
-                        <td>${r?.Price || '-'}</td><td>${r?.RelVol || '-'}</td><td>${r?.Vol || '-'}</td>
-                        <td class="${parseFloat(r?.Pct||0)>0?'up':'down'}">${r?.Pct || '-'}</td>
-                        <td style="font-weight: bold;">${r?.Signal || '-'}</td>
-                    </tr>`;
-                });
-                document.getElementById('surge-log-body').innerHTML = h1;
-            }
+                h1 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
+                    <td class="status-indicator"></td>
+                    <td style="color: var(--text-muted);">${r.Time || '-'}</td>
+                    <td class="sym">${r.Code}${icon}</td>
+                    <td style="color: var(--text-muted);">${floatDisplay}</td>
+                    <td>${r.Price || '-'}</td><td>${r.RelVol || '-'}</td><td>${r.Vol || '-'}</td>
+                    <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct || '-'}</td>
+                    <td style="font-weight: bold;">${r.Signal || '-'}</td>
+                </tr>`;
+                if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { 
+                    played[r.SignalTS] = r.SignalTS;
+                    sounds[r.Audio].currentTime = 0; sounds[r.Audio].play().catch(e=>{}); 
+                }
+            });
+            document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="9" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
 
-            // ==========================================
-            // 2. 排行榜面板渲染 (導入動態排序)
-            // ==========================================
+            // 2. 排行榜面板渲染 (動態排序版)
             let h2 = "";
             let rankData = [...(d.leaderboard || [])].filter(r => !(r?.Type === 'fund' && !showETF));
             
-            // 執行排序
             rankData.sort((a, b) => {
                 let detA = d.details[a.Code] || {}; let detB = d.details[b.Code] || {};
                 let valA = (rankCfg.col === 'Float') ? (a.Float || detA.Float) : ((rankCfg.col === 'RelVol') ? (detA.RelVol || a.RelVol) : a[rankCfg.col]);
@@ -355,31 +349,29 @@
             });
 
             rankData.forEach(r => {
-                let det = d.details[r?.Code] || {};
+                let det = (d.details && d.details[r.Code]) ? d.details[r.Code] : {};
                 let isFatal = det.IsTrap;
                 let icon = isFatal ? " 💀" : ((det.CatScore || 0) > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
-                let rv = det.RelVol || r?.RelVol || '-';
-                let floatToUse = r?.Type === 'fund' ? `<span style="color:var(--border);">N/A (ETF)</span>` : (r?.Float || det.Float || "-");
-                let rowClass = `tr-${det.Status || r?.Status || 'green'}`;
+                let rv = det.RelVol || r.RelVol || '-';
+                let floatToUse = r.Type === 'fund' ? `<span style="color:var(--border);">N/A (ETF)</span>` : (r.Float || det.Float || "-");
+                let rowClass = `tr-${det.Status || r.Status || 'green'}`;
                 if (isFatal) rowClass += " trap-row";
 
-                h2 += `<tr class="${rowClass}" onclick="loadDetail('${r?.Code}')" ondblclick="openTW('${r?.Code}')">
+                h2 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                     <td class="status-indicator"></td>
-                    <td class="sym">${r?.Code}${icon}</td>
+                    <td class="sym">${r.Code}${icon}</td>
                     <td style="color:var(--text-muted);">${floatToUse}</td>
-                    <td>${r?.Price || '-'}</td><td>${rv}</td><td>${r?.Vol || '-'}</td>
-                    <td class="${parseFloat(r?.Pct||0)>0?'up':'down'}">${r?.Pct || '-'}</td>
+                    <td>${r.Price || '-'}</td><td>${rv}</td><td>${r.Vol || '-'}</td>
+                    <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct || '-'}</td>
                 </tr>`;
             });
             document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="7" style="text-align:center; padding: 20px; color: var(--text-muted);">無符合條件之標的</td></tr>`;
 
-            // ==========================================
-            // 3. 情報聚合器與新聞音效 (導入動態排序)
-            // ==========================================
+            // 3. 情報聚合器與新聞音效 (動態排序版)
             let h3 = "";
             if (d.top_catalysts && d.top_catalysts.length > 0) {
-                let firstValidNews = d.top_catalysts.find(n => n?.NewsList && n.NewsList.length > 0);
-                let currentLatestHeadline = firstValidNews ? (firstValidNews.NewsList[0]?.headline || firstValidNews.NewsList[0]?.raw_title) : "";
+                let firstValidNews = d.top_catalysts.find(n => n.NewsList && n.NewsList.length > 0);
+                let currentLatestHeadline = firstValidNews ? (firstValidNews.NewsList[0].headline || firstValidNews.NewsList[0].raw_title) : "";
                 if (lastTopNewsHeadline !== "" && lastTopNewsHeadline !== currentLatestHeadline && audioOn) {
                     sounds.nova.currentTime = 0; sounds.nova.play().catch(e=>{});
                 }
@@ -387,7 +379,6 @@
                 
                 let newsData = [...d.top_catalysts].filter(n => !(n?.Type === 'fund' && !showETF) && n?.NewsList && n.NewsList.length > 0);
                 
-                // 執行排序
                 newsData.sort((a, b) => {
                     let valA, valB;
                     if (newsCfg.col === 'time') {
@@ -406,19 +397,19 @@
 
                 newsData.forEach(n => {
                     let latest = n.NewsList[0];
-                    let hl = latest?.title === "⏳ 翻譯中..." ? `${latest?.raw_title} <span class="translating">⏳翻譯中...</span>` : (latest?.title || '-');
-                    let timeColor = latest?.is_today ? "#ffa500" : "var(--text-muted)";
+                    let hl = latest.title === "⏳ 翻譯中..." ? `${latest.raw_title} <span class="translating">⏳翻譯中...</span>` : latest.title;
+                    let timeColor = latest.is_today ? "#ffa500" : "var(--text-muted)";
                     
-                    let symCode = n?.Code || n?.ticker || '-';
-                    let f_Float = n?.Type === 'fund' ? '<span style="color:var(--border);">N/A (ETF)</span>' : (n?.Float || "-");
-                    let f_RelVol = n?.RelVol || "-";
-                    let f_Vol = n?.Vol || "-";
-                    let f_Pct = n?.Pct || "-";
-                    let f_Score = n?.CatScore !== undefined ? n.CatScore : (n?.score || 0);
+                    let symCode = n.Code || n.ticker || '-';
+                    let f_Float = n.Type === 'fund' ? '<span style="color:var(--border);">N/A (ETF)</span>' : (n.Float || "-");
+                    let f_RelVol = n.RelVol || "-";
+                    let f_Vol = n.Vol || "-";
+                    let f_Pct = n.Pct || "-";
+                    let f_Score = n.CatScore !== undefined ? n.CatScore : (n.score || 0);
 
                     h3 += `<tr class="tr-green" onclick="loadDetail('${symCode}')" ondblclick="openTW('${symCode}')">
                         <td class="status-indicator" style="background:${f_Score >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
-                        <td style="color: ${timeColor}; font-weight: bold; font-size: 11px;">${latest?.time || '-'}</td>
+                        <td style="color: ${timeColor}; font-weight: bold; font-size: 11px;">${latest.time || '-'}</td>
                         <td class="sym">${symCode}</td>
                         <td style="color:${f_Score >= 6 ? 'var(--yellow)' : 'var(--text-muted)'}; font-weight:bold;">${f_Score}</td>
                         <td style="font-size:12px; line-height:1.4; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${hl}</td>
@@ -436,13 +427,13 @@
             if(activeSym) loadDetail(activeSym);
         }
 
-        // 4. 戰情報告 (緊湊版 HUD 排版)
+        // 4. 戰情報告
         function loadDetail(sym) {
-            activeSym = sym; 
+            activeSym = sym;
             let d = (brain.details && brain.details[sym]) ? brain.details[sym] : null; 
             let rankData = brain.leaderboard ? brain.leaderboard.find(x => x.Code === sym) : null;
             
-            if (!d && !rankData) return; 
+            if (!d && !rankData) return;
             if (!d && rankData) d = { Price: rankData.Price, Pct: rankData.Pct, Vol: rankData.Vol, RelVol: "-", Float: rankData.Type==='fund' ? "N/A (ETF)" : (rankData.Float||"-"), StopLoss: 0, CatScore: 0, IsTrap: false, NewsList: [] };
 
             let trapWarn = d.IsTrap ? `<div style="background:rgba(248, 81, 73, 0.2); border: 1px solid var(--red); color: var(--red); padding:8px; margin-bottom:10px; border-radius:6px; font-weight:bold; font-size:13px; animation: blood-pulse 1s infinite;">🩸 致命警告：偵測到 S-1/S-3 增發稀釋文件</div>` : "";
@@ -453,7 +444,7 @@
                 let durationMatch = d.Signal.match(/\((\d+)m\)/);
                 let mins = durationMatch ? parseInt(durationMatch[1]) : 1;
                 let barColor = mins >= 10 ? "#ffffff" : (mins >= 4 ? "#ffa500" : "#e3b341");
-                let barWidth = Math.min(mins * 10, 100); 
+                let barWidth = Math.min(mins * 10, 100);
                 let pulseClass = mins >= 10 ? "trap-row" : "";
                 vcpBarHTML = `<div style="font-size:11px; color:var(--text-muted); margin-bottom:2px;">⚡ 壓縮蓄力進度 (${mins} mins)</div><div class="vcp-bar-container ${pulseClass}" style="margin-top:2px;"><div class="vcp-bar" style="width: ${barWidth}%; background: ${barColor}; box-shadow: 0 0 8px ${barColor};"></div></div>`;
             }
@@ -472,11 +463,11 @@
                     
                     <div style="grid-column: span 2; padding-left:4px; margin-top:2px;">真實籌碼: <b style="color:var(--text-main); font-size:13px;">${d.Float || '-'}</b></div>
                     <div style="grid-column: span 2; padding-left:4px; margin-top:2px;">風控停損: <b style="color:var(--red); font-size:14px;">$${(d.StopLoss||0).toFixed(2)}</b></div>
+                    
                     ${vcpBarHTML ? `<div style="grid-column: 1 / -1; margin-top: 2px;">${vcpBarHTML}</div>` : ''}
                 </div>
                 
                 <h3 style="color: var(--text-muted); font-size:12px; border-bottom:1px solid var(--border); padding-bottom:4px; margin-top:12px; margin-bottom:8px; text-align:left;">🗞️ 即時催化劑情報</h3>`;
-            
             if (!d.NewsList || d.NewsList.length === 0) {
                 html += `<div style="text-align:left; color:var(--text-muted); font-size: 13px; padding-top:5px;">近 3 日尚無重大新聞。</div>`;
             } else {
