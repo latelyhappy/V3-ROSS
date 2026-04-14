@@ -70,14 +70,14 @@
     "SATELLITE": 5
   },
   "BLACK": {
-    "_註記": "散戶絞肉機單字 (-15 ~ -50分)",
+    "_註記": "散戶絞肉機單字 (-15 ~ -50分) - 避免使用超短單字防誤殺",
     "OFFERING": -30,
     "DILUTION": -25,
     "BANKRUPTCY": -50,
     "DELISTING": -40,
     "REVERSE SPLIT": -40,
-    "HOLD": -25,
-    "MISS": -15,
+    "CLINICAL HOLD": -40,
+    "EARNINGS MISS": -15,
     "RESIGNS": -20,
     "FRAUD": -40
   }
