@@ -1,4 +1,4 @@
-import time, threading, os, json, re, base64
+import time, threading, os, json, re, base64, copy
 from datetime import datetime, timedelta
 import pandas as pd
 import requests
