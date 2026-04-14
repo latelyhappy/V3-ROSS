@@ -1,4 +1,4 @@
-import time, threading, os, json
+import time, threading, os, json, copy, re
 from datetime import datetime, timedelta
 import pandas as pd
 import requests
@@ -8,29 +8,32 @@ import pytz
 from tvDatafeed import TvDatafeed, Interval
 from flask import Flask, jsonify, render_template
 from deep_translator import GoogleTranslator
+from collections import Counter
 
 # ==========================================
-# 🛠️ 戰略設定與全局記憶體 (V41.9 終極防護版)
+# 🛡️ 系統防護與戰術設定 (V41.13 最終自動化版)
 # ==========================================
-TW_USERNAME = os.getenv('TW_USERNAME', 'guest') 
-TW_PASSWORD = os.getenv('TW_PASSWORD', 'guest')
-PORT = int(os.getenv('PORT', 5000))
-TZ_TW = pytz.timezone('Asia/Taipei')
-TZ_NY = pytz.timezone('America/New_York')
-
-CATALYST_ARMORY = {}
-# 👇 新增這三行在 CATALYST_ARMORY 附近
+brain_lock = threading.Lock() # 💡 執行緒安全鎖 (解決您的報錯)
 TRENDS_FILE_PATH = os.path.join(os.path.dirname(__file__), 'trends.json')
 _cached_trends = {}
 _last_trends_update = 0
+TRENDS_CACHE_TTL = 60  # 熱更新快取時間 (秒)
+
+TW_USERNAME = os.getenv('TW_USERNAME', 'guest') 
+TW_PASSWORD = os.getenv('TW_PASSWORD', 'guest')
+PORT = int(os.getenv('PORT', 8080))
+TZ_TW = pytz.timezone('Asia/Taipei')
+TZ_NY = pytz.timezone('America/New_York')
+
+# 💡 載入固定軍火庫
+CATALYST_ARMORY = {}
 armory_path = os.path.join(os.path.dirname(__file__), 'catalysts.json')
 try:
     with open(armory_path, 'r', encoding='utf-8') as f:
         CATALYST_ARMORY = json.load(f)
     print("✅ 成功載入 catalysts.json 軍火庫")
-except Exception as e:
-    print(f"❌ 警告：無法讀取 catalysts.json ({e})，使用空白預設值！")
-    CATALYST_ARMORY = {"INVERTED_TRAPS":{}, "THEMATIC_TRENDS":{}, "RED":{}, "ORANGE":{}, "YELLOW":{}, "BLACK":{}}
+except:
+    CATALYST_ARMORY = {"INVERTED_TRAPS":{}, "RED":{}, "ORANGE":{}, "YELLOW":{}, "BLACK":{}}
 
 MASTER_BRAIN = {"surge_log": [], "details": {}, "leaderboard": [], "top_catalysts": [], "last_update": ""}
 DYNAMIC_WATCHLIST = []
@@ -45,32 +48,29 @@ def format_vol(n):
     if n >= 1_000: return f"{n/1_000:.1f}K"
     return str(int(n))
 
-# 👇 1. 新增動態讀取函數
 def get_live_trends():
+    """動態讀取 NLP 自動產生的熱點詞彙"""
     global _cached_trends, _last_trends_update
     now = time.time()
-    if now - _last_trends_update < 60: return _cached_trends  # 60秒快取，防止讀寫卡頓
+    if now - _last_trends_update < TRENDS_CACHE_TTL: return _cached_trends
     try:
         if os.path.exists(TRENDS_FILE_PATH):
             with open(TRENDS_FILE_PATH, 'r', encoding='utf-8') as f:
                 _cached_trends = json.load(f)
                 _last_trends_update = now
+        else: _cached_trends = {}
     except: pass
     return _cached_trends
 
-# 👇 2. 替換原有的算分函數
 def calculate_hft_score(headline):
     text = (headline or "").upper()
     total_score = 0
-    is_trap = False
-
     for kw, score in CATALYST_ARMORY.get("INVERTED_TRAPS", {}).items():
         if kw in text: total_score += score; text = text.replace(kw, "") 
-
     for kw, score in CATALYST_ARMORY.get("BLACK", {}).items():
         if kw in text: return -50, True
-
-    # 💡 新增：讀取外部的趨勢熱點
+    
+    # 💡 整合 NLP 動態熱點
     live_trends = get_live_trends()
     for kw, score in live_trends.items():
         if kw in text: total_score += score
@@ -78,25 +78,21 @@ def calculate_hft_score(headline):
     for cat in ["RED", "ORANGE", "YELLOW"]:
         for kw, score in CATALYST_ARMORY.get(cat, {}).items():
             if kw in text: total_score += score
-            
-    return total_score, is_trap
+    return total_score, False
 
-# --- 💡 背景翻譯工兵 ---
 def background_translate_worker(ticker, en_headline, master_brain):
     try:
         zh_text = GoogleTranslator(source='auto', target='zh-TW').translate(en_headline)
-        if ticker in master_brain['details']:
-            news_list = master_brain['details'][ticker].get('NewsList', [])
-            for article in news_list:
-                if article.get('raw_title') == en_headline:
-                    article['title'] = zh_text
-                    break 
-    except Exception as e:
-        pass
+        with brain_lock:
+            if ticker in master_brain['details']:
+                for article in master_brain['details'][ticker].get('NewsList', []):
+                    if article.get('raw_title') == en_headline:
+                        article['title'] = zh_text
+                        break 
+    except: pass
 
-# --- 🛰️ SEC EDGAR 陷阱雷達 ---
 def check_sec_fatal_traps(ticker):
-    headers = {'User-Agent': 'Sniper_Bot_V41/1.9 (contact@yourdomain.com)'}
+    headers = {'User-Agent': 'SniperTrader/1.13 (contact@yourdomain.com)'}
     url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=&output=atom"
     try:
         res = requests.get(url, headers=headers, timeout=3)
@@ -104,15 +100,11 @@ def check_sec_fatal_traps(ticker):
             root = ET.fromstring(res.content)
             for entry in root.findall('{http://www.w3.org/2005/Atom}entry')[:3]:
                 title_elem = entry.find('{http://www.w3.org/2005/Atom}title')
-                if title_elem is not None and title_elem.text:
-                    title = title_elem.text.upper()
-                    if any(trap in title for trap in ['S-1', 'S-3', 'F-1', 'F-3', '1-A']): 
-                        return True
+                if title_elem is not None and any(trap in title_elem.text.upper() for trap in ['S-1', 'S-3', 'F-1', 'F-3']): return True
         return False
     except: return False
 
-# --- 📰 新聞掃描 ---
-def fetch_and_score_news(ticker, cell, stats):
+def fetch_and_score_news(ticker, cell):
     now = time.time()
     if ticker in news_cache and (now - news_cache[ticker] < 900): return
     news_cache[ticker] = now
@@ -122,120 +114,71 @@ def fetch_and_score_news(ticker, cell, stats):
         if res.status_code == 200:
             root = ET.fromstring(res.text)
             articles = []; total_score = 0; has_black = False
-            
             now_ny = datetime.now(TZ_NY)
-            today_date = now_ny.date()
-            three_days_ago = today_date - timedelta(days=3)
+            three_days_ago = now_ny.date() - timedelta(days=3)
             
-            for item in root.findall('./channel/item'):
-                if len(articles) >= 5: break 
-                
+            for item in root.findall('./channel/item')[:5]:
                 dt = parsedate_to_datetime(item.find('pubDate').text).astimezone(TZ_NY)
-                item_date = dt.date()
-                if item_date < three_days_ago: continue
-                    
+                if dt.date() < three_days_ago: continue
                 raw_t = item.find('title').text
-                is_today = (item_date == today_date)
-                
                 score, is_trap = calculate_hft_score(raw_t)
                 if is_trap: has_black = True
                 total_score += score 
-                
                 articles.append({
                     "ticker": ticker, "title": "⏳ 翻譯中...", "raw_title": raw_t,
-                    "link": item.find('link').text, 
-                    "time": dt.strftime("%Y-%m-%d %H:%M"), 
-                    "is_today": is_today, "score": score
+                    "link": item.find('link').text, "time": dt.strftime("%Y-%m-%d %H:%M"), 
+                    "is_today": (dt.date() == now_ny.date()), "score": score
                 })
-                
-            cell["NewsList"] = articles; cell["CatScore"] = total_score
-            cell["IsTrap"] = has_black 
-            cell["HasNews"] = len(articles) > 0 
+            
+            with brain_lock:
+                cell["NewsList"] = articles; cell["CatScore"] = total_score
+                cell["IsTrap"] = has_black; cell["HasNews"] = len(articles) > 0 
 
             if articles:
                 for art in articles:
                     if art['title'] == "⏳ 翻譯中...":
                         threading.Thread(target=background_translate_worker, args=(ticker, art['raw_title'], MASTER_BRAIN), daemon=True).start()
-                        time.sleep(0.1)
-    except Exception as e: pass
+                        time.sleep(0.5) 
+    except: pass
 
-# --- 💡 焦點新聞萃取器 (放寬為近 3 日情報) ---
 def extract_top_catalysts(master_brain):
     top_list = []
     with brain_lock:
         for ticker, data in master_brain.get('details', {}).items():
-            news_list = data.get('NewsList', [])
-            # 💡 移除 is_today 的嚴格限制，只要 3 天內有抓到新聞就允許進入評分比較
-            if news_list:
+            # 💡 只要有新聞就納入排名，解鎖 3 日情報
+            if data.get('NewsList', []):
                 top_list.append(data)
     try:
-        # 依照催化劑分數 (CatScore) 由高到低排序，分數相同則比較時間
         return sorted(top_list, key=lambda x: (x.get('CatScore', 0), x['NewsList'][0].get('time', '00:00')), reverse=True)
-    except: 
-        return top_list
+    except: return top_list
 
-# --- 🛰️ TV 盤前雷達 ---
 def update_dynamic_watchlist():
     global DYNAMIC_WATCHLIST, STATS_MAP
     try:
         url = "https://scanner.tradingview.com/america/scan"
-        payload = {
-            "filter": [
-                {"left": "type", "operation": "in_range", "right": ["stock", "fund"]},
-                {"left": "exchange", "operation": "in_range", "right": ["AMEX", "NASDAQ", "NYSE"]},
-                {"left": "premarket_close", "operation": "in_range", "right": [1, 30]},
-                {"left": "premarket_change", "operation": "nempty"}
-            ],
-            "options": {"lang": "en"}, "markets": ["america"],
-            "symbols": {"query": {"types": []}, "tickers": []},
-            "columns": ["name", "premarket_close", "close", "premarket_change", "premarket_volume", "market_cap_basic", "type"],
-            "sort": {"sortBy": "premarket_change", "sortOrder": "desc"},
-            "range": [0, 50]
-        }
+        payload = {"filter": [{"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, {"left": "premarket_change", "operation": "nempty"}], "columns": ["name", "premarket_close", "close", "premarket_change", "premarket_volume", "market_cap_basic", "type"], "sort": {"sortBy": "premarket_change", "sortOrder": "desc"}, "range": [0, 40]}
         res = requests.post(url, json=payload, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
         data = res.json()
-        
-        full_pool = []
-        for item in data.get('data', []):
-            sym = item['d'][0]
-            price = item['d'][1] if item['d'][1] is not None else item['d'][2]
-            pct = item['d'][3]
-            vol = item['d'][4]
-            mc = item['d'][5]
-            asset_type = item['d'][6]
-            
-            if price and pct is not None:
-                float_m = (mc / price) / 1_000_000 if mc else 0.0
-                prev_est = price / (1 + (pct/100)) if pct != -100 else price
-                full_pool.append({"sym": sym, "price": price, "prev": prev_est, "pct": pct, "vol": int(vol) if vol else 0, "float": float_m, "type": asset_type})
-
-        if full_pool:
-            DYNAMIC_WATCHLIST = [x['sym'] for x in full_pool[:30]]
-            for x in full_pool[:30]: 
-                if x['type'] == 'fund':
-                    formatted_float = "N/A (ETF)"
-                else:
-                    formatted_float = f"{x['float']:.1f}M" if x['float'] > 0 else "未知"
-                    if x['float'] > 50.0: formatted_float = f"⚠️{formatted_float}"
-                STATS_MAP[x['sym']] = {'prev': x['prev'], 'float': x['float'], 'float_str': formatted_float, 'type': x['type']}
+        if data.get('data'):
+            DYNAMIC_WATCHLIST = [x['d'][0] for x in data['data']]
+            for x in data['data']:
+                sym, p, c, pct, v, mc, t = x['d'][0], x['d'][1], x['d'][2], x['d'][3], x['d'][4], x['d'][5], x['d'][6]
+                p_eff = p if p is not None else c
+                float_m = (mc / p_eff) / 1_000_000 if mc and p_eff else 0.0
+                prev_est = p_eff / (1 + (pct/100)) if pct and pct != -100 else p_eff
+                f_str = "N/A (ETF)" if t == 'fund' else (f"{float_m:.1f}M" if float_m > 0 else "未知")
+                if t != 'fund' and float_m > 50.0: f_str = f"⚠️{f_str}"
+                STATS_MAP[sym] = {'prev': prev_est, 'float_str': f_str, 'type': t}
     except: pass
 
-# --- 🧠 主引擎迴圈 (V41.12 防斷線自癒版) ---
-import re
-from collections import Counter
-
-# --- 🧠 全自動 NLP 熱點收索引擎 (程式 B 模組) ---
+# --- 🧠 全自動 NLP 熱點收索引擎 ---
 def auto_trend_updater():
-    """每 24 小時自動掃描 Yahoo Finance，萃取熱點詞彙並更新 trends.json"""
-    # 建立無意義的停用詞庫，避免把 THE, AND 當成熱點
-    STOP_WORDS = {"THE", "TO", "OF", "IN", "FOR", "A", "AND", "IS", "ON", "WITH", "BY", "AS", "AT", "FROM", "IT", "THAT", "THIS", "AN", "BE"}
-    
+    STOP_WORDS = {"THE", "TO", "OF", "IN", "FOR", "A", "AND", "IS", "ON", "WITH", "BY", "AS", "AT", "FROM", "IT", "THAT", "THIS", "AN", "BE", "NEW", "UP", "OUT", "ITS", "ARE", "HAS"}
     while True:
         try:
             print("🔍 [NLP引擎] 開始自動收索全網近期熱點新聞...")
             all_words = []
             
-            # 掃描雷達名單內所有股票的近期新聞
             with brain_lock:
                 target_tickers = DYNAMIC_WATCHLIST.copy()
                 
@@ -245,31 +188,26 @@ def auto_trend_updater():
                     res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
                     if res.status_code == 200:
                         root = ET.fromstring(res.text)
-                        for item in root.findall('./channel/item')[:3]:  # 只取最新 3 則
+                        for item in root.findall('./channel/item')[:3]:
                             title = item.find('title').text.upper()
-                            # 利用正則表達式只提取英文字母，過濾掉標點符號與數字
                             words = re.findall(r'\b[A-Z]{3,}\b', title) 
                             for w in words:
-                                if w not in STOP_WORDS and w != ticker: # 排除停用詞與股票代碼本身
+                                if w not in STOP_WORDS and w != ticker:
                                     all_words.append(w)
-                except:
-                    continue
-                time.sleep(0.5) # 防封鎖延遲
+                except: continue
+                time.sleep(0.5) 
 
-            # 統計出現頻率最高的單字
             if all_words:
                 word_counts = Counter(all_words)
-                top_trends = word_counts.most_common(15) # 取前 15 大熱門單字
+                top_trends = word_counts.most_common(15)
                 
                 new_trends = {}
                 print("🔥 [NLP引擎] 本期提煉出的熱門催化劑單字：")
                 for word, count in top_trends:
-                    # 如果單字出現超過 2 次，且不在原有的黑名單或紅名單中，就賦予動態分數 5 分
                     if count >= 2:
                         new_trends[word] = 5
                         print(f"   - {word}: 出現 {count} 次 (權重 +5)")
                 
-                # 自動寫入 trends.json
                 with open(TRENDS_FILE_PATH, 'w', encoding='utf-8') as f:
                     json.dump(new_trends, f, ensure_ascii=False, indent=4)
                 
@@ -278,18 +216,16 @@ def auto_trend_updater():
         except Exception as e:
             print(f"🚨 [NLP引擎] 掃描發生異常: {e}")
             
-        # 執行完畢後，休眠 86400 秒 (24小時) 後再次自動更新
-        time.sleep(86400)
+        time.sleep(86400) # 休眠 24 小時
+
 def scanner_engine():
-    # 初始啟動引擎
     tv = TvDatafeed()
     try:
-        if TW_USERNAME != 'guest' and TW_PASSWORD != 'guest': 
-            tv = TvDatafeed(TW_USERNAME, TW_PASSWORD)
+        if TW_USERNAME != 'guest': tv = TvDatafeed(TW_USERNAME, TW_PASSWORD)
     except: pass
 
     last_list_update = 0
-    consecutive_errors = 0  # 💡 新增：連續錯誤計數器
+    consecutive_errors = 0 
 
     while True:
         try:
@@ -303,26 +239,21 @@ def scanner_engine():
 
             for ticker in DYNAMIC_WATCHLIST:
                 try:
-                    # 🛡️ 防封鎖：稍微拉長請求間隔至 1.2 秒，降低被 TradingView 封鎖的機率
-                    time.sleep(1.2) 
-                    
+                    time.sleep(1.2) # 🛡️ 防封鎖延遲
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
                     
-                    # 🛡️ 自癒機制：如果抓不到資料，累計錯誤
                     if df is None or df.empty or len(df) < 10: 
                         consecutive_errors += 1
                         if consecutive_errors > 10:
                             print("🔄 偵測到連線疲乏，正在重新啟動 TradingView 引擎...")
-                            tv = TvDatafeed() # 強制重新連線
+                            tv = TvDatafeed()
                             try:
                                 if TW_USERNAME != 'guest': tv = TvDatafeed(TW_USERNAME, TW_PASSWORD)
                             except: pass
-                            consecutive_errors = 0 # 重置計數器
+                            consecutive_errors = 0
                         continue
+                    consecutive_errors = 0 
 
-                    consecutive_errors = 0 # 💡 成功抓到資料，將錯誤歸零
-
-                    # --- 下方的算分與寫入邏輯保持不變 ---
                     p_live = float(df['close'].iloc[-1])
                     p_prev = float(df['close'].iloc[-2])
                     v_live = float(df['volume'].iloc[-1])
@@ -392,11 +323,6 @@ def scanner_engine():
                     elif is_grind: current_signal = f"🚜穩步推升 {vol_warn}"; current_level = 2; status_color = "blue"  
                     elif is_ride: current_signal = f"💎趨勢滑行 {vol_warn}"; current_level = 1; status_color = "purple"
 
-                    cell = MASTER_BRAIN["details"].setdefault(ticker, {
-                        "NewsList": [], "CatScore": 0, "IsTrap": False, 
-                        "Price": "-", "Pct": "-", "Vol": "-", "RelVol": "-", "Float": "-", "Signal": ""
-                    })
-                    
                     stats = {
                         "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": format_vol(daily_vol),
                         "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, 
@@ -405,6 +331,10 @@ def scanner_engine():
                     }
                     
                     with brain_lock:
+                        cell = MASTER_BRAIN["details"].setdefault(ticker, {
+                            "NewsList": [], "CatScore": 0, "IsTrap": False, 
+                            "Price": "-", "Pct": "-", "Vol": "-", "RelVol": "-", "Float": "-", "Signal": ""
+                        })
                         cell.update(stats)
                         
                         for rank_item in MASTER_BRAIN["leaderboard"]:
@@ -431,7 +361,7 @@ def scanner_engine():
                                 MASTER_BRAIN["surge_log"].insert(0, log_entry)
                                 MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:500]
 
-                    threading.Thread(target=fetch_and_score_news, args=(ticker, cell, stats)).start()
+                    threading.Thread(target=fetch_and_score_news, args=(ticker, cell), daemon=True).start()
                 except Exception as e: continue
             
             with brain_lock:
@@ -443,15 +373,12 @@ def scanner_engine():
 
 @app.route('/')
 def index(): return render_template('index.html')
-
 @app.route('/data')
-def data(): return jsonify(MASTER_BRAIN)
+def data():
+    with brain_lock: safe_brain = copy.deepcopy(MASTER_BRAIN)
+    return jsonify(safe_brain)
 
 if __name__ == '__main__':
-    # 啟動核心高頻掃描引擎
     threading.Thread(target=scanner_engine, daemon=True).start()
-    
-    # 🚀 啟動全自動 NLP 學習引擎 (開機即收索，後續每 24 小時更新)
     threading.Thread(target=auto_trend_updater, daemon=True).start()
-    
     app.run(host='0.0.0.0', port=PORT)
