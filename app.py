@@ -384,8 +384,16 @@ def index(): return render_template('index.html')
 def data():
     with brain_lock: 
         safe_brain = copy.deepcopy(MASTER_BRAIN)
-        # 💡 新增這行：把動態學習到的詞彙一併打包送給前端！
-        safe_brain["live_trends"] = get_live_trends() 
+        safe_brain["live_trends"] = get_live_trends()
+        
+        # 💡 新增：抓取 trends.json 的最後學習/修改時間
+        try:
+            mtime = os.path.getmtime(TRENDS_FILE_PATH)
+            dt = datetime.fromtimestamp(mtime, TZ_TW)
+            safe_brain["trends_date"] = dt.strftime("%Y-%m-%d %H:%M:%S")
+        except:
+            safe_brain["trends_date"] = "尚未生成"
+            
     return jsonify(safe_brain)
 
 if __name__ == '__main__':

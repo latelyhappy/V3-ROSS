@@ -219,7 +219,7 @@
         }
         function openTW(s) { window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank'); }
 
-        // 💡 顯示 AI 學習詞彙的函數
+        // 💡 顯示 AI 學習詞彙的函數 (V41.13 日期與防呆版)
         function showAITrends() {
             if (!brain || !brain.live_trends) {
                 return alert("📡 系統尚未載入學習數據，請稍後再試...");
@@ -232,10 +232,22 @@
                 return alert("📉 目前 trends.json 為空，今日 NLP 引擎尚未提煉出新詞彙。");
             }
             
-            let msg = "🔥 近期 NLP 引擎自動提煉的高頻核彈詞彙：\n\n";
+            let msg = `🔥 近期 NLP 引擎自動提煉的高頻核彈詞彙：\n📅 學習完成時間 (TPE)：${brain.trends_date || '未知'}\n\n`;
+            let formatError = false;
+            
             keys.forEach(k => {
-                msg += `► 【 ${k} 】 (自動賦予權重: +${trends[k]}分)\n`;
+                let val = trends[k];
+                // 🛡️ 防呆診斷：如果讀取到的是物件 (例如 BLACK: {...})
+                if (typeof val === 'object') {
+                    formatError = true;
+                } else {
+                    msg += `► 【 ${k} 】 (自動賦予權重: +${val}分)\n`;
+                }
             });
+            
+            if (formatError) {
+                msg = "⚠️ 系統警告：偵測到 trends.json 格式異常！\n\n系統讀取到了 BLACK, RED 等分類標籤，這代表目前的 trends.json 裡面裝錯了 catalysts.json 的內容。\n\n💡 解決方案：請手動將 trends.json 的內容完全清空 (改成 {} )，NLP 引擎會在下一次掃描時自動填入正確的單字！";
+            }
             
             alert(msg);
         }
