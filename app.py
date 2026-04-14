@@ -159,17 +159,19 @@ def fetch_and_score_news(ticker, cell, stats):
                         time.sleep(0.1)
     except Exception as e: pass
 
-# --- 💡 焦點新聞萃取器 (只看當天有新聞的標的) ---
+# --- 💡 焦點新聞萃取器 (放寬為近 3 日情報) ---
 def extract_top_catalysts(master_brain):
     top_list = []
-    for ticker, data in master_brain.get('details', {}).items():
-        news_list = data.get('NewsList', [])
-        # 💡 只允許「當天」有新聞發布的股票上榜，排除過時資訊
-        if news_list and any(n.get('is_today', False) for n in news_list):
-            top_list.append(data)
+    with brain_lock:
+        for ticker, data in master_brain.get('details', {}).items():
+            news_list = data.get('NewsList', [])
+            # 💡 移除 is_today 的嚴格限制，只要 3 天內有抓到新聞就允許進入評分比較
+            if news_list:
+                top_list.append(data)
     try:
+        # 依照催化劑分數 (CatScore) 由高到低排序，分數相同則比較時間
         return sorted(top_list, key=lambda x: (x.get('CatScore', 0), x['NewsList'][0].get('time', '00:00')), reverse=True)
-    except:
+    except: 
         return top_list
 
 # --- 🛰️ TV 盤前雷達 ---
@@ -218,14 +220,77 @@ def update_dynamic_watchlist():
                 STATS_MAP[x['sym']] = {'prev': x['prev'], 'float': x['float'], 'float_str': formatted_float, 'type': x['type']}
     except: pass
 
-# --- 🧠 主引擎迴圈 ---
+# --- 🧠 主引擎迴圈 (V41.12 防斷線自癒版) ---
+import re
+from collections import Counter
+
+# --- 🧠 全自動 NLP 熱點收索引擎 (程式 B 模組) ---
+def auto_trend_updater():
+    """每 24 小時自動掃描 Yahoo Finance，萃取熱點詞彙並更新 trends.json"""
+    # 建立無意義的停用詞庫，避免把 THE, AND 當成熱點
+    STOP_WORDS = {"THE", "TO", "OF", "IN", "FOR", "A", "AND", "IS", "ON", "WITH", "BY", "AS", "AT", "FROM", "IT", "THAT", "THIS", "AN", "BE"}
+    
+    while True:
+        try:
+            print("🔍 [NLP引擎] 開始自動收索全網近期熱點新聞...")
+            all_words = []
+            
+            # 掃描雷達名單內所有股票的近期新聞
+            with brain_lock:
+                target_tickers = DYNAMIC_WATCHLIST.copy()
+                
+            for ticker in target_tickers:
+                try:
+                    url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
+                    res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+                    if res.status_code == 200:
+                        root = ET.fromstring(res.text)
+                        for item in root.findall('./channel/item')[:3]:  # 只取最新 3 則
+                            title = item.find('title').text.upper()
+                            # 利用正則表達式只提取英文字母，過濾掉標點符號與數字
+                            words = re.findall(r'\b[A-Z]{3,}\b', title) 
+                            for w in words:
+                                if w not in STOP_WORDS and w != ticker: # 排除停用詞與股票代碼本身
+                                    all_words.append(w)
+                except:
+                    continue
+                time.sleep(0.5) # 防封鎖延遲
+
+            # 統計出現頻率最高的單字
+            if all_words:
+                word_counts = Counter(all_words)
+                top_trends = word_counts.most_common(15) # 取前 15 大熱門單字
+                
+                new_trends = {}
+                print("🔥 [NLP引擎] 本期提煉出的熱門催化劑單字：")
+                for word, count in top_trends:
+                    # 如果單字出現超過 2 次，且不在原有的黑名單或紅名單中，就賦予動態分數 5 分
+                    if count >= 2:
+                        new_trends[word] = 5
+                        print(f"   - {word}: 出現 {count} 次 (權重 +5)")
+                
+                # 自動寫入 trends.json
+                with open(TRENDS_FILE_PATH, 'w', encoding='utf-8') as f:
+                    json.dump(new_trends, f, ensure_ascii=False, indent=4)
+                
+                print(f"✅ [NLP引擎] 成功更新 trends.json，自動休眠 24 小時。")
+                
+        except Exception as e:
+            print(f"🚨 [NLP引擎] 掃描發生異常: {e}")
+            
+        # 執行完畢後，休眠 86400 秒 (24小時) 後再次自動更新
+        time.sleep(86400)
 def scanner_engine():
+    # 初始啟動引擎
     tv = TvDatafeed()
     try:
-        if TW_USERNAME != 'guest' and TW_PASSWORD != 'guest': tv = TvDatafeed(TW_USERNAME, TW_PASSWORD)
+        if TW_USERNAME != 'guest' and TW_PASSWORD != 'guest': 
+            tv = TvDatafeed(TW_USERNAME, TW_PASSWORD)
     except: pass
 
     last_list_update = 0
+    consecutive_errors = 0  # 💡 新增：連續錯誤計數器
+
     while True:
         try:
             now_ts = time.time()
@@ -238,10 +303,26 @@ def scanner_engine():
 
             for ticker in DYNAMIC_WATCHLIST:
                 try:
-                    time.sleep(1.0)
+                    # 🛡️ 防封鎖：稍微拉長請求間隔至 1.2 秒，降低被 TradingView 封鎖的機率
+                    time.sleep(1.2) 
+                    
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
-                    if df is None or df.empty or len(df) < 10: continue
+                    
+                    # 🛡️ 自癒機制：如果抓不到資料，累計錯誤
+                    if df is None or df.empty or len(df) < 10: 
+                        consecutive_errors += 1
+                        if consecutive_errors > 10:
+                            print("🔄 偵測到連線疲乏，正在重新啟動 TradingView 引擎...")
+                            tv = TvDatafeed() # 強制重新連線
+                            try:
+                                if TW_USERNAME != 'guest': tv = TvDatafeed(TW_USERNAME, TW_PASSWORD)
+                            except: pass
+                            consecutive_errors = 0 # 重置計數器
+                        continue
 
+                    consecutive_errors = 0 # 💡 成功抓到資料，將錯誤歸零
+
+                    # --- 下方的算分與寫入邏輯保持不變 ---
                     p_live = float(df['close'].iloc[-1])
                     p_prev = float(df['close'].iloc[-2])
                     v_live = float(df['volume'].iloc[-1])
@@ -311,7 +392,6 @@ def scanner_engine():
                     elif is_grind: current_signal = f"🚜穩步推升 {vol_warn}"; current_level = 2; status_color = "blue"  
                     elif is_ride: current_signal = f"💎趨勢滑行 {vol_warn}"; current_level = 1; status_color = "purple"
 
-                    # 💡 安全初始化與單一數據寫入，防止 Frontend 出現 undefined
                     cell = MASTER_BRAIN["details"].setdefault(ticker, {
                         "NewsList": [], "CatScore": 0, "IsTrap": False, 
                         "Price": "-", "Pct": "-", "Vol": "-", "RelVol": "-", "Float": "-", "Signal": ""
@@ -323,32 +403,41 @@ def scanner_engine():
                         "Signal": current_signal if current_signal else "",
                         "PriceVal": p_live, "StopLoss": dynamic_stop, "Float": float_str, "Type": stat_data.get('type', 'stock')
                     }
-                    cell.update(stats)
                     
-                    threading.Thread(target=fetch_and_score_news, args=(ticker, cell, stats)).start()
+                    with brain_lock:
+                        cell.update(stats)
+                        
+                        for rank_item in MASTER_BRAIN["leaderboard"]:
+                            if rank_item["Code"] == ticker:
+                                rank_item["Price"] = f"${p_live:.2f}"
+                                rank_item["Pct"] = f"{real_pct:+.2f}%"
+                                rank_item["Status"] = status_color if status_color != "green" else rank_item.get("Status", "green")
+                                break
 
-                    if current_signal:
-                        last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})
-                        time_elapsed = now_ts - last_record['time']
-                        
-                        push_signal = False
-                        if time_elapsed > 45: push_signal = True 
-                        elif current_level > last_record['level']: push_signal = True 
-                        
-                        if push_signal:
-                            if check_sec_fatal_traps(ticker):
-                                current_signal += " 💀(SEC陷阱)"; cell["IsTrap"] = True; stats["Signal"] = current_signal
-                            cooldown_tracker[ticker] = {'time': now_ts, 'level': current_level}
-                            audio_target = "nova" if current_level == 4 else ("spark" if current_level == 1 else None)
-                            log_entry = {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": audio_target}
-                            MASTER_BRAIN["surge_log"].insert(0, log_entry)
-                            MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:500]
+                        if current_signal:
+                            last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})
+                            time_elapsed = now_ts - last_record['time']
+                            
+                            push_signal = False
+                            if time_elapsed > 45: push_signal = True 
+                            elif current_level > last_record['level']: push_signal = True 
+                            
+                            if push_signal:
+                                if check_sec_fatal_traps(ticker):
+                                    current_signal += " 💀(SEC陷阱)"; cell["IsTrap"] = True; stats["Signal"] = current_signal
+                                cooldown_tracker[ticker] = {'time': now_ts, 'level': current_level}
+                                audio_target = "nova" if current_level == 4 else ("spark" if current_level == 1 else None)
+                                log_entry = {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": audio_target}
+                                MASTER_BRAIN["surge_log"].insert(0, log_entry)
+                                MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:500]
+
+                    threading.Thread(target=fetch_and_score_news, args=(ticker, cell, stats)).start()
                 except Exception as e: continue
             
-            # 💡 [數據分發核心]：所有表格都從 details 抽取最新狀態，確保零誤差
-            MASTER_BRAIN["leaderboard"] = [MASTER_BRAIN["details"][t] for t in DYNAMIC_WATCHLIST if t in MASTER_BRAIN["details"]][:20]
-            MASTER_BRAIN["top_catalysts"] = extract_top_catalysts(MASTER_BRAIN)
-            MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
+            with brain_lock:
+                MASTER_BRAIN["leaderboard"] = [MASTER_BRAIN["details"][t] for t in DYNAMIC_WATCHLIST if t in MASTER_BRAIN["details"]][:20]
+                MASTER_BRAIN["top_catalysts"] = extract_top_catalysts(MASTER_BRAIN)
+                MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
             time.sleep(5)
         except Exception as e: time.sleep(10)
 
@@ -359,5 +448,10 @@ def index(): return render_template('index.html')
 def data(): return jsonify(MASTER_BRAIN)
 
 if __name__ == '__main__':
+    # 啟動核心高頻掃描引擎
     threading.Thread(target=scanner_engine, daemon=True).start()
+    
+    # 🚀 啟動全自動 NLP 學習引擎 (開機即收索，後續每 24 小時更新)
+    threading.Thread(target=auto_trend_updater, daemon=True).start()
+    
     app.run(host='0.0.0.0', port=PORT)
