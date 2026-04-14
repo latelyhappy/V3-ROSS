@@ -106,25 +106,31 @@
             <div class="panel-header"><span>🏆 超新星排行 ($1-$30)</span><span style="font-size: 11px; color:var(--text-muted);">單擊看新聞 / 雙擊開圖</span></div>
             <div class="panel-content">
                 <table>
-                    <thead><tr><th class="status-indicator"></th><th>代碼</th><th>流通股</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th></tr></thead>
-                    <tbody id="rank-list"></tbody>
-                </table>
+                    <thead><tr>
+                        <th class="status-indicator"></th>
+                        <th style="cursor:pointer;" onclick="setSort('rank', 'Code')">代碼 <span id="sort-rank-Code"></span></th>
+                        <th style="cursor:pointer;" onclick="setSort('rank', 'Float')">流通股 <span id="sort-rank-Float"></span></th>
+                        <th style="cursor:pointer;" onclick="setSort('rank', 'Price')">價格 <span id="sort-rank-Price"></span></th>
+                        <th style="cursor:pointer;" onclick="setSort('rank', 'RelVol')">量比 <span id="sort-rank-RelVol"></span></th>
+                        <th style="cursor:pointer;" onclick="setSort('rank', 'Vol')">成交量 <span id="sort-rank-Vol"></span></th>
+                        <th style="cursor:pointer;" onclick="setSort('rank', 'Pct')">漲幅 <span id="sort-rank-Pct">▼</span></th>
+                    </tr></thead>
             </div>
         </div>
 
         <div id="win-news" class="window-panel">
             <div class="panel-header"><span>🗞️ 全情報新聞雷達 (近 3 日)</span><span style="font-size: 11px; color:var(--text-muted);">單擊看詳情 / 雙擊開圖</span></div>
             <div class="panel-content">
-                <table>
-                    <thead>
-                        <tr>
-                            <th class="status-indicator"></th>
-                            <th>時間</th><th>代碼</th><th>評分</th><th>標題</th>
-                            <th>流通股</th><th>量比</th><th>成交量</th><th>漲幅</th>
-                        </tr>
-                    </thead>
-                    <tbody id="news-list"></tbody>
-                </table>
+                <<thead><tr>
+                        <th class="status-indicator"></th>
+                        <th style="cursor:pointer;" onclick="setSort('news', 'time')">時間 <span id="sort-news-time"></span></th>
+                        <th style="cursor:pointer;" onclick="setSort('news', 'Code')">代碼 <span id="sort-news-Code"></span></th>
+                        <th style="cursor:pointer;" onclick="setSort('news', 'CatScore')">評分 <span id="sort-news-CatScore">▼</span></th>
+                        <th>標題</th> <th style="cursor:pointer;" onclick="setSort('news', 'Float')">流通股 <span id="sort-news-Float"></span></th>
+                        <th style="cursor:pointer;" onclick="setSort('news', 'RelVol')">量比 <span id="sort-news-RelVol"></span></th>
+                        <th style="cursor:pointer;" onclick="setSort('news', 'Vol')">成交量 <span id="sort-news-Vol"></span></th>
+                        <th style="cursor:pointer;" onclick="setSort('news', 'Pct')">漲幅 <span id="sort-news-Pct"></span></th>
+                    </tr></thead>
             </div>
         </div>
 
@@ -139,6 +145,40 @@
     <script>
         // 💡 預設 showETF = false，完全隱藏槓桿 ETF
         let brain = {}, activeSym = "", audioOn = false, played = {}, showETF = false;
+        // 💡 排序狀態紀錄 (預設排行為漲幅降冪，新聞為評分降冪)
+        let rankCfg = { col: 'Pct', asc: false };
+        let newsCfg = { col: 'CatScore', asc: false };
+
+        // 💡 智能數值解析器 (能看懂 18.5M, 721K, +329%, ⚠️ 等符號)
+        function parseValue(val, col) {
+            if (!val || val === '-' || val.includes('N/A')) return -999999;
+            if (col === 'Code' || col === 'time') return val.toString(); // 文字排序
+            
+            let str = val.toString();
+            let num = parseFloat(str.replace(/[^0-9.-]/g, '')) || 0; // 拔除文字，只留數字和負號
+            if (col === 'Vol' || col === 'Float') {
+                if (str.includes('M')) return num * 1000000;
+                if (str.includes('K')) return num * 1000;
+            }
+            return num;
+        }
+
+        // 💡 點擊切換排序邏輯
+        function setSort(table, col) {
+            let cfg = table === 'rank' ? rankCfg : newsCfg;
+            if (cfg.col === col) {
+                cfg.asc = !cfg.asc; // 同欄位點擊，切換正逆序
+            } else {
+                cfg.col = col;
+                cfg.asc = false; // 切換新欄位，預設由大到小
+            }
+            
+            // 清空所有箭頭，更新點擊的箭頭
+            document.querySelectorAll(`[id^="sort-${table}-"]`).forEach(el => el.innerText = "");
+            document.getElementById(`sort-${table}-${col}`).innerText = cfg.asc ? "▲" : "▼";
+            
+            if (Object.keys(brain).length > 0) refreshUI(brain); // 立刻重新渲染
+        }
         let lastTopNewsHeadline = ""; 
         const sounds = { spark: new Audio('/static/sounds/spark.mp3'), nova: new Audio('/static/sounds/nova.mp3') };
 
@@ -296,11 +336,25 @@
                 document.getElementById('surge-log-body').innerHTML = h1;
             }
 
-            // 2. 排行榜 (加入 ?. 防禦)
+            // ==========================================
+            // 2. 排行榜面板渲染 (導入動態排序)
+            // ==========================================
             let h2 = "";
-            (d.leaderboard || []).forEach(r => {
-                if (r?.Type === 'fund' && !showETF) return; 
+            let rankData = [...(d.leaderboard || [])].filter(r => !(r?.Type === 'fund' && !showETF));
+            
+            // 執行排序
+            rankData.sort((a, b) => {
+                let detA = d.details[a.Code] || {}; let detB = d.details[b.Code] || {};
+                let valA = (rankCfg.col === 'Float') ? (a.Float || detA.Float) : ((rankCfg.col === 'RelVol') ? (detA.RelVol || a.RelVol) : a[rankCfg.col]);
+                let valB = (rankCfg.col === 'Float') ? (b.Float || detB.Float) : ((rankCfg.col === 'RelVol') ? (detB.RelVol || b.RelVol) : b[rankCfg.col]);
                 
+                valA = parseValue(valA, rankCfg.col); valB = parseValue(valB, rankCfg.col);
+                if (valA < valB) return rankCfg.asc ? -1 : 1;
+                if (valA > valB) return rankCfg.asc ? 1 : -1;
+                return 0;
+            });
+
+            rankData.forEach(r => {
                 let det = d.details[r?.Code] || {};
                 let isFatal = det.IsTrap;
                 let icon = isFatal ? " 💀" : ((det.CatScore || 0) > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
@@ -319,16 +373,39 @@
             });
             document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="7" style="text-align:center; padding: 20px; color: var(--text-muted);">無符合條件之標的</td></tr>`;
 
-            // 3. 情報聚合器
+            // ==========================================
+            // 3. 情報聚合器與新聞音效 (導入動態排序)
+            // ==========================================
+            let h3 = "";
             if (d.top_catalysts && d.top_catalysts.length > 0) {
-                let h3 = "";
-                d.top_catalysts.forEach(n => {
-                    if (n?.Type === 'fund' && !showETF) return; 
-                    
-                    let newsList = n?.NewsList || [];
-                    if (newsList.length === 0) return; 
+                let firstValidNews = d.top_catalysts.find(n => n?.NewsList && n.NewsList.length > 0);
+                let currentLatestHeadline = firstValidNews ? (firstValidNews.NewsList[0]?.headline || firstValidNews.NewsList[0]?.raw_title) : "";
+                if (lastTopNewsHeadline !== "" && lastTopNewsHeadline !== currentLatestHeadline && audioOn) {
+                    sounds.nova.currentTime = 0; sounds.nova.play().catch(e=>{});
+                }
+                lastTopNewsHeadline = currentLatestHeadline;
+                
+                let newsData = [...d.top_catalysts].filter(n => !(n?.Type === 'fund' && !showETF) && n?.NewsList && n.NewsList.length > 0);
+                
+                // 執行排序
+                newsData.sort((a, b) => {
+                    let valA, valB;
+                    if (newsCfg.col === 'time') {
+                        valA = a.NewsList[0]?.time || ""; valB = b.NewsList[0]?.time || "";
+                    } else if (newsCfg.col === 'CatScore') {
+                        valA = a.CatScore !== undefined ? a.CatScore : (a.score || 0);
+                        valB = b.CatScore !== undefined ? b.CatScore : (b.score || 0);
+                    } else {
+                        valA = a[newsCfg.col]; valB = b[newsCfg.col];
+                    }
+                    valA = parseValue(valA, newsCfg.col); valB = parseValue(valB, newsCfg.col);
+                    if (valA < valB) return newsCfg.asc ? -1 : 1;
+                    if (valA > valB) return newsCfg.asc ? 1 : -1;
+                    return 0;
+                });
 
-                    let latest = newsList[0];
+                newsData.forEach(n => {
+                    let latest = n.NewsList[0];
                     let hl = latest?.title === "⏳ 翻譯中..." ? `${latest?.raw_title} <span class="translating">⏳翻譯中...</span>` : (latest?.title || '-');
                     let timeColor = latest?.is_today ? "#ffa500" : "var(--text-muted)";
                     
@@ -352,6 +429,8 @@
                     </tr>`;
                 });
                 document.getElementById('news-list').innerHTML = h3;
+            } else {
+                document.getElementById('news-list').innerHTML = `<tr><td colspan="9" style="text-align:center; padding: 20px; color: var(--text-muted);">今日尚無重大情報</td></tr>`;
             }
 
             if(activeSym) loadDetail(activeSym);
