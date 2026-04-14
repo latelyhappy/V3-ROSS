@@ -11,13 +11,15 @@ from deep_translator import GoogleTranslator
 from collections import Counter
 
 # ==========================================
-# 🛡️ 系統防護與戰術設定 (V41.13 最終自動化版)
+# 🛡️ 系統防護與戰術設定 (V41.13 解除死鎖版)
 # ==========================================
-brain_lock = threading.Lock() # 💡 執行緒安全鎖 (解決您的報錯)
+# 💡 核心修復：改為 RLock (可重入鎖)，允許同一個執行緒多次進出，徹底消滅死鎖！
+brain_lock = threading.RLock() 
+
 TRENDS_FILE_PATH = os.path.join(os.path.dirname(__file__), 'trends.json')
 _cached_trends = {}
 _last_trends_update = 0
-TRENDS_CACHE_TTL = 60  # 熱更新快取時間 (秒)
+TRENDS_CACHE_TTL = 60
 
 TW_USERNAME = os.getenv('TW_USERNAME', 'guest') 
 TW_PASSWORD = os.getenv('TW_PASSWORD', 'guest')
@@ -25,7 +27,6 @@ PORT = int(os.getenv('PORT', 8080))
 TZ_TW = pytz.timezone('Asia/Taipei')
 TZ_NY = pytz.timezone('America/New_York')
 
-# 💡 載入固定軍火庫
 CATALYST_ARMORY = {}
 armory_path = os.path.join(os.path.dirname(__file__), 'catalysts.json')
 try:
@@ -49,7 +50,6 @@ def format_vol(n):
     return str(int(n))
 
 def get_live_trends():
-    """動態讀取 NLP 自動產生的熱點詞彙"""
     global _cached_trends, _last_trends_update
     now = time.time()
     if now - _last_trends_update < TRENDS_CACHE_TTL: return _cached_trends
@@ -70,7 +70,6 @@ def calculate_hft_score(headline):
     for kw, score in CATALYST_ARMORY.get("BLACK", {}).items():
         if kw in text: return -50, True
     
-    # 💡 整合 NLP 動態熱點
     live_trends = get_live_trends()
     for kw, score in live_trends.items():
         if kw in text: total_score += score
@@ -145,7 +144,6 @@ def extract_top_catalysts(master_brain):
     top_list = []
     with brain_lock:
         for ticker, data in master_brain.get('details', {}).items():
-            # 💡 只要有新聞就納入排名，解鎖 3 日情報
             if data.get('NewsList', []):
                 top_list.append(data)
     try:
@@ -156,7 +154,17 @@ def update_dynamic_watchlist():
     global DYNAMIC_WATCHLIST, STATS_MAP
     try:
         url = "https://scanner.tradingview.com/america/scan"
-        payload = {"filter": [{"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, {"left": "premarket_change", "operation": "nempty"}], "columns": ["name", "premarket_close", "close", "premarket_change", "premarket_volume", "market_cap_basic", "type"], "sort": {"sortBy": "premarket_change", "sortOrder": "desc"}, "range": [0, 40]}
+        # 💡 核心修復：補回 "close" 價格過濾器 (限制在 $1 以上)，排除反向分割造成的四百萬趴異常數據
+        payload = {
+            "filter": [
+                {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, 
+                {"left": "close", "operation": "in_range", "right": [1, 50]},
+                {"left": "premarket_change", "operation": "nempty"}
+            ], 
+            "columns": ["name", "premarket_close", "close", "premarket_change", "premarket_volume", "market_cap_basic", "type"], 
+            "sort": {"sortBy": "premarket_change", "sortOrder": "desc"}, 
+            "range": [0, 40]
+        }
         res = requests.post(url, json=payload, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
         data = res.json()
         if data.get('data'):
@@ -171,7 +179,6 @@ def update_dynamic_watchlist():
                 STATS_MAP[sym] = {'prev': prev_est, 'float_str': f_str, 'type': t}
     except: pass
 
-# --- 🧠 全自動 NLP 熱點收索引擎 ---
 def auto_trend_updater():
     STOP_WORDS = {"THE", "TO", "OF", "IN", "FOR", "A", "AND", "IS", "ON", "WITH", "BY", "AS", "AT", "FROM", "IT", "THAT", "THIS", "AN", "BE", "NEW", "UP", "OUT", "ITS", "ARE", "HAS"}
     while True:
@@ -216,7 +223,7 @@ def auto_trend_updater():
         except Exception as e:
             print(f"🚨 [NLP引擎] 掃描發生異常: {e}")
             
-        time.sleep(86400) # 休眠 24 小時
+        time.sleep(86400) 
 
 def scanner_engine():
     tv = TvDatafeed()
@@ -239,7 +246,7 @@ def scanner_engine():
 
             for ticker in DYNAMIC_WATCHLIST:
                 try:
-                    time.sleep(1.2) # 🛡️ 防封鎖延遲
+                    time.sleep(1.2) 
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
                     
                     if df is None or df.empty or len(df) < 10: 
