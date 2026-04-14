@@ -159,8 +159,13 @@
         let rankCfg = { col: 'Pct', asc: false };
         let newsCfg = { col: 'CatScore', asc: false };
 
+        // 💡 智能數值解析器 (V41.15 型別安全修復版)
         function parseValue(val, col) {
-            if (!val || val === '-' || val.includes('N/A')) return -999999;
+            // 防呆：如果是空值、底線，直接給極小值
+            if (val === undefined || val === null || val === '-') return -999999;
+            // 防呆：確保只有「字串」才能使用 includes，避免數字引發當機
+            if (typeof val === 'string' && val.includes('N/A')) return -999999;
+            
             if (col === 'Code' || col === 'time') return val.toString(); 
             
             let str = val.toString();

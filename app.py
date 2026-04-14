@@ -136,6 +136,8 @@ def fetch_and_score_news(ticker, cell, stats):
             with brain_lock:
                 cell["NewsList"] = articles; cell["CatScore"] = total_score
                 cell["IsTrap"] = has_black; cell["HasNews"] = len(articles) > 0 
+                # 💡 升級：新聞抓完立刻更新排行榜，不需再等 80 秒迴圈結束！
+                MASTER_BRAIN["top_catalysts"] = extract_top_catalysts(MASTER_BRAIN)
 
             if articles:
                 for art in articles:
@@ -385,22 +387,45 @@ def scanner_engine():
                                 rank_item["Status"] = status_color if status_color != "green" else rank_item.get("Status", "green")
                                 break
 
-                        if current_signal:
-                            last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})
-                            time_elapsed = now_ts - last_record['time']
-                            
-                            push_signal = False
-                            if time_elapsed > 45: push_signal = True 
-                            elif current_level > last_record['level']: push_signal = True 
-                            
-                            if push_signal:
-                                if check_sec_fatal_traps(ticker):
-                                    current_signal += " 💀(SEC陷阱)"; cell["IsTrap"] = True; stats["Signal"] = current_signal
-                                cooldown_tracker[ticker] = {'time': now_ts, 'level': current_level}
-                                audio_target = "nova" if current_level == 4 else ("spark" if current_level == 1 else None)
-                                log_entry = {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": audio_target}
-                                MASTER_BRAIN["surge_log"].insert(0, log_entry)
-                                MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:500]
+                        # 計算是否需要推播訊號 (在鎖外進行)
+                    last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})
+                    time_elapsed = now_ts - last_record['time']
+                    
+                    push_signal = False
+                    if current_signal:
+                        if time_elapsed > 45: push_signal = True 
+                        elif current_level > last_record['level']: push_signal = True 
+
+                    # 💡 核心修復：將耗時的 SEC 網路查詢「移出」記憶體鎖，徹底解決網路閃斷！
+                    is_trap = False
+                    if push_signal:
+                        is_trap = check_sec_fatal_traps(ticker)
+                        if is_trap:
+                            current_signal += " 💀(SEC陷阱)"
+                            stats["Signal"] = current_signal
+
+                    # 鎖定記憶體，進行極速寫入
+                    with brain_lock:
+                        cell = MASTER_BRAIN["details"].setdefault(ticker, {
+                            "NewsList": [], "CatScore": 0, "IsTrap": False, 
+                            "Price": "-", "Pct": "-", "Vol": "-", "RelVol": "-", "Float": "-", "Signal": ""
+                        })
+                        cell.update(stats)
+                        if is_trap: cell["IsTrap"] = True
+                        
+                        for rank_item in MASTER_BRAIN["leaderboard"]:
+                            if rank_item["Code"] == ticker:
+                                rank_item["Price"] = f"${p_live:.2f}"
+                                rank_item["Pct"] = f"{real_pct:+.2f}%"
+                                rank_item["Status"] = status_color if status_color != "green" else rank_item.get("Status", "green")
+                                break
+
+                        if push_signal:
+                            cooldown_tracker[ticker] = {'time': now_ts, 'level': current_level}
+                            audio_target = "nova" if current_level == 4 else ("spark" if current_level == 1 else None)
+                            log_entry = {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": audio_target}
+                            MASTER_BRAIN["surge_log"].insert(0, log_entry)
+                            MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:500]
 
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell, stats)).start()
                 except Exception as e: continue
