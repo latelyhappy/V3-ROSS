@@ -1,4 +1,4 @@
-import time, threading, os, json, copy
+import time, threading, os, json
 from datetime import datetime, timedelta
 import pandas as pd
 import requests
@@ -10,29 +10,27 @@ from flask import Flask, jsonify, render_template
 from deep_translator import GoogleTranslator
 
 # ==========================================
-# 🛡️ 系統防護與戰術設定 (V41.12 銅牆鐵壁版)
+# 🛠️ 戰略設定與全局記憶體 (V41.9 終極防護版)
 # ==========================================
-brain_lock = threading.Lock() # 💡 執行緒安全鎖
-TRENDS_FILE_PATH = os.path.join(os.path.dirname(__file__), 'trends.json')
-_cached_trends = {}
-_last_trends_update = 0
-TRENDS_CACHE_TTL = 60  # 熱更新快取時間 (秒)
-
 TW_USERNAME = os.getenv('TW_USERNAME', 'guest') 
 TW_PASSWORD = os.getenv('TW_PASSWORD', 'guest')
-PORT = int(os.getenv('PORT', 8080))
+PORT = int(os.getenv('PORT', 5000))
 TZ_TW = pytz.timezone('Asia/Taipei')
 TZ_NY = pytz.timezone('America/New_York')
 
-# 💡 載入軍火庫
 CATALYST_ARMORY = {}
+# 👇 新增這三行在 CATALYST_ARMORY 附近
+TRENDS_FILE_PATH = os.path.join(os.path.dirname(__file__), 'trends.json')
+_cached_trends = {}
+_last_trends_update = 0
 armory_path = os.path.join(os.path.dirname(__file__), 'catalysts.json')
 try:
     with open(armory_path, 'r', encoding='utf-8') as f:
         CATALYST_ARMORY = json.load(f)
     print("✅ 成功載入 catalysts.json 軍火庫")
-except:
-    CATALYST_ARMORY = {"INVERTED_TRAPS":{}, "RED":{}, "ORANGE":{}, "YELLOW":{}, "BLACK":{}}
+except Exception as e:
+    print(f"❌ 警告：無法讀取 catalysts.json ({e})，使用空白預設值！")
+    CATALYST_ARMORY = {"INVERTED_TRAPS":{}, "THEMATIC_TRENDS":{}, "RED":{}, "ORANGE":{}, "YELLOW":{}, "BLACK":{}}
 
 MASTER_BRAIN = {"surge_log": [], "details": {}, "leaderboard": [], "top_catalysts": [], "last_update": ""}
 DYNAMIC_WATCHLIST = []
@@ -47,29 +45,32 @@ def format_vol(n):
     if n >= 1_000: return f"{n/1_000:.1f}K"
     return str(int(n))
 
+# 👇 1. 新增動態讀取函數
 def get_live_trends():
-    """動態讀取熱點詞彙，實現熱更新"""
     global _cached_trends, _last_trends_update
     now = time.time()
-    if now - _last_trends_update < TRENDS_CACHE_TTL: return _cached_trends
+    if now - _last_trends_update < 60: return _cached_trends  # 60秒快取，防止讀寫卡頓
     try:
         if os.path.exists(TRENDS_FILE_PATH):
             with open(TRENDS_FILE_PATH, 'r', encoding='utf-8') as f:
                 _cached_trends = json.load(f)
                 _last_trends_update = now
-        else: _cached_trends = {}
     except: pass
     return _cached_trends
 
+# 👇 2. 替換原有的算分函數
 def calculate_hft_score(headline):
     text = (headline or "").upper()
     total_score = 0
+    is_trap = False
+
     for kw, score in CATALYST_ARMORY.get("INVERTED_TRAPS", {}).items():
         if kw in text: total_score += score; text = text.replace(kw, "") 
+
     for kw, score in CATALYST_ARMORY.get("BLACK", {}).items():
         if kw in text: return -50, True
-    
-    # 💡 整合動態熱點
+
+    # 💡 新增：讀取外部的趨勢熱點
     live_trends = get_live_trends()
     for kw, score in live_trends.items():
         if kw in text: total_score += score
@@ -77,22 +78,25 @@ def calculate_hft_score(headline):
     for cat in ["RED", "ORANGE", "YELLOW"]:
         for kw, score in CATALYST_ARMORY.get(cat, {}).items():
             if kw in text: total_score += score
-    return total_score, False
+            
+    return total_score, is_trap
 
+# --- 💡 背景翻譯工兵 ---
 def background_translate_worker(ticker, en_headline, master_brain):
     try:
         zh_text = GoogleTranslator(source='auto', target='zh-TW').translate(en_headline)
-        with brain_lock:
-            if ticker in master_brain['details']:
-                for article in master_brain['details'][ticker].get('NewsList', []):
-                    if article.get('raw_title') == en_headline:
-                        article['title'] = zh_text
-                        break 
-    except: pass
+        if ticker in master_brain['details']:
+            news_list = master_brain['details'][ticker].get('NewsList', [])
+            for article in news_list:
+                if article.get('raw_title') == en_headline:
+                    article['title'] = zh_text
+                    break 
+    except Exception as e:
+        pass
 
+# --- 🛰️ SEC EDGAR 陷阱雷達 ---
 def check_sec_fatal_traps(ticker):
-    """合規 SEC 爬蟲 Header"""
-    headers = {'User-Agent': 'SniperTrader/1.12 (contact@yourdomain.com)'}
+    headers = {'User-Agent': 'Sniper_Bot_V41/1.9 (contact@yourdomain.com)'}
     url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=&output=atom"
     try:
         res = requests.get(url, headers=headers, timeout=3)
@@ -100,11 +104,15 @@ def check_sec_fatal_traps(ticker):
             root = ET.fromstring(res.content)
             for entry in root.findall('{http://www.w3.org/2005/Atom}entry')[:3]:
                 title_elem = entry.find('{http://www.w3.org/2005/Atom}title')
-                if title_elem is not None and any(trap in title_elem.text.upper() for trap in ['S-1', 'S-3', 'F-1', 'F-3']): return True
+                if title_elem is not None and title_elem.text:
+                    title = title_elem.text.upper()
+                    if any(trap in title for trap in ['S-1', 'S-3', 'F-1', 'F-3', '1-A']): 
+                        return True
         return False
     except: return False
 
-def fetch_and_score_news(ticker, cell):
+# --- 📰 新聞掃描 ---
+def fetch_and_score_news(ticker, cell, stats):
     now = time.time()
     if ticker in news_cache and (now - news_cache[ticker] < 900): return
     news_cache[ticker] = now
@@ -114,107 +122,241 @@ def fetch_and_score_news(ticker, cell):
         if res.status_code == 200:
             root = ET.fromstring(res.text)
             articles = []; total_score = 0; has_black = False
-            now_ny = datetime.now(TZ_NY)
-            three_days_ago = now_ny.date() - timedelta(days=3)
             
-            for item in root.findall('./channel/item')[:5]:
+            now_ny = datetime.now(TZ_NY)
+            today_date = now_ny.date()
+            three_days_ago = today_date - timedelta(days=3)
+            
+            for item in root.findall('./channel/item'):
+                if len(articles) >= 5: break 
+                
                 dt = parsedate_to_datetime(item.find('pubDate').text).astimezone(TZ_NY)
-                if dt.date() < three_days_ago: continue
+                item_date = dt.date()
+                if item_date < three_days_ago: continue
+                    
                 raw_t = item.find('title').text
+                is_today = (item_date == today_date)
+                
                 score, is_trap = calculate_hft_score(raw_t)
                 if is_trap: has_black = True
                 total_score += score 
+                
                 articles.append({
                     "ticker": ticker, "title": "⏳ 翻譯中...", "raw_title": raw_t,
-                    "link": item.find('link').text, "time": dt.strftime("%Y-%m-%d %H:%M"), 
-                    "is_today": (dt.date() == now_ny.date()), "score": score
+                    "link": item.find('link').text, 
+                    "time": dt.strftime("%Y-%m-%d %H:%M"), 
+                    "is_today": is_today, "score": score
                 })
-            
-            with brain_lock:
-                cell["NewsList"] = articles; cell["CatScore"] = total_score
-                cell["IsTrap"] = has_black; cell["HasNews"] = len(articles) > 0 
+                
+            cell["NewsList"] = articles; cell["CatScore"] = total_score
+            cell["IsTrap"] = has_black 
+            cell["HasNews"] = len(articles) > 0 
 
             if articles:
                 for art in articles:
-                    threading.Thread(target=background_translate_worker, args=(ticker, art['raw_title'], MASTER_BRAIN), daemon=True).start()
-                    time.sleep(0.5) # 🛡️ 翻譯流量控制
-    except: pass
+                    if art['title'] == "⏳ 翻譯中...":
+                        threading.Thread(target=background_translate_worker, args=(ticker, art['raw_title'], MASTER_BRAIN), daemon=True).start()
+                        time.sleep(0.1)
+    except Exception as e: pass
 
+# --- 💡 焦點新聞萃取器 (只看當天有新聞的標的) ---
 def extract_top_catalysts(master_brain):
     top_list = []
-    with brain_lock:
-        for ticker, data in master_brain.get('details', {}).items():
-            news_list = data.get('NewsList', [])
-            if news_list and any(n.get('is_today', False) for n in news_list):
-                top_list.append(data)
+    for ticker, data in master_brain.get('details', {}).items():
+        news_list = data.get('NewsList', [])
+        # 💡 只允許「當天」有新聞發布的股票上榜，排除過時資訊
+        if news_list and any(n.get('is_today', False) for n in news_list):
+            top_list.append(data)
     try:
         return sorted(top_list, key=lambda x: (x.get('CatScore', 0), x['NewsList'][0].get('time', '00:00')), reverse=True)
-    except: return top_list
+    except:
+        return top_list
 
+# --- 🛰️ TV 盤前雷達 ---
 def update_dynamic_watchlist():
     global DYNAMIC_WATCHLIST, STATS_MAP
     try:
         url = "https://scanner.tradingview.com/america/scan"
-        payload = {"filter": [{"left": "type", "operation": "in_range", "right": ["stock", "fund"]}], "columns": ["name", "premarket_close", "close", "premarket_change", "premarket_volume", "market_cap_basic", "type"], "sort": {"sortBy": "premarket_change", "sortOrder": "desc"}, "range": [0, 40]}
+        payload = {
+            "filter": [
+                {"left": "type", "operation": "in_range", "right": ["stock", "fund"]},
+                {"left": "exchange", "operation": "in_range", "right": ["AMEX", "NASDAQ", "NYSE"]},
+                {"left": "premarket_close", "operation": "in_range", "right": [1, 30]},
+                {"left": "premarket_change", "operation": "nempty"}
+            ],
+            "options": {"lang": "en"}, "markets": ["america"],
+            "symbols": {"query": {"types": []}, "tickers": []},
+            "columns": ["name", "premarket_close", "close", "premarket_change", "premarket_volume", "market_cap_basic", "type"],
+            "sort": {"sortBy": "premarket_change", "sortOrder": "desc"},
+            "range": [0, 50]
+        }
         res = requests.post(url, json=payload, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
         data = res.json()
-        if data.get('data'):
-            DYNAMIC_WATCHLIST = [x['d'][0] for x in data['data']]
-            for x in data['data']:
-                sym, p, c, pct, v, mc, t = x['d'][0], x['d'][1], x['d'][2], x['d'][3], x['d'][4], x['d'][5], x['d'][6]
-                p_eff = p if p is not None else c
-                float_m = (mc / p_eff) / 1_000_000 if mc and p_eff else 0.0
-                prev_est = p_eff / (1 + (pct/100)) if pct else p_eff
-                f_str = "N/A (ETF)" if t == 'fund' else (f"{float_m:.1f}M" if float_m > 0 else "未知")
-                if t != 'fund' and float_m > 50.0: f_str = f"⚠️{f_str}"
-                STATS_MAP[sym] = {'prev': prev_est, 'float_str': f_str, 'type': t}
+        
+        full_pool = []
+        for item in data.get('data', []):
+            sym = item['d'][0]
+            price = item['d'][1] if item['d'][1] is not None else item['d'][2]
+            pct = item['d'][3]
+            vol = item['d'][4]
+            mc = item['d'][5]
+            asset_type = item['d'][6]
+            
+            if price and pct is not None:
+                float_m = (mc / price) / 1_000_000 if mc else 0.0
+                prev_est = price / (1 + (pct/100)) if pct != -100 else price
+                full_pool.append({"sym": sym, "price": price, "prev": prev_est, "pct": pct, "vol": int(vol) if vol else 0, "float": float_m, "type": asset_type})
+
+        if full_pool:
+            DYNAMIC_WATCHLIST = [x['sym'] for x in full_pool[:30]]
+            for x in full_pool[:30]: 
+                if x['type'] == 'fund':
+                    formatted_float = "N/A (ETF)"
+                else:
+                    formatted_float = f"{x['float']:.1f}M" if x['float'] > 0 else "未知"
+                    if x['float'] > 50.0: formatted_float = f"⚠️{formatted_float}"
+                STATS_MAP[x['sym']] = {'prev': x['prev'], 'float': x['float'], 'float_str': formatted_float, 'type': x['type']}
     except: pass
 
+# --- 🧠 主引擎迴圈 ---
 def scanner_engine():
     tv = TvDatafeed()
+    try:
+        if TW_USERNAME != 'guest' and TW_PASSWORD != 'guest': tv = TvDatafeed(TW_USERNAME, TW_PASSWORD)
+    except: pass
+
     last_list_update = 0
     while True:
         try:
             now_ts = time.time()
-            if now_ts - last_list_update > 300: update_dynamic_watchlist(); last_list_update = now_ts
-            for ticker in DYNAMIC_WATCHLIST:
-                time.sleep(1.0)
-                df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
-                if df is None or df.empty: continue
-                p_live = float(df['close'].iloc[-1])
-                stat = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock'})
-                real_pct = ((p_live - stat['prev']) / stat['prev']) * 100
-                daily_vol = int(df['volume'].sum())
-                lookback = min(12, len(df))
-                avg_v = df['volume'].iloc[-lookback:-2].mean() if lookback > 2 else 1
-                rel_v = round(float(df['volume'].iloc[-1]) / avg_v, 2)
-                
-                sig = "🔥強力點火" if rel_v >= 2.5 and real_pct > 3.0 else ""
-                stats = {"Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_v}x", "Vol": format_vol(daily_vol), "Pct": f"{real_pct:+.2f}%", "Float": stat['float_str'], "Type": stat['type'], "Signal": sig, "StopLoss": p_live * 0.98}
-                
-                with brain_lock:
-                    cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "Price": "-", "Pct": "-"})
-                    cell.update(stats)
-                    if sig and (now_ts - cooldown_tracker.get(ticker, 0) > 60):
-                        if check_sec_fatal_traps(ticker): stats["Signal"] += " 💀(SEC陷阱)"; cell["IsTrap"] = True
-                        cooldown_tracker[ticker] = now_ts
-                        log_entry = {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova" if real_pct > 5 else "spark"}
-                        MASTER_BRAIN["surge_log"].insert(0, log_entry)
-                        MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:500]
+            if now_ts - last_list_update > 300: 
+                update_dynamic_watchlist()
+                last_list_update = now_ts
 
-                threading.Thread(target=fetch_and_score_news, args=(ticker, cell), daemon=True).start()
+            if not DYNAMIC_WATCHLIST:
+                time.sleep(5); continue
+
+            for ticker in DYNAMIC_WATCHLIST:
+                try:
+                    time.sleep(1.0)
+                    df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
+                    if df is None or df.empty or len(df) < 10: continue
+
+                    p_live = float(df['close'].iloc[-1])
+                    p_prev = float(df['close'].iloc[-2])
+                    v_live = float(df['volume'].iloc[-1])
+                    v_prev = float(df['volume'].iloc[-2])
+                    
+                    lookback = min(12, len(df))
+                    avg_vol = df['volume'].iloc[-lookback:-2].mean() if lookback > 2 else df['volume'].iloc[-2]
+                    
+                    rel_vol_live = round(v_live / avg_vol, 2) if avg_vol > 0 else 1.0
+                    rel_vol_prev = round(v_prev / avg_vol, 2) if avg_vol > 0 else 1.0
+                    rel_vol_display = max(rel_vol_live, rel_vol_prev) 
+                    daily_vol = int(df['volume'].sum())
+                    
+                    df['tr'] = pd.concat([(df['high'] - df['low']), (df['high'] - df['close'].shift(1)).abs(), (df['low'] - df['close'].shift(1)).abs()], axis=1).max(axis=1)
+                    df['atr5'] = df['tr'].rolling(5, min_periods=3).mean()
+                    df['atr20'] = df['tr'].rolling(20, min_periods=5).mean()
+                    atr5 = df['atr5'].iloc[-1]
+                    atr20 = df['atr20'].iloc[-1]
+
+                    stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock'})
+                    if stat_data['prev'] > 0:
+                        prev_close = stat_data['prev']
+                        float_str = stat_data['float_str']
+                    else:
+                        prev_close = float(df['low'].min()) 
+                        float_str = "未知"
+                    
+                    real_pct = ((p_live - prev_close) / prev_close) * 100
+                    
+                    ema10 = df['close'].ewm(span=10, adjust=False).mean()
+                    ema20 = df['close'].ewm(span=20, adjust=False).mean()
+                    curr_ema10 = ema10.iloc[-1]
+                    curr_ema20 = ema20.iloc[-1]
+                    
+                    past_high_for_live = df['high'].iloc[-11:-1].max() 
+                    past_high_for_prev = df['high'].iloc[-12:-2].max() 
+                    
+                    spark_live = (rel_vol_live >= 2.5) and (p_live >= past_high_for_live)
+                    spark_prev = (rel_vol_prev >= 2.5) and (p_prev >= past_high_for_prev) and (p_live >= df['open'].iloc[-2])
+                    is_spark = (spark_live or spark_prev) and (real_pct > 3.0)
+
+                    is_vcp_compression = (atr5 < atr20 * 0.95) and (rel_vol_prev < 0.85) and (curr_ema10 > curr_ema20)
+                    is_ride = (p_live >= curr_ema20) and (abs(p_live - curr_ema20)/curr_ema20 < 0.012) and (rel_vol_prev < 0.8) and (real_pct > 1.0) and not is_spark
+                    is_grind = (curr_ema10 > curr_ema20) and (p_live >= curr_ema10) and (0.5 <= rel_vol_display < 2.5) and (real_pct > 2.0) and not is_spark and not is_ride
+
+                    tracker = STATE_TRACKER.get(ticker, {'state': 'None', 'duration': 0, 'vcp_low': float('inf')})
+                    dynamic_stop = curr_ema20 * 0.99 
+                    
+                    if is_spark:
+                        if tracker['state'] == 'VCP' and tracker['duration'] >= 3: dynamic_stop = tracker['vcp_low']
+                        tracker['state'] = 'None'; tracker['duration'] = 0; tracker['vcp_low'] = float('inf')
+                    elif is_vcp_compression:
+                        if tracker['state'] != 'VCP':
+                            tracker['state'] = 'VCP'; tracker['duration'] = 1; tracker['vcp_low'] = min(df['low'].iloc[-1], df['low'].iloc[-2])
+                        else:
+                            tracker['duration'] += 1; tracker['vcp_low'] = min(tracker['vcp_low'], df['low'].iloc[-1])
+                    else:
+                        tracker['state'] = 'None'; tracker['duration'] = 0; tracker['vcp_low'] = float('inf')
+                    STATE_TRACKER[ticker] = tracker 
+
+                    dollar_vol = p_live * max(v_live, v_prev, avg_vol)
+                    vol_warn = "(⚠️量低)" if dollar_vol < 50000 else ""
+
+                    current_signal = None; current_level = 0; status_color = "green"
+                    if is_spark: current_signal = f"🔥強力點火 {vol_warn}"; current_level = 4; status_color = "yellow"
+                    elif tracker['state'] == 'VCP' and tracker['duration'] >= 3: current_signal = f"⚡VCP壓縮鎖定 {vol_warn}"; current_level = 3; status_color = "vcp" 
+                    elif is_grind: current_signal = f"🚜穩步推升 {vol_warn}"; current_level = 2; status_color = "blue"  
+                    elif is_ride: current_signal = f"💎趨勢滑行 {vol_warn}"; current_level = 1; status_color = "purple"
+
+                    # 💡 安全初始化與單一數據寫入，防止 Frontend 出現 undefined
+                    cell = MASTER_BRAIN["details"].setdefault(ticker, {
+                        "NewsList": [], "CatScore": 0, "IsTrap": False, 
+                        "Price": "-", "Pct": "-", "Vol": "-", "RelVol": "-", "Float": "-", "Signal": ""
+                    })
+                    
+                    stats = {
+                        "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": format_vol(daily_vol),
+                        "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, 
+                        "Signal": current_signal if current_signal else "",
+                        "PriceVal": p_live, "StopLoss": dynamic_stop, "Float": float_str, "Type": stat_data.get('type', 'stock')
+                    }
+                    cell.update(stats)
+                    
+                    threading.Thread(target=fetch_and_score_news, args=(ticker, cell, stats)).start()
+
+                    if current_signal:
+                        last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})
+                        time_elapsed = now_ts - last_record['time']
+                        
+                        push_signal = False
+                        if time_elapsed > 45: push_signal = True 
+                        elif current_level > last_record['level']: push_signal = True 
+                        
+                        if push_signal:
+                            if check_sec_fatal_traps(ticker):
+                                current_signal += " 💀(SEC陷阱)"; cell["IsTrap"] = True; stats["Signal"] = current_signal
+                            cooldown_tracker[ticker] = {'time': now_ts, 'level': current_level}
+                            audio_target = "nova" if current_level == 4 else ("spark" if current_level == 1 else None)
+                            log_entry = {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": audio_target}
+                            MASTER_BRAIN["surge_log"].insert(0, log_entry)
+                            MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:500]
+                except Exception as e: continue
             
+            # 💡 [數據分發核心]：所有表格都從 details 抽取最新狀態，確保零誤差
             MASTER_BRAIN["leaderboard"] = [MASTER_BRAIN["details"][t] for t in DYNAMIC_WATCHLIST if t in MASTER_BRAIN["details"]][:20]
             MASTER_BRAIN["top_catalysts"] = extract_top_catalysts(MASTER_BRAIN)
             MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
-        except: time.sleep(5)
+            time.sleep(5)
+        except Exception as e: time.sleep(10)
 
 @app.route('/')
 def index(): return render_template('index.html')
+
 @app.route('/data')
-def data():
-    with brain_lock: safe_brain = copy.deepcopy(MASTER_BRAIN)
-    return jsonify(safe_brain)
+def data(): return jsonify(MASTER_BRAIN)
 
 if __name__ == '__main__':
     threading.Thread(target=scanner_engine, daemon=True).start()
