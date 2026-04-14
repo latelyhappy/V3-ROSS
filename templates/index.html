@@ -339,7 +339,7 @@
             if(activeSym) loadDetail(activeSym);
         }
 
-        // 4. 戰情報告與血條/蓄力條
+        // 4. 戰情報告與血條/蓄力條 (V41.10 極致緊湊版)
         function loadDetail(sym) {
             activeSym = sym; 
             let d = (brain.details && brain.details[sym]) ? brain.details[sym] : null; 
@@ -348,8 +348,8 @@
             if (!d && !rankData) return; 
             if (!d && rankData) d = { Price: rankData.Price, Pct: rankData.Pct, Vol: rankData.Vol, RelVol: "-", Float: rankData.Type==='fund' ? "N/A (ETF)" : (rankData.Float||"-"), StopLoss: 0, CatScore: 0, IsTrap: false, NewsList: [] };
 
-            let trapWarn = d.IsTrap ? `<div style="background:rgba(248, 81, 73, 0.2); border: 1px solid var(--red); color: var(--red); padding:10px; margin-bottom:20px; border-radius:6px; font-weight:bold; font-size:14px; animation: blood-pulse 1s infinite;">🩸 致命警告：偵測到 S-1/S-3 增發稀釋文件，莊家準備倒貨</div>` : "";
-            let waitingMsg = (!d.Price || d.Price === "-") ? `<div style="color:var(--yellow); font-size:13px; margin-bottom:15px;">⚠️ K線資料尚未齊全 (可能為盤前)，部分進階數據與新聞待補...</div>` : "";
+            let trapWarn = d.IsTrap ? `<div style="background:rgba(248, 81, 73, 0.2); border: 1px solid var(--red); color: var(--red); padding:8px; margin-bottom:10px; border-radius:6px; font-weight:bold; font-size:13px; animation: blood-pulse 1s infinite;">🩸 致命警告：偵測到 S-1/S-3 增發稀釋文件</div>` : "";
+            let waitingMsg = (!d.Price || d.Price === "-") ? `<div style="color:var(--yellow); font-size:12px; margin-bottom:10px;">⚠️ K線資料尚未齊全...</div>` : "";
             
             let vcpBarHTML = "";
             if (d.Signal && d.Signal.includes("VCP")) {
@@ -358,38 +358,41 @@
                 let barColor = mins >= 10 ? "#ffffff" : (mins >= 4 ? "#ffa500" : "#e3b341");
                 let barWidth = Math.min(mins * 10, 100); 
                 let pulseClass = mins >= 10 ? "trap-row" : "";
-                vcpBarHTML = `<div style="margin-top: 15px;"><div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">⚡ 壓縮蓄力進度 (${mins} mins)</div><div class="vcp-bar-container ${pulseClass}"><div class="vcp-bar" style="width: ${barWidth}%; background: ${barColor}; box-shadow: 0 0 8px ${barColor};"></div></div></div>`;
+                vcpBarHTML = `<div style="font-size:11px; color:var(--text-muted); margin-bottom:2px;">⚡ 壓縮蓄力進度 (${mins} mins)</div><div class="vcp-bar-container ${pulseClass}" style="margin-top:2px;"><div class="vcp-bar" style="width: ${barWidth}%; background: ${barColor}; box-shadow: 0 0 8px ${barColor};"></div></div>`;
             }
 
+            // 💡 [排版升級] 採用 4 欄緊湊網格，消除多餘空白
             let html = `<div style="text-align:center;">${trapWarn}${waitingMsg}
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px;">
-                    <h2 ondblclick="openTW('${sym}')" class="sym" style="font-size:32px; margin:0; cursor:pointer;">${sym} <span style="font-size:22px; color:var(--text-muted); margin-left:10px;">${d.Price || '-'}</span></h2>
-                    <button class="ghost-btn" onclick="openTW('${sym}')">在 TV 中開啟 ↗</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                    <h2 ondblclick="openTW('${sym}')" class="sym" style="font-size:26px; margin:0; cursor:pointer;">${sym} <span style="font-size:18px; color:var(--text-muted); margin-left:8px;">${d.Price || '-'}</span></h2>
+                    <button class="ghost-btn" style="padding: 4px 10px; font-size:12px;" onclick="openTW('${sym}')">在 TV 中開啟 ↗</button>
                 </div>
-                <div style="background: rgba(0,0,0,0.3); padding:20px; border-radius:8px; display:grid; grid-template-columns: 1fr 1fr; gap:15px; font-size:14px; text-align:left; border: 1px solid rgba(255,255,255,0.05);">
-                    <div>成交總量: <b style="color:var(--text-main); font-size:15px;">${d.Vol || '-'}</b></div>
-                    <div>當前量比: <b style="color:var(--text-main); font-size:15px;">${d.RelVol || '-'}</b></div>
-                    <div>真實漲幅: <b class="${parseFloat(d.Pct||0)>0?'up':'down'}" style="font-size:15px;">${d.Pct || '-'}</b></div>
-                    <div>催化強度: <b style="color:var(--yellow); font-size:15px;">${d.CatScore || 0} Pts</b></div>
-                    <div style="grid-column: 1 / -1;">真實籌碼: <b style="color:var(--text-main); font-size:15px;">${d.Float || '-'}</b></div>
-                    <div style="border-top: 1px solid var(--border); grid-column: 1 / -1; margin-top: 5px; padding-top: 15px;">
-                        動態風控停損: <b style="color:var(--red); font-size:18px;">$${(d.StopLoss||0).toFixed(2)}</b>
-                        ${vcpBarHTML}
-                    </div>
+                
+                <div style="background: rgba(0,0,0,0.3); padding:10px 12px; border-radius:8px; display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; font-size:12px; text-align:left; border: 1px solid rgba(255,255,255,0.05);">
+                    <div style="background:rgba(255,255,255,0.02); padding:6px; border-radius:4px; text-align:center;">成交量<br><b style="color:var(--text-main); font-size:14px;">${d.Vol || '-'}</b></div>
+                    <div style="background:rgba(255,255,255,0.02); padding:6px; border-radius:4px; text-align:center;">量比<br><b style="color:var(--text-main); font-size:14px;">${d.RelVol || '-'}</b></div>
+                    <div style="background:rgba(255,255,255,0.02); padding:6px; border-radius:4px; text-align:center;">真實漲幅<br><b class="${parseFloat(d.Pct||0)>0?'up':'down'}" style="font-size:14px;">${d.Pct || '-'}</b></div>
+                    <div style="background:rgba(255,255,255,0.02); padding:6px; border-radius:4px; text-align:center;">催化強度<br><b style="color:var(--yellow); font-size:14px;">${d.CatScore || 0} Pts</b></div>
+                    
+                    <div style="grid-column: span 2; padding-left:4px; margin-top:2px;">真實籌碼: <b style="color:var(--text-main); font-size:13px;">${d.Float || '-'}</b></div>
+                    <div style="grid-column: span 2; padding-left:4px; margin-top:2px;">風控停損: <b style="color:var(--red); font-size:14px;">$${(d.StopLoss||0).toFixed(2)}</b></div>
+                    
+                    ${vcpBarHTML ? `<div style="grid-column: 1 / -1; margin-top: 2px;">${vcpBarHTML}</div>` : ''}
                 </div>
-                <h3 style="color: var(--text-muted); font-size:14px; text-transform:uppercase; border-bottom:1px solid var(--border); padding-bottom:10px; margin-top:30px; text-align:left;">🗞️ 即時催化劑情報</h3>`;
+                
+                <h3 style="color: var(--text-muted); font-size:12px; border-bottom:1px solid var(--border); padding-bottom:4px; margin-top:12px; margin-bottom:8px; text-align:left;">🗞️ 即時催化劑情報</h3>`;
             
             if (!d.NewsList || d.NewsList.length === 0) {
-                html += `<div style="text-align:left; color:var(--text-muted); font-size: 14px; padding-top:10px;">近 3 日尚無重大新聞。</div>`;
+                html += `<div style="text-align:left; color:var(--text-muted); font-size: 13px; padding-top:5px;">近 3 日尚無重大新聞。</div>`;
             } else {
                 d.NewsList.forEach(n => {
                     let colorCls = n.is_today ? "color: #ffa500;" : "color: var(--text-muted);";
                     let borderCls = n.is_today ? "3px solid #ffa500" : "3px solid var(--border)";
                     let hl = n.title === "⏳ 翻譯中..." ? `${n.raw_title} <span class="translating">⏳翻譯中...</span>` : n.title;
                     
-                    html += `<div style="margin-top:15px; margin-bottom:15px; text-align:left; padding: 15px; background: rgba(255,255,255,0.02); border-radius: 6px; border-left: ${borderCls};">
-                        <div style="${colorCls} font-size:12px; margin-bottom:8px; font-weight:bold;">${n.time} 美東 | 戰鬥權重: ${n.score}</div>
-                        <a href="${n.link}" target="_blank" style="text-decoration:none; color:var(--blue); font-size:15px; line-height:1.6;">${hl}</a>
+                    html += `<div style="margin-bottom:8px; text-align:left; padding: 10px; background: rgba(255,255,255,0.02); border-radius: 6px; border-left: ${borderCls};">
+                        <div style="${colorCls} font-size:11px; margin-bottom:4px; font-weight:bold;">${n.time} 美東 | 戰鬥權重: ${n.score}</div>
+                        <a href="${n.link}" target="_blank" style="text-decoration:none; color:var(--blue); font-size:13px; line-height:1.4;">${hl}</a>
                     </div>`;
                 });
             }
