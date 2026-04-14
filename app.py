@@ -1,4 +1,4 @@
-import time, threading, os, json, copy, re
+import time, threading, os, json, re, base64
 from datetime import datetime, timedelta
 import pandas as pd
 import requests
@@ -9,13 +9,15 @@ from tvDatafeed import TvDatafeed, Interval
 from flask import Flask, jsonify, render_template
 from deep_translator import GoogleTranslator
 from collections import Counter
+import logging
 
 # ==========================================
-# 🛡️ 系統防護與戰術設定 (V41.13 解除死鎖版)
+# 🛡️ 系統防護與戰術設定 (V41.14 終極裝甲版)
 # ==========================================
-# 💡 核心修復：改為 RLock (可重入鎖)，允許同一個執行緒多次進出，徹底消滅死鎖！
-brain_lock = threading.RLock() 
+# 隱藏 tvDatafeed 煩人的紅字警告
+logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
 
+brain_lock = threading.RLock() # 💡 可重入鎖，徹底解決死鎖
 TRENDS_FILE_PATH = os.path.join(os.path.dirname(__file__), 'trends.json')
 _cached_trends = {}
 _last_trends_update = 0
@@ -91,7 +93,7 @@ def background_translate_worker(ticker, en_headline, master_brain):
     except: pass
 
 def check_sec_fatal_traps(ticker):
-    headers = {'User-Agent': 'SniperTrader/1.13 (contact@yourdomain.com)'}
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
     url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=&output=atom"
     try:
         res = requests.get(url, headers=headers, timeout=3)
@@ -103,13 +105,15 @@ def check_sec_fatal_traps(ticker):
         return False
     except: return False
 
-def fetch_and_score_news(ticker, cell):
+def fetch_and_score_news(ticker, cell, stats):
     now = time.time()
     if ticker in news_cache and (now - news_cache[ticker] < 900): return
     news_cache[ticker] = now
     try:
         url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
-        res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+        # 💡 升級：擬真 User-Agent 突破 Yahoo 封鎖
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+        res = requests.get(url, headers=headers, timeout=5)
         if res.status_code == 200:
             root = ET.fromstring(res.text)
             articles = []; total_score = 0; has_black = False
@@ -140,24 +144,21 @@ def fetch_and_score_news(ticker, cell):
                         time.sleep(0.5) 
     except: pass
 
-# --- 💡 焦點新聞萃取器 (解鎖 3 日情報) ---
 def extract_top_catalysts(master_brain):
     top_list = []
-    # 如果您有使用 brain_lock，請加上 with brain_lock:；若無則直接執行下方迴圈
-    for ticker, data in master_brain.get('details', {}).items():
-        # 💡 只要有抓到新聞就允許上榜，移除 is_today 的嚴格限制
-        if data.get('NewsList', []):
-            top_list.append(data)
+    with brain_lock:
+        for ticker, data in master_brain.get('details', {}).items():
+            # 💡 核心修復：只要有新聞就上榜，徹底解除 is_today 限制
+            if data.get('NewsList', []):
+                top_list.append(data)
     try:
         return sorted(top_list, key=lambda x: (x.get('CatScore', 0), x['NewsList'][0].get('time', '00:00')), reverse=True)
-    except:
-        return top_list
+    except: return top_list
 
 def update_dynamic_watchlist():
     global DYNAMIC_WATCHLIST, STATS_MAP
     try:
         url = "https://scanner.tradingview.com/america/scan"
-        # 💡 核心修復：補回 "close" 價格過濾器 (限制在 $1 以上)，排除反向分割造成的四百萬趴異常數據
         payload = {
             "filter": [
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, 
@@ -182,23 +183,15 @@ def update_dynamic_watchlist():
                 STATS_MAP[sym] = {'prev': prev_est, 'float_str': f_str, 'type': t}
     except: pass
 
-# --- 🧠 全自動 NLP 熱點收索引擎 ---
 def auto_trend_updater():
     STOP_WORDS = {"THE", "TO", "OF", "IN", "FOR", "A", "AND", "IS", "ON", "WITH", "BY", "AS", "AT", "FROM", "IT", "THAT", "THIS", "AN", "BE", "NEW", "UP", "OUT", "ITS", "ARE", "HAS"}
-    
-    # 💡 核心修復 1：開機先休眠 60 秒，讓主掃描器有充足時間去 TradingView 建立名單
-    print("⏳ [NLP引擎] 開機預熱中，等待主雷達提供目標名單...")
+    print("⏳ [NLP引擎] 開機預熱中，等待主雷達 60 秒...")
     time.sleep(60)
     
     while True:
         try:
-            with brain_lock:
-                target_tickers = DYNAMIC_WATCHLIST.copy()
-            
-            # 💡 核心修復 2：如果名單還是空的，不要去睡 24 小時，等 10 秒再檢查一次
-            if not target_tickers:
-                time.sleep(10)
-                continue
+            with brain_lock: target_tickers = DYNAMIC_WATCHLIST.copy()
+            if not target_tickers: time.sleep(10); continue
 
             print("🔍 [NLP引擎] 開始自動收索全網近期熱點新聞...")
             all_words = []
@@ -206,38 +199,64 @@ def auto_trend_updater():
             for ticker in target_tickers:
                 try:
                     url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
-                    res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+                    res = requests.get(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}, timeout=5)
                     if res.status_code == 200:
                         root = ET.fromstring(res.text)
                         for item in root.findall('./channel/item')[:3]:
                             title = item.find('title').text.upper()
                             words = re.findall(r'\b[A-Z]{3,}\b', title) 
                             for w in words:
-                                if w not in STOP_WORDS and w != ticker:
-                                    all_words.append(w)
+                                if w not in STOP_WORDS and w != ticker: all_words.append(w)
                 except: continue
                 time.sleep(0.5) 
 
             if all_words:
                 word_counts = Counter(all_words)
                 top_trends = word_counts.most_common(15)
+                new_trends = {word: 5 for word, count in top_trends if count >= 2}
                 
-                new_trends = {}
-                print("🔥 [NLP引擎] 本期提煉出的熱門催化劑單字：")
-                for word, count in top_trends:
-                    if count >= 2:
-                        new_trends[word] = 5
-                        print(f"   - {word}: 出現 {count} 次 (權重 +5)")
+                github_token = os.getenv('GITHUB_TOKEN')
+                github_repo = os.getenv('GITHUB_REPO')
+                current_content = {}; sha = None
                 
-                with open(TRENDS_FILE_PATH, 'w', encoding='utf-8') as f:
-                    json.dump(new_trends, f, ensure_ascii=False, indent=4)
+                if github_token and github_repo:
+                    url = f"https://api.github.com/repos/{github_repo}/contents/trends.json"
+                    headers = {"Authorization": f"Bearer {github_token}", "Accept": "application/vnd.github.v3+json"}
+                    res = requests.get(url, headers=headers)
+                    if res.status_code == 200:
+                        data = res.json(); sha = data['sha']
+                        try: current_content = json.loads(base64.b64decode(data['content']).decode('utf-8'))
+                        except: pass
+                else:
+                    if os.path.exists(TRENDS_FILE_PATH):
+                        with open(TRENDS_FILE_PATH, 'r', encoding='utf-8') as f:
+                            try: current_content = json.load(f)
+                            except: pass
+
+                added_words = []
+                for w, score in new_trends.items():
+                    if w not in current_content:
+                        current_content[w] = score
+                        added_words.append(w)
                 
-                print(f"✅ [NLP引擎] 成功更新 trends.json，自動休眠 24 小時。")
-                
-        except Exception as e:
-            print(f"🚨 [NLP引擎] 掃描發生異常: {e}")
-            
-        time.sleep(86400) # 休眠 24 小時 
+                if added_words:
+                    print(f"🔥 [NLP引擎] 發現並收錄全新詞彙：{', '.join(added_words)}")
+                    with open(TRENDS_FILE_PATH, 'w', encoding='utf-8') as f:
+                        json.dump(current_content, f, ensure_ascii=False, indent=4)
+                    
+                    global _cached_trends, _last_trends_update
+                    _cached_trends = current_content
+                    _last_trends_update = time.time()
+                    
+                    if github_token and github_repo:
+                        updated_b64 = base64.b64encode(json.dumps(current_content, indent=4).encode('utf-8')).decode('utf-8')
+                        payload = {"message": "🤖 AI 自動更新：累積收錄新熱點詞彙 [skip ci]", "content": updated_b64}
+                        if sha: payload["sha"] = sha
+                        put_res = requests.put(url, headers=headers, json=payload)
+                        if put_res.status_code in [200, 201]: print("✅ [NLP引擎] 成功備份至 GitHub！")
+                else: print("💤 [NLP引擎] 本期無新詞彙。")
+        except Exception as e: print(f"🚨 [NLP引擎] 異常: {e}")
+        time.sleep(86400) 
 
 def scanner_engine():
     tv = TvDatafeed()
@@ -260,13 +279,14 @@ def scanner_engine():
 
             for ticker in DYNAMIC_WATCHLIST:
                 try:
-                    time.sleep(1.2) 
+                    time.sleep(2.0) # 💡 放慢腳步，降低被 TradingView 封鎖的機率
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
                     
+                    # 💡 無限斷線自癒機制
                     if df is None or df.empty or len(df) < 10: 
                         consecutive_errors += 1
-                        if consecutive_errors > 10:
-                            print("🔄 偵測到連線疲乏，正在重新啟動 TradingView 引擎...")
+                        if consecutive_errors > 8:
+                            print("🔄 偵測到 TV 連線疲乏，正在重啟引擎...")
                             tv = TvDatafeed()
                             try:
                                 if TW_USERNAME != 'guest': tv = TvDatafeed(TW_USERNAME, TW_PASSWORD)
@@ -382,7 +402,7 @@ def scanner_engine():
                                 MASTER_BRAIN["surge_log"].insert(0, log_entry)
                                 MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:500]
 
-                    threading.Thread(target=fetch_and_score_news, args=(ticker, cell), daemon=True).start()
+                    threading.Thread(target=fetch_and_score_news, args=(ticker, cell, stats)).start()
                 except Exception as e: continue
             
             with brain_lock:
@@ -394,20 +414,16 @@ def scanner_engine():
 
 @app.route('/')
 def index(): return render_template('index.html')
+
 @app.route('/data')
 def data():
     with brain_lock: 
         safe_brain = copy.deepcopy(MASTER_BRAIN)
         safe_brain["live_trends"] = get_live_trends()
-        
-        # 💡 新增：抓取 trends.json 的最後學習/修改時間
         try:
             mtime = os.path.getmtime(TRENDS_FILE_PATH)
-            dt = datetime.fromtimestamp(mtime, TZ_TW)
-            safe_brain["trends_date"] = dt.strftime("%Y-%m-%d %H:%M:%S")
-        except:
-            safe_brain["trends_date"] = "尚未生成"
-            
+            safe_brain["trends_date"] = datetime.fromtimestamp(mtime, TZ_TW).strftime("%Y-%m-%d %H:%M:%S")
+        except: safe_brain["trends_date"] = "尚未生成"
     return jsonify(safe_brain)
 
 if __name__ == '__main__':

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V41.13 - Full Armor Command</title>
+    <title>Sniper V41.14 - Full Armor Command</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
@@ -132,7 +132,8 @@
                         <th onclick="setSort('news', 'time')">時間 <span id="sort-news-time"></span></th>
                         <th onclick="setSort('news', 'Code')">代碼 <span id="sort-news-Code"></span></th>
                         <th onclick="setSort('news', 'CatScore')">評分 <span id="sort-news-CatScore">▼</span></th>
-                        <th>標題</th> <th onclick="setSort('news', 'Float')">流通股 <span id="sort-news-Float"></span></th>
+                        <th>標題</th>
+                        <th onclick="setSort('news', 'Float')">流通股 <span id="sort-news-Float"></span></th>
                         <th onclick="setSort('news', 'RelVol')">量比 <span id="sort-news-RelVol"></span></th>
                         <th onclick="setSort('news', 'Vol')">成交量 <span id="sort-news-Vol"></span></th>
                         <th onclick="setSort('news', 'Pct')">漲幅 <span id="sort-news-Pct"></span></th>
@@ -155,11 +156,9 @@
         let lastTopNewsHeadline = ""; 
         const sounds = { spark: new Audio('/static/sounds/spark.mp3'), nova: new Audio('/static/sounds/nova.mp3') };
 
-        // 💡 排序狀態紀錄
         let rankCfg = { col: 'Pct', asc: false };
         let newsCfg = { col: 'CatScore', asc: false };
 
-        // 💡 智能數值解析器
         function parseValue(val, col) {
             if (!val || val === '-' || val.includes('N/A')) return -999999;
             if (col === 'Code' || col === 'time') return val.toString(); 
@@ -173,22 +172,15 @@
             return num;
         }
 
-        // 💡 切換排序邏輯
         function setSort(table, col) {
             let cfg = table === 'rank' ? rankCfg : newsCfg;
-            if (cfg.col === col) {
-                cfg.asc = !cfg.asc; 
-            } else {
-                cfg.col = col;
-                cfg.asc = false; 
-            }
+            if (cfg.col === col) { cfg.asc = !cfg.asc; } 
+            else { cfg.col = col; cfg.asc = false; }
             document.querySelectorAll(`[id^="sort-${table}-"]`).forEach(el => el.innerText = "");
             document.getElementById(`sort-${table}-${col}`).innerText = cfg.asc ? "▲" : "▼";
-            
             if (Object.keys(brain).length > 0) refreshUI(brain); 
         }
 
-        // 💡 顯示 AI 學習詞彙
         function showAITrends() {
             if (!brain || !brain.live_trends) return alert("📡 系統尚未載入學習數據，請稍後再試...");
             let trends = brain.live_trends;
