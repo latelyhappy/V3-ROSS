@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V42.2 - Night Vision Command</title>
+    <title>Sniper V42.3 - Full Armor & Night Vision</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
             --yellow: #e3b341; --purple: #a371f7; --green: #3fb950; --red: #f85149; --blue: #58a6ff;
-            --neon-green: #39ff14; 
+            --neon-green: #39ff14; --neon-purple: #d292ff; /* 💡 100K 爆量顏色 */
             --bg-base: #0d1117; --bg-surface: #161b22; --border: #30363d; 
             --text-main: #c9d1d9; --text-muted: #8b949e; 
         }
@@ -44,6 +44,7 @@
         .elite-news-row { background: rgba(255,255,255,0.03); }
         .elite-title { color: #e1e4e8 !important; } 
         .neon-word { color: var(--neon-green); font-weight: 900; text-shadow: 0 0 5px rgba(57,255,20,0.4); }
+        .vol-100k { color: var(--neon-purple); font-weight: bold; text-shadow: 0 0 5px rgba(210,146,255,0.3); } /* 💡 100K 特效 */
     </style>
 </head>
 <body>
@@ -78,6 +79,7 @@
                         <th onclick="setSort('rank', 'Float')">流通股 <span id="sort-rank-Float"></span></th>
                         <th onclick="setSort('rank', 'Price')">價格 <span id="sort-rank-Price"></span></th>
                         <th onclick="setSort('rank', 'RelVol')">量比 <span id="sort-rank-RelVol"></span></th>
+                        <th onclick="setSort('rank', 'VolAcc')">加速 <span id="sort-rank-VolAcc"></span></th>
                         <th onclick="setSort('rank', 'Vol')">成交量 <span id="sort-rank-Vol"></span></th>
                         <th onclick="setSort('rank', 'Pct')">漲幅 <span id="sort-rank-Pct">▼</span></th>
                     </tr></thead>
@@ -130,6 +132,8 @@
                 if (str.includes('M')) return num * 1000000;
                 if (str.includes('K')) return num * 1000;
             }
+            // 💡 確保量能加速正確解析排序
+            if (col === 'VolAcc' || col === 'RelVol') return parseFloat(str.replace(/[^0-9.-]/g, '')) || 0;
             return num;
         }
 
@@ -198,7 +202,7 @@
             document.getElementById('sys-status').innerText = `📡 數據更新: ${d.last_update || '--:--:--'}`;
             document.getElementById('sys-status').style.color = "var(--green)";
             
-            // 1. 日誌
+            // 1. 日誌 (結合 100K 標記)
             let h1 = "";
             (d.surge_log || []).forEach(r => {
                 if (r.Type === 'fund' && !showETF) return; 
@@ -206,21 +210,26 @@
                 let isFatal = r.Signal && r.Signal.includes("💀"), icon = isFatal ? " 💀" : ((det.CatScore || 0) > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
                 let rowClass = r.Status ? `tr-${r.Status}` : ""; if (r.Signal && r.Signal.includes("⚡VCP")) rowClass += " tr-vcp"; if (isFatal) rowClass += " trap-row"; 
                 let f_float = r.Type === 'fund' ? '<span style="color:var(--border);">N/A(ETF)</span>' : (r.Float||'-');
+                
+                // 💡 100K 爆量特效
+                let f_vol = r.Vol || "-";
+                if (r.Is100K) { f_vol = `<span class="vol-100k">${f_vol}</span>`; icon += " 📦"; }
+
                 h1 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                     <td class="status-indicator"></td><td style="color:var(--text-muted);">${r.Time||'-'}</td><td class="sym">${r.Code}${icon}</td>
-                    <td style="color:var(--text-muted);">${f_float}</td><td>${r.Price||'-'}</td><td>${r.RelVol||'-'}</td><td>${r.Vol||'-'}</td>
+                    <td style="color:var(--text-muted);">${f_float}</td><td>${r.Price||'-'}</td><td>${r.RelVol||'-'}</td><td>${f_vol}</td>
                     <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'}</td><td style="font-weight:bold;">${r.Signal||'-'}</td>
                 </tr>`;
                 if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { played[r.SignalTS] = r.SignalTS; sounds[r.Audio].currentTime=0; sounds[r.Audio].play().catch(e=>{}); }
             });
             document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="9" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
 
-            // 2. 排行
+            // 2. 排行 (新增加速排序)
             let h2 = "", rankData = [...(d.leaderboard || [])].filter(r => !(r?.Type === 'fund' && !showETF));
             rankData.sort((a, b) => {
                 let detA = d.details[a.Code] || {}, detB = d.details[b.Code] || {};
-                let vA = (rankCfg.col==='Float') ? (a.Float||detA.Float) : ((rankCfg.col==='RelVol') ? (detA.RelVol||a.RelVol) : a[rankCfg.col]);
-                let vB = (rankCfg.col==='Float') ? (b.Float||detB.Float) : ((rankCfg.col==='RelVol') ? (detB.RelVol||b.RelVol) : b[rankCfg.col]);
+                let vA = (rankCfg.col==='Float') ? (a.Float||detA.Float) : ((rankCfg.col==='RelVol') ? (detA.RelVol||a.RelVol) : ((rankCfg.col==='VolAcc') ? (detA.VolAcc||a.VolAcc) : a[rankCfg.col]));
+                let vB = (rankCfg.col==='Float') ? (b.Float||detB.Float) : ((rankCfg.col==='RelVol') ? (detB.RelVol||b.RelVol) : ((rankCfg.col==='VolAcc') ? (detB.VolAcc||b.VolAcc) : b[rankCfg.col]));
                 vA = parseValue(vA, rankCfg.col); vB = parseValue(vB, rankCfg.col);
                 if (vA < vB) return rankCfg.asc ? -1 : 1; if (vA > vB) return rankCfg.asc ? 1 : -1; return 0;
             });
@@ -228,14 +237,19 @@
                 let det = d.details[r.Code] || {}, isFatal = det.IsTrap;
                 let icon = isFatal ? " 💀" : ((det.CatScore||0)>8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
                 let rowClass = `tr-${det.Status || r.Status || 'green'}`; if (isFatal) rowClass += " trap-row";
+                
+                // 💡 100K 爆量特效
+                let f_vol = r.Vol || "-";
+                if (det.Is100K) { f_vol = `<span class="vol-100k">${f_vol}</span>`; icon += " 📦"; }
+
                 h2 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                     <td class="status-indicator"></td><td class="sym">${r.Code}${icon}</td><td style="color:var(--text-muted);">${r.Type==='fund'?'N/A':(r.Float||det.Float||"-")}</td>
-                    <td>${r.Price||'-'}</td><td>${det.RelVol||r.RelVol||'-'}</td><td>${r.Vol||'-'}</td><td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'}</td>
+                    <td>${r.Price||'-'}</td><td>${det.RelVol||r.RelVol||'-'}</td><td style="color:var(--yellow); font-weight:bold;">${det.VolAcc||"-"}</td><td>${f_vol}</td><td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'}</td>
                 </tr>`;
             });
-            document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-muted);">無符合標的</td></tr>`;
+            document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="8" style="text-align:center; padding:20px; color:var(--text-muted);">無符合標的</td></tr>`;
 
-            // 3. 新聞 (浮動股數補回)
+            // 3. 新聞 (100K 特效)
             let h3 = "";
             if (d.top_catalysts && d.top_catalysts.length > 0) {
                 let fVN = d.top_catalysts.find(n => n.NewsList && n.NewsList.length > 0);
@@ -264,8 +278,11 @@
                     let f_Score = n.CatScore !== undefined ? n.CatScore : (n.score || 0);
                     let f_Pct = n.Pct || "-";
                     let f_Price = n.Price || "-";
-                    let f_Vol = n.Vol || "-";
-                    let f_Float = n.Type === 'fund' ? 'N/A' : (n.Float || "-"); // 💡 提取浮動股數
+                    let f_Float = n.Type === 'fund' ? 'N/A' : (n.Float || "-");
+                    
+                    // 💡 100K 爆量特效
+                    let f_vol = n.Vol || "-";
+                    if (n.Is100K) { f_vol = `<span class="vol-100k">${f_vol} 📦</span>`; }
                     
                     let rowClass = isElite ? "elite-news-row" : "tr-green";
                     let titleClass = isElite ? "elite-title" : "";
@@ -275,13 +292,13 @@
                         <td style="color:${latest.is_today?'#ffa500':'var(--text-muted)'}; font-size:11px;">${latest.time||'-'}</td>
                         <td class="sym">${n.Code||n.ticker}</td><td style="color:${f_Score>=6?'var(--yellow)':'var(--text-muted)'}; font-weight:bold;">${f_Score}</td>
                         <td class="${titleClass}" style="font-size:12px; line-height:1.4; max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${hl_text}</td>
-                        <td style="color:var(--text-muted);">${f_Float}</td> <td>${f_Price}</td>
+                        <td style="color:var(--text-muted);">${f_Float}</td>
+                        <td>${f_Price}</td>
                         <td style="color:var(--text-muted);">${n.RelVol||"-"}</td>
-                        <td>${f_Vol}</td> 
+                        <td>${f_vol}</td> 
                         <td class="${parseFloat(f_Pct)>0?'up':'down'}" style="font-weight:bold;">${f_Pct}</td>
                     </tr>`;
                 });
-                // 💡 更新空表格的跨欄數 (colspan) 為 10
                 document.getElementById('news-list').innerHTML = h3 || `<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--text-muted);">符合條件之情報已過濾</td></tr>`;
             } else { document.getElementById('news-list').innerHTML = `<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--text-muted);">今日尚無重大情報</td></tr>`; }
             if(activeSym) loadDetail(activeSym);
@@ -289,10 +306,12 @@
 
         function loadDetail(sym) {
             activeSym = sym; let d = (brain.details && brain.details[sym]) ? brain.details[sym] : null; let rankData = brain.leaderboard ? brain.leaderboard.find(x => x.Code === sym) : null;
-            if (!d && !rankData) return; if (!d && rankData) d = { Price:rankData.Price, Pct:rankData.Pct, Vol:rankData.Vol, RelVol:"-", Float:rankData.Type==='fund'?"N/A(ETF)":(rankData.Float||"-"), StopLoss:0, CatScore:0, IsTrap:false, NewsList:[], VolAcc:"-" };
+            if (!d && !rankData) return; if (!d && rankData) d = { Price:rankData.Price, Pct:rankData.Pct, Vol:rankData.Vol, RelVol:"-", Float:rankData.Type==='fund'?"N/A(ETF)":(rankData.Float||"-"), StopLoss:0, CatScore:0, IsTrap:false, NewsList:[], VolAcc:"-", Is100K:false };
             
             let trapWarn = d.IsTrap ? `<div style="background:rgba(248,81,73,0.2); border:1px solid var(--red); color:var(--red); padding:8px; margin-bottom:10px; border-radius:6px; font-weight:bold; font-size:13px; animation:blood-pulse 1s infinite;">🩸 致命警告：偵測到 S-1/S-3 增發稀釋</div>` : "";
             let vcpHTML = ""; if (d.Signal && d.Signal.includes("VCP")) { let m = d.Signal.match(/\((\d+)m\)/), mins = m ? parseInt(m[1]) : 1; vcpHTML = `<div style="font-size:11px; color:var(--text-muted);">⚡ 壓縮 (${mins} mins)</div><div class="vcp-bar-container"><div class="vcp-bar" style="width:${Math.min(mins*10,100)}%; background:${mins>=10?'#fff':(mins>=4?'#ffa500':'#e3b341')};"></div></div>`; }
+
+            let volHTML = d.Is100K ? `<b class="vol-100k" style="font-size:14px;">${d.Vol||'-'} 📦</b>` : `<b style="color:var(--text-main); font-size:14px;">${d.Vol||'-'}</b>`;
 
             let html = `<div style="text-align:center;">${trapWarn}
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
@@ -300,7 +319,7 @@
                     <button class="ghost-btn" style="padding:4px 10px; font-size:12px;" onclick="openTW('${sym}')">TV ↗</button>
                 </div>
                 <div style="background:rgba(0,0,0,0.3); padding:10px; border-radius:8px; display:grid; grid-template-columns:repeat(5, 1fr); gap:8px; font-size:12px; border:1px solid rgba(255,255,255,0.05);">
-                    <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center;">成交量<br><b style="color:var(--text-main); font-size:14px;">${d.Vol||'-'}</b></div>
+                    <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center;">成交量<br>${volHTML}</div>
                     <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center;">量比<br><b style="color:var(--text-main); font-size:14px;">${d.RelVol||'-'}</b></div>
                     
                     <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center; box-shadow: 0 0 5px rgba(227, 179, 65, 0.2);">量能加速<br><b style="color:${d.VolAcc !== '-' ? 'var(--yellow)' : 'var(--text-muted)'}; font-size:14px;">${d.VolAcc||'-'}</b></div>

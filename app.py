@@ -30,7 +30,6 @@ CATALYST_ARMORY = {}
 armory_path = os.path.join(os.path.dirname(__file__), 'catalysts.json')
 try:
     with open(armory_path, 'r', encoding='utf-8') as f: CATALYST_ARMORY = json.load(f)
-    print("✅ 成功載入 catalysts.json 軍火庫")
 except: CATALYST_ARMORY = {"INVERTED_TRAPS":{}, "RED":{}, "ORANGE":{}, "YELLOW":{}, "BLACK":{}}
 
 MASTER_BRAIN = {"surge_log": [], "details": {}, "leaderboard": [], "top_catalysts": [], "last_update": "", "elite_words": []}
@@ -174,7 +173,6 @@ def update_dynamic_watchlist():
 
 def auto_trend_updater():
     STOP_WORDS = {"THE", "TO", "OF", "IN", "FOR", "A", "AND", "IS", "ON", "WITH", "BY", "AS", "AT", "FROM", "IT", "THAT", "THIS", "AN", "BE", "NEW", "UP", "OUT", "ITS", "ARE", "HAS"}
-    print("⏳ [NLP引擎] 開機預熱中，等待主雷達 60 秒...")
     time.sleep(60)
     while True:
         try:
@@ -184,7 +182,6 @@ def auto_trend_updater():
             pcts = [float(MASTER_BRAIN['details'][t].get('Pct','0').replace('%','').replace('+','')) for t in target_tickers if t in MASTER_BRAIN['details'] and MASTER_BRAIN['details'][t].get('Pct') != '-']
             current_avg_pct = sum(pcts)/len(pcts) if pcts else 0
 
-            print("🔍 [NLP引擎] 開始自動收索全網近期熱點新聞...")
             all_words = []
             for ticker in target_tickers:
                 try:
@@ -200,33 +197,28 @@ def auto_trend_updater():
             if all_words:
                 top_trends = Counter(all_words).most_common(15)
                 current_content = get_live_trends()
-                added_words = []
-                requires_github_sync = False # 💡 防斷線機制：控制備份頻率
+                added_words = []; requires_github_sync = False
                 
                 for w, count in top_trends:
                     if count >= 2:
                         if w not in current_content:
                             current_content[w] = {"score": min(count*2, 10), "count": 1, "avg_pct_at_birth": round(current_avg_pct, 2), "last_seen": datetime.now(TZ_NY).strftime("%Y-%m-%d")}
-                            added_words.append(w)
-                            requires_github_sync = True # 只有真正的新詞彙才允許上傳 GitHub
+                            added_words.append(w); requires_github_sync = True
                         else:
                             old_data = current_content[w]
                             old_score = old_data.get("score", 5)
                             old_data["count"] = old_data.get("count", 1) + 1
                             old_data["last_seen"] = datetime.now(TZ_NY).strftime("%Y-%m-%d")
                             if old_data["count"] >= 3 and old_score < 15: 
-                                old_data["score"] += 1
-                                requires_github_sync = True # 或者分數升級了才允許上傳
+                                old_data["score"] += 1; requires_github_sync = True
                             current_content[w] = old_data
                             added_words.append(w)
 
                 if added_words:
-                    print(f"🔥 [NLP引擎] 熱點詞彙：{', '.join(added_words[:5])}...")
                     with open(TRENDS_FILE_PATH, 'w', encoding='utf-8') as f: json.dump(current_content, f, ensure_ascii=False, indent=4)
                     global _cached_trends, _last_trends_update
                     _cached_trends = current_content; _last_trends_update = time.time()
                     
-                    # 💡 阻斷無限重啟迴圈：只在有重大更新時才推給 Railway
                     if requires_github_sync:
                         github_token = os.getenv('GITHUB_TOKEN'); github_repo = os.getenv('GITHUB_REPO')
                         if github_token and github_repo:
@@ -234,12 +226,10 @@ def auto_trend_updater():
                             headers = {"Authorization": f"Bearer {github_token}", "Accept": "application/vnd.github.v3+json"}
                             res = requests.get(url, headers=headers)
                             sha = res.json().get('sha') if res.status_code == 200 else None
-                            # 強制加入 [skip ci] [skip build] 避免 Railway 重新部署！
-                            payload = {"message": "🤖 AI V42: 權重升級 [skip ci] [skip build]", "content": base64.b64encode(json.dumps(current_content, indent=4).encode('utf-8')).decode('utf-8')}
+                            payload = {"message": "🤖 AI V42: 權重升級 [skip ci]", "content": base64.b64encode(json.dumps(current_content, indent=4).encode('utf-8')).decode('utf-8')}
                             if sha: payload["sha"] = sha
-                            if requests.put(url, headers=headers, json=payload).status_code in [200, 201]: print("✅ [NLP引擎] 重大突破，已同步至兵工廠！")
-                else: print("💤 [NLP引擎] 本期無新詞彙。")
-        except Exception as e: print(f"🚨 [NLP引擎] 異常: {e}")
+                            requests.put(url, headers=headers, json=payload)
+        except: pass
         time.sleep(86400) 
 
 def scanner_engine():
@@ -284,6 +274,10 @@ def scanner_engine():
                     rel_vol_prev = round(v_prev / avg_vol, 2) if avg_vol > 0 else 1.0
                     rel_vol_display = max(rel_vol_live, rel_vol_prev); daily_vol = int(df['volume'].sum())
                     
+                    # 💡 100K 物理預警偵測 (計算最近 3 分鐘成交量總和)
+                    vol_3m = df['volume'].iloc[-3:].sum() if len(df) >= 3 else v_live
+                    is_100k = vol_3m >= 100000
+
                     df['tr'] = pd.concat([(df['high'] - df['low']), (df['high'] - df['close'].shift(1)).abs(), (df['low'] - df['close'].shift(1)).abs()], axis=1).max(axis=1)
                     atr5 = df['tr'].rolling(5, min_periods=3).mean().iloc[-1] if len(df) >= 5 else 0
                     atr20 = df['tr'].rolling(20, min_periods=5).mean().iloc[-1] if len(df) >= 5 else 0
@@ -311,11 +305,10 @@ def scanner_engine():
                         avg_v_60 = df['volume'].iloc[:-1].mean()
                         std_v_60 = df['volume'].iloc[:-1].std()
                         z_score = (v_live - avg_v_60) / std_v_60 if std_v_60 > 0 else 0
-                        vol_3 = df['volume'].iloc[-3:].sum()
                         vol_prev_3 = df['volume'].iloc[-6:-3].sum()
-                        ratio_3v3 = vol_3 / vol_prev_3 if vol_prev_3 > 0 else 1.0
+                        ratio_3v3 = vol_3m / vol_prev_3 if vol_prev_3 > 0 else 1.0
                         b1 = df['volume'].iloc[-9:-6].sum()
-                        staircase = (b1 < vol_prev_3 < vol_3) and (p_live > df['close'].iloc[-10])
+                        staircase = (b1 < vol_prev_3 < vol_3m) and (p_live > df['close'].iloc[-10])
 
                     if is_open_shock: z_score = 0; ratio_3v3 = 1.0; staircase = False
 
@@ -354,7 +347,8 @@ def scanner_engine():
                         "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, 
                         "Signal": current_signal if current_signal else "",
                         "PriceVal": p_live, "StopLoss": dynamic_stop, "Float": float_str, "Type": stat_data.get('type', 'stock'),
-                        "VolAcc": f"{ratio_3v3:.1f}x" if ratio_3v3 > 1.0 else "-"
+                        "VolAcc": f"{ratio_3v3:.1f}x" if ratio_3v3 > 1.0 else "-",
+                        "Is100K": is_100k # 💡 新增 100K 標記給前端
                     }
                     
                     last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})
@@ -367,41 +361,32 @@ def scanner_engine():
                         is_trap = check_sec_fatal_traps(ticker)
                         if is_trap: current_signal += " 💀(SEC陷阱)"; stats["Signal"] = current_signal
 
+                    # 💡 終極防閃頻：在迴圈內「即時」更新排行榜，0 秒延遲！
                     with brain_lock:
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "Price": "-", "Pct": "-", "Vol": "-", "RelVol": "-", "Float": "-", "Signal": ""})
                         cell.update(stats)
                         if is_trap: cell["IsTrap"] = True
                         
-                        for rank_item in MASTER_BRAIN["leaderboard"]:
-                            if rank_item["Code"] == ticker:
-                                rank_item["Price"] = f"${p_live:.2f}"; rank_item["Pct"] = f"{real_pct:+.2f}%"
-                                rank_item["Status"] = status_color if status_color != "green" else rank_item.get("Status", "green")
-                                break
-
                         if push_signal:
                             cooldown_tracker[ticker] = {'time': now_ts, 'level': current_level}
                             audio_target = "nova" if current_level >= 4 else ("spark" if current_level >= 2 else None)
                             if not is_shakeout:
                                 MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": audio_target})
-                                # 💡 系統擴容：解鎖 1000 筆極端動能日誌暫存
                                 MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
+
+                        all_items = list(MASTER_BRAIN["details"].values())
+                        def get_pct(item):
+                            try: return float(item.get('Pct', '0').replace('%', '').replace('+', ''))
+                            except: return -9999
+                        
+                        active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST]
+                        if not active_items: active_items = all_items 
+                        
+                        MASTER_BRAIN["leaderboard"] = sorted(active_items, key=get_pct, reverse=True)[:20]
+                        MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
 
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell), daemon=True).start()
                 except Exception as e: continue
-            
-            # 💡 終極防閃頻：不管更新掃描到哪裡，永遠拿「現存的所有資料」出來排序，保證不歸零！
-            with brain_lock:
-                all_items = list(MASTER_BRAIN["details"].values())
-                def get_pct(item):
-                    try: return float(item.get('Pct', '0').replace('%', '').replace('+', ''))
-                    except: return -9999
-                
-                # 優先顯示還在雷達上的標的，若雷達暫時中斷則顯示所有歷史標的當作緩衝
-                active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST]
-                if not active_items: active_items = all_items 
-                
-                MASTER_BRAIN["leaderboard"] = sorted(active_items, key=get_pct, reverse=True)[:20]
-                MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
             time.sleep(5)
         except Exception as e: time.sleep(10)
 
