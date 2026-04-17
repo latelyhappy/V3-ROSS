@@ -27,7 +27,7 @@
     },
     "ANNOUNCES": {
         "score": 15,
-        "count": 36,
+        "count": 37,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -43,7 +43,7 @@
     },
     "STOCK": {
         "score": 15,
-        "count": 34,
+        "count": 35,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -54,7 +54,7 @@
     },
     "FULL": {
         "score": 15,
-        "count": 16,
+        "count": 17,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -85,37 +85,37 @@
     },
     "YEAR": {
         "score": 15,
-        "count": 36,
+        "count": 37,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "RESULTS": {
         "score": 15,
-        "count": 36,
+        "count": 37,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "REPORTS": {
-        "score": 11,
-        "count": 8,
+        "score": 12,
+        "count": 9,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "EARNINGS": {
         "score": 15,
-        "count": 36,
+        "count": 37,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "HIGHLIGHTS": {
         "score": 15,
-        "count": 36,
+        "count": 37,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "DATA": {
         "score": 15,
-        "count": 13,
+        "count": 14,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -127,7 +127,7 @@
     },
     "QUARTER": {
         "score": 15,
-        "count": 36,
+        "count": 37,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -139,13 +139,13 @@
     },
     "REVENUE": {
         "score": 15,
-        "count": 29,
+        "count": 30,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "CALL": {
         "score": 15,
-        "count": 36,
+        "count": 37,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -181,7 +181,7 @@
     },
     "FIRST": {
         "score": 15,
-        "count": 35,
+        "count": 36,
         "avg_pct_at_birth": 10.79,
         "last_seen": "2026-04-17"
     },
@@ -205,7 +205,7 @@
     },
     "MILLION": {
         "score": 15,
-        "count": 30,
+        "count": 31,
         "avg_pct_at_birth": 10.08,
         "last_seen": "2026-04-17"
     },
@@ -234,8 +234,8 @@
         "last_seen": "2026-04-17"
     },
     "INFRASTRUCTURE": {
-        "score": 12,
-        "count": 4,
+        "score": 13,
+        "count": 5,
         "avg_pct_at_birth": 10.41,
         "last_seen": "2026-04-17"
     }
