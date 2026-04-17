@@ -1,35 +1,197 @@
 {
-    "ETFS": 5,
-    "INC": 5,
-    "DEFIANCE": 5,
-    "BILLION": 5,
-    "THERAPEUTICS": 5,
-    "ANNOUNCES": 5,
-    "LEVERAGED": 5,
-    "ETF": 5,
-    "STOCK": 5,
-    "EXPANDS": 5,
-    "FULL": 5,
-    "STRATEGIC": 5,
-    "MARKET": 5,
-    "SURPASS": 5,
-    "ASSETS": 5,
-    "QUANTUM": 5,
-    "YEAR": 5,
-    "RESULTS": 5,
-    "REPORTS": 5,
-    "EARNINGS": 5,
-    "HIGHLIGHTS": 5,
-    "DATA": 5,
-    "FINANCIAL": 5,
-    "QUARTER": 5,
-    "STOCKS": 5,
-    "REVENUE": 5,
-    "CALL": 5,
-    "UNDER": 5,
-    "ENERGY": 5,
-    "BEST": 5,
-    "NVIDIA": 5,
-    "MANAGEMENT": 5,
-    "LAUNCHES": 5
+    "ETFS": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "INC": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "DEFIANCE": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "BILLION": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "THERAPEUTICS": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "ANNOUNCES": {
+        "score": 5,
+        "count": 2,
+        "avg_pct": 0.0,
+        "last_seen": "2026-04-17"
+    },
+    "LEVERAGED": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "ETF": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "STOCK": {
+        "score": 5,
+        "count": 2,
+        "avg_pct": 0.0,
+        "last_seen": "2026-04-17"
+    },
+    "EXPANDS": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "FULL": {
+        "score": 5,
+        "count": 2,
+        "avg_pct": 0.0,
+        "last_seen": "2026-04-17"
+    },
+    "STRATEGIC": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "MARKET": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "SURPASS": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "ASSETS": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "QUANTUM": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "YEAR": {
+        "score": 5,
+        "count": 2,
+        "avg_pct": 0.0,
+        "last_seen": "2026-04-17"
+    },
+    "RESULTS": {
+        "score": 5,
+        "count": 2,
+        "avg_pct": 0.0,
+        "last_seen": "2026-04-17"
+    },
+    "REPORTS": {
+        "score": 5,
+        "count": 2,
+        "avg_pct": 0.0,
+        "last_seen": "2026-04-17"
+    },
+    "EARNINGS": {
+        "score": 5,
+        "count": 2,
+        "avg_pct": 0.0,
+        "last_seen": "2026-04-17"
+    },
+    "HIGHLIGHTS": {
+        "score": 5,
+        "count": 2,
+        "avg_pct": 0.0,
+        "last_seen": "2026-04-17"
+    },
+    "DATA": {
+        "score": 5,
+        "count": 2,
+        "avg_pct": 0.0,
+        "last_seen": "2026-04-17"
+    },
+    "FINANCIAL": {
+        "score": 5,
+        "count": 2,
+        "avg_pct": 0.0,
+        "last_seen": "2026-04-17"
+    },
+    "QUARTER": {
+        "score": 5,
+        "count": 2,
+        "avg_pct": 0.0,
+        "last_seen": "2026-04-17"
+    },
+    "STOCKS": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "REVENUE": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "CALL": {
+        "score": 5,
+        "count": 2,
+        "avg_pct": 0.0,
+        "last_seen": "2026-04-17"
+    },
+    "UNDER": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "ENERGY": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "BEST": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "NVIDIA": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "MANAGEMENT": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "LAUNCHES": {
+        "score": 5,
+        "count": 1,
+        "avg_pct": 0.0
+    },
+    "FIRST": {
+        "score": 10,
+        "count": 1,
+        "avg_pct_at_birth": 10.79,
+        "last_seen": "2026-04-17"
+    },
+    "POWER": {
+        "score": 10,
+        "count": 1,
+        "avg_pct_at_birth": 10.79,
+        "last_seen": "2026-04-17"
+    },
+    "MEDICAL": {
+        "score": 10,
+        "count": 1,
+        "avg_pct_at_birth": 10.79,
+        "last_seen": "2026-04-17"
+    }
 }
