@@ -25,8 +25,8 @@
         "avg_pct": 0.0
     },
     "ANNOUNCES": {
-        "score": 5,
-        "count": 2,
+        "score": 6,
+        "count": 3,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -41,8 +41,8 @@
         "avg_pct": 0.0
     },
     "STOCK": {
-        "score": 5,
-        "count": 2,
+        "score": 6,
+        "count": 3,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -52,8 +52,8 @@
         "avg_pct": 0.0
     },
     "FULL": {
-        "score": 5,
-        "count": 2,
+        "score": 6,
+        "count": 3,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -83,50 +83,50 @@
         "avg_pct": 0.0
     },
     "YEAR": {
-        "score": 5,
-        "count": 2,
+        "score": 6,
+        "count": 3,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "RESULTS": {
-        "score": 5,
-        "count": 2,
+        "score": 6,
+        "count": 3,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "REPORTS": {
-        "score": 5,
-        "count": 2,
+        "score": 6,
+        "count": 3,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "EARNINGS": {
-        "score": 5,
-        "count": 2,
+        "score": 6,
+        "count": 3,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "HIGHLIGHTS": {
-        "score": 5,
-        "count": 2,
+        "score": 6,
+        "count": 3,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "DATA": {
-        "score": 5,
-        "count": 2,
+        "score": 6,
+        "count": 3,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "FINANCIAL": {
-        "score": 5,
-        "count": 2,
+        "score": 6,
+        "count": 3,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "QUARTER": {
-        "score": 5,
-        "count": 2,
+        "score": 6,
+        "count": 3,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -141,8 +141,8 @@
         "avg_pct": 0.0
     },
     "CALL": {
-        "score": 5,
-        "count": 2,
+        "score": 6,
+        "count": 3,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -178,13 +178,13 @@
     },
     "FIRST": {
         "score": 10,
-        "count": 1,
+        "count": 2,
         "avg_pct_at_birth": 10.79,
         "last_seen": "2026-04-17"
     },
     "POWER": {
         "score": 10,
-        "count": 1,
+        "count": 2,
         "avg_pct_at_birth": 10.79,
         "last_seen": "2026-04-17"
     },
@@ -192,6 +192,12 @@
         "score": 10,
         "count": 1,
         "avg_pct_at_birth": 10.79,
+        "last_seen": "2026-04-17"
+    },
+    "FOURTH": {
+        "score": 10,
+        "count": 1,
+        "avg_pct_at_birth": 11.01,
         "last_seen": "2026-04-17"
     }
 }
