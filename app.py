@@ -274,7 +274,6 @@ def scanner_engine():
                     rel_vol_prev = round(v_prev / avg_vol, 2) if avg_vol > 0 else 1.0
                     rel_vol_display = max(rel_vol_live, rel_vol_prev); daily_vol = int(df['volume'].sum())
                     
-                    # 💡 安全轉型為原生 bool，避免 numpy.bool_ 引發 JSON 崩潰
                     vol_3m = df['volume'].iloc[-3:].sum() if len(df) >= 3 else v_live
                     is_100k = bool(vol_3m >= 100000)
 
@@ -300,17 +299,33 @@ def scanner_engine():
                     is_ride = (p_live >= curr_ema20) and (abs(p_live - curr_ema20)/curr_ema20 < 0.012) and (rel_vol_prev < 0.8) and (real_pct > 1.0) and not is_spark
                     is_grind = (curr_ema10 > curr_ema20) and (p_live >= curr_ema10) and (0.5 <= rel_vol_display < 2.5) and (real_pct > 2.0) and not is_spark and not is_ride
 
-                    ratio_3v3 = 1.0; z_score = 0; staircase = False
-                    if len(df) >= 10:
+                    ratio_3v3 = 1.0; z_score = 0; staircase = False; vol_acc_str = "-"
+                    
+                    # 💡 V42.4: 三段式動能衰退/爆發完整追蹤
+                    if len(df) >= 6:
                         avg_v_60 = df['volume'].iloc[:-1].mean()
                         std_v_60 = df['volume'].iloc[:-1].std()
                         z_score = float((v_live - avg_v_60) / std_v_60) if std_v_60 > 0 else 0.0
-                        vol_prev_3 = df['volume'].iloc[-6:-3].sum()
-                        ratio_3v3 = float(vol_3m / vol_prev_3) if vol_prev_3 > 0 else 1.0
-                        b1 = df['volume'].iloc[-9:-6].sum()
-                        staircase = bool((b1 < vol_prev_3 < vol_3m) and (p_live > df['close'].iloc[-10]))
+                        
+                        vol_A = vol_3m
+                        vol_B = df['volume'].iloc[-6:-3].sum()
+                        vol_C = df['volume'].iloc[-9:-6].sum() if len(df) >= 9 else 0
+                        
+                        if vol_B > 0:
+                            ratio_3v3 = float(vol_A / vol_B)
+                            if len(df) >= 9:
+                                if vol_A > vol_B > vol_C: vol_acc_str = f"🔥 {ratio_3v3:.2f}x"
+                                elif vol_A > vol_B and vol_B <= vol_C: vol_acc_str = f"↗ {ratio_3v3:.2f}x"
+                                elif vol_A < vol_B < vol_C: vol_acc_str = f"🧊 {ratio_3v3:.2f}x"
+                                elif vol_A < vol_B and vol_B >= vol_C: vol_acc_str = f"↘ {ratio_3v3:.2f}x"
+                                else: vol_acc_str = f"- {ratio_3v3:.2f}x"
+                            else:
+                                vol_acc_str = f"↗ {ratio_3v3:.2f}x" if vol_A > vol_B else f"↘ {ratio_3v3:.2f}x"
+                        
+                        b1 = vol_C
+                        staircase = bool((b1 < vol_B < vol_A) and (p_live > df['close'].iloc[-10]))
 
-                    if is_open_shock: z_score = 0.0; ratio_3v3 = 1.0; staircase = False
+                    if is_open_shock: z_score = 0.0; ratio_3v3 = 1.0; staircase = False; vol_acc_str = "-"
 
                     tracker = STATE_TRACKER.get(ticker, {'state': 'None', 'duration': 0, 'vcp_low': float('inf'), 'shakeout_high': 0.0})
                     dynamic_stop = curr_ema20 * 0.99 
@@ -323,7 +338,6 @@ def scanner_engine():
                         else: tracker['duration'] += 1; tracker['vcp_low'] = min(tracker['vcp_low'], df['low'].iloc[-1])
                     else: tracker['state'] = 'None'; tracker['duration'] = 0; tracker['vcp_low'] = float('inf')
 
-                    # 💡 確保傳給 JSON 的數值為原生 Python float，避免 JSON 不支援
                     if dynamic_stop == float('inf'): dynamic_stop = curr_ema20 * 0.99
                     dynamic_stop = float(dynamic_stop)
 
@@ -349,8 +363,8 @@ def scanner_engine():
                         "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, 
                         "Signal": current_signal if current_signal else "",
                         "PriceVal": float(p_live), "StopLoss": dynamic_stop, "Float": float_str, "Type": stat_data.get('type', 'stock'),
-                        "VolAcc": f"{ratio_3v3:.1f}x" if ratio_3v3 > 1.0 else "-",
-                        "Is100K": is_100k # 這裡已經被轉型為安全的純布林值！
+                        "VolAcc": vol_acc_str, # 💡 解封所有數據並帶有趨勢符號
+                        "Is100K": is_100k 
                     }
                     
                     last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})

@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V42.3 - Full Armor & Night Vision</title>
+    <title>Sniper V42.4 - Full Momentum Tracking</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
             --yellow: #e3b341; --purple: #a371f7; --green: #3fb950; --red: #f85149; --blue: #58a6ff;
-            --neon-green: #39ff14; --neon-purple: #d292ff; /* 💡 100K 爆量顏色 */
+            --neon-green: #39ff14; --neon-purple: #d292ff; 
             --bg-base: #0d1117; --bg-surface: #161b22; --border: #30363d; 
             --text-main: #c9d1d9; --text-muted: #8b949e; 
         }
@@ -44,7 +44,7 @@
         .elite-news-row { background: rgba(255,255,255,0.03); }
         .elite-title { color: #e1e4e8 !important; } 
         .neon-word { color: var(--neon-green); font-weight: 900; text-shadow: 0 0 5px rgba(57,255,20,0.4); }
-        .vol-100k { color: var(--neon-purple); font-weight: bold; text-shadow: 0 0 5px rgba(210,146,255,0.3); } /* 💡 100K 特效 */
+        .vol-100k { color: var(--neon-purple); font-weight: bold; text-shadow: 0 0 5px rgba(210,146,255,0.3); } 
     </style>
 </head>
 <body>
@@ -63,8 +63,11 @@
             <div class="panel-header"><span>🚀 即時動能日誌</span><span style="font-size: 11px; color:var(--text-muted);">單擊看新聞 / 雙擊開圖</span></div>
             <div class="panel-content">
                 <table id="surge-log-table">
-                    <thead><tr><th class="status-indicator"></th><th>時間</th><th>代碼</th><th>流通股</th><th>價格</th><th>量比</th><th>成交量</th><th>漲幅</th><th>訊號</th></tr></thead>
-                    <tbody id="surge-log-body"><tr><td colspan="9" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr></tbody>
+                    <thead><tr>
+                        <th class="status-indicator"></th><th>時間</th><th>代碼</th><th>流通股</th><th>價格</th><th>量比</th>
+                        <th>加速</th> <th>成交量</th><th>漲幅</th><th>訊號</th>
+                    </tr></thead>
+                    <tbody id="surge-log-body"><tr><td colspan="10" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -101,7 +104,7 @@
                         <th onclick="setSort('news', 'Float')">流通股 <span id="sort-news-Float"></span></th>
                         <th onclick="setSort('news', 'Price')">價格 <span id="sort-news-Price"></span></th>
                         <th onclick="setSort('news', 'RelVol')">量比 <span id="sort-news-RelVol"></span></th>
-                        <th onclick="setSort('news', 'Vol')">成交量 <span id="sort-news-Vol"></span></th>
+                        <th onclick="setSort('news', 'VolAcc')">加速 <span id="sort-news-VolAcc"></span></th> <th onclick="setSort('news', 'Vol')">成交量 <span id="sort-news-Vol"></span></th>
                         <th onclick="setSort('news', 'Pct')">漲幅 <span id="sort-news-Pct"></span></th>
                     </tr></thead>
                     <tbody id="news-list"></tbody>
@@ -132,9 +135,18 @@
                 if (str.includes('M')) return num * 1000000;
                 if (str.includes('K')) return num * 1000;
             }
-            // 💡 確保量能加速正確解析排序
             if (col === 'VolAcc' || col === 'RelVol') return parseFloat(str.replace(/[^0-9.-]/g, '')) || 0;
             return num;
+        }
+
+        // 💡 趨勢解析器：自動將包含箭頭的字串轉換為彩色 HTML
+        function formatVolAcc(v) {
+            if (!v || v === '-' || v.trim() === '') return `<span style="color:var(--text-muted);">-</span>`;
+            if (v.includes('🔥')) return `<span style="color:var(--yellow); font-weight:bold;">${v}</span>`;
+            if (v.includes('↗')) return `<span style="color:var(--green); font-weight:bold;">${v}</span>`;
+            if (v.includes('↘')) return `<span style="color:var(--red);">${v}</span>`;
+            if (v.includes('🧊')) return `<span style="color:var(--border);">${v}</span>`;
+            return `<span style="color:var(--text-muted);">${v}</span>`;
         }
 
         function setSort(table, col) {
@@ -202,7 +214,7 @@
             document.getElementById('sys-status').innerText = `📡 數據更新: ${d.last_update || '--:--:--'}`;
             document.getElementById('sys-status').style.color = "var(--green)";
             
-            // 1. 日誌 (結合 100K 標記)
+            // 1. 日誌 
             let h1 = "";
             (d.surge_log || []).forEach(r => {
                 if (r.Type === 'fund' && !showETF) return; 
@@ -211,20 +223,20 @@
                 let rowClass = r.Status ? `tr-${r.Status}` : ""; if (r.Signal && r.Signal.includes("⚡VCP")) rowClass += " tr-vcp"; if (isFatal) rowClass += " trap-row"; 
                 let f_float = r.Type === 'fund' ? '<span style="color:var(--border);">N/A(ETF)</span>' : (r.Float||'-');
                 
-                // 💡 100K 爆量特效
                 let f_vol = r.Vol || "-";
                 if (r.Is100K) { f_vol = `<span class="vol-100k">${f_vol}</span>`; icon += " 📦"; }
 
                 h1 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                     <td class="status-indicator"></td><td style="color:var(--text-muted);">${r.Time||'-'}</td><td class="sym">${r.Code}${icon}</td>
-                    <td style="color:var(--text-muted);">${f_float}</td><td>${r.Price||'-'}</td><td>${r.RelVol||'-'}</td><td>${f_vol}</td>
+                    <td style="color:var(--text-muted);">${f_float}</td><td>${r.Price||'-'}</td><td>${r.RelVol||'-'}</td>
+                    <td>${formatVolAcc(r.VolAcc)}</td> <td>${f_vol}</td>
                     <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'}</td><td style="font-weight:bold;">${r.Signal||'-'}</td>
                 </tr>`;
                 if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { played[r.SignalTS] = r.SignalTS; sounds[r.Audio].currentTime=0; sounds[r.Audio].play().catch(e=>{}); }
             });
-            document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="9" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
+            document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="10" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
 
-            // 2. 排行 (新增加速排序)
+            // 2. 排行
             let h2 = "", rankData = [...(d.leaderboard || [])].filter(r => !(r?.Type === 'fund' && !showETF));
             rankData.sort((a, b) => {
                 let detA = d.details[a.Code] || {}, detB = d.details[b.Code] || {};
@@ -238,18 +250,18 @@
                 let icon = isFatal ? " 💀" : ((det.CatScore||0)>8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
                 let rowClass = `tr-${det.Status || r.Status || 'green'}`; if (isFatal) rowClass += " trap-row";
                 
-                // 💡 100K 爆量特效
                 let f_vol = r.Vol || "-";
                 if (det.Is100K) { f_vol = `<span class="vol-100k">${f_vol}</span>`; icon += " 📦"; }
 
                 h2 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                     <td class="status-indicator"></td><td class="sym">${r.Code}${icon}</td><td style="color:var(--text-muted);">${r.Type==='fund'?'N/A':(r.Float||det.Float||"-")}</td>
-                    <td>${r.Price||'-'}</td><td>${det.RelVol||r.RelVol||'-'}</td><td style="color:var(--yellow); font-weight:bold;">${det.VolAcc||"-"}</td><td>${f_vol}</td><td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'}</td>
+                    <td>${r.Price||'-'}</td><td>${det.RelVol||r.RelVol||'-'}</td>
+                    <td>${formatVolAcc(det.VolAcc||r.VolAcc)}</td> <td>${f_vol}</td><td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'}</td>
                 </tr>`;
             });
             document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="8" style="text-align:center; padding:20px; color:var(--text-muted);">無符合標的</td></tr>`;
 
-            // 3. 新聞 (100K 特效)
+            // 3. 新聞 
             let h3 = "";
             if (d.top_catalysts && d.top_catalysts.length > 0) {
                 let fVN = d.top_catalysts.find(n => n.NewsList && n.NewsList.length > 0);
@@ -280,7 +292,6 @@
                     let f_Price = n.Price || "-";
                     let f_Float = n.Type === 'fund' ? 'N/A' : (n.Float || "-");
                     
-                    // 💡 100K 爆量特效
                     let f_vol = n.Vol || "-";
                     if (n.Is100K) { f_vol = `<span class="vol-100k">${f_vol} 📦</span>`; }
                     
@@ -295,12 +306,12 @@
                         <td style="color:var(--text-muted);">${f_Float}</td>
                         <td>${f_Price}</td>
                         <td style="color:var(--text-muted);">${n.RelVol||"-"}</td>
-                        <td>${f_vol}</td> 
+                        <td>${formatVolAcc(n.VolAcc)}</td> <td>${f_vol}</td> 
                         <td class="${parseFloat(f_Pct)>0?'up':'down'}" style="font-weight:bold;">${f_Pct}</td>
                     </tr>`;
                 });
-                document.getElementById('news-list').innerHTML = h3 || `<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--text-muted);">符合條件之情報已過濾</td></tr>`;
-            } else { document.getElementById('news-list').innerHTML = `<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--text-muted);">今日尚無重大情報</td></tr>`; }
+                document.getElementById('news-list').innerHTML = h3 || `<tr><td colspan="11" style="text-align:center; padding:20px; color:var(--text-muted);">符合條件之情報已過濾</td></tr>`;
+            } else { document.getElementById('news-list').innerHTML = `<tr><td colspan="11" style="text-align:center; padding:20px; color:var(--text-muted);">今日尚無重大情報</td></tr>`; }
             if(activeSym) loadDetail(activeSym);
         }
 
@@ -322,7 +333,7 @@
                     <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center;">成交量<br>${volHTML}</div>
                     <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center;">量比<br><b style="color:var(--text-main); font-size:14px;">${d.RelVol||'-'}</b></div>
                     
-                    <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center; box-shadow: 0 0 5px rgba(227, 179, 65, 0.2);">量能加速<br><b style="color:${d.VolAcc !== '-' ? 'var(--yellow)' : 'var(--text-muted)'}; font-size:14px;">${d.VolAcc||'-'}</b></div>
+                    <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center; box-shadow: 0 0 5px rgba(227, 179, 65, 0.2);">量能加速<br><b style="font-size:14px;">${formatVolAcc(d.VolAcc)}</b></div>
                     
                     <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center;">漲幅<br><b class="${parseFloat(d.Pct||0)>0?'up':'down'}" style="font-size:14px;">${d.Pct||'-'}</b></div>
                     <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center;">催化<br><b style="color:var(--yellow); font-size:14px;">${d.CatScore||0}</b></div>
