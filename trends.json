@@ -1,13 +1,13 @@
 {
     "ETFS": {
-        "score": 11,
-        "count": 8,
+        "score": 12,
+        "count": 9,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "INC": {
         "score": 15,
-        "count": 56,
+        "count": 57,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -28,7 +28,7 @@
     },
     "ANNOUNCES": {
         "score": 15,
-        "count": 83,
+        "count": 84,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -44,7 +44,7 @@
     },
     "STOCK": {
         "score": 15,
-        "count": 76,
+        "count": 77,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -60,8 +60,8 @@
         "last_seen": "2026-04-17"
     },
     "STRATEGIC": {
-        "score": 11,
-        "count": 8,
+        "score": 12,
+        "count": 9,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -87,13 +87,13 @@
     },
     "YEAR": {
         "score": 15,
-        "count": 83,
+        "count": 84,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "RESULTS": {
         "score": 15,
-        "count": 83,
+        "count": 84,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -105,13 +105,13 @@
     },
     "EARNINGS": {
         "score": 15,
-        "count": 83,
+        "count": 84,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "HIGHLIGHTS": {
         "score": 15,
-        "count": 78,
+        "count": 79,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -147,7 +147,7 @@
     },
     "CALL": {
         "score": 15,
-        "count": 83,
+        "count": 84,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -157,8 +157,8 @@
         "avg_pct": 0.0
     },
     "ENERGY": {
-        "score": 11,
-        "count": 8,
+        "score": 12,
+        "count": 9,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -184,7 +184,7 @@
     },
     "FIRST": {
         "score": 15,
-        "count": 82,
+        "count": 83,
         "avg_pct_at_birth": 10.79,
         "last_seen": "2026-04-17"
     },
@@ -226,7 +226,7 @@
     },
     "LIMITED": {
         "score": 15,
-        "count": 30,
+        "count": 31,
         "avg_pct_at_birth": 9.89,
         "last_seen": "2026-04-17"
     },
@@ -268,13 +268,13 @@
     },
     "TOP": {
         "score": 15,
-        "count": 7,
+        "count": 8,
         "avg_pct_at_birth": 34.37,
         "last_seen": "2026-04-17"
     },
     "FOCUS": {
         "score": 15,
-        "count": 7,
+        "count": 8,
         "avg_pct_at_birth": 34.37,
         "last_seen": "2026-04-17"
     }
