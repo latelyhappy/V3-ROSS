@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V42.1 - Night Vision Command</title>
+    <title>Sniper V42.2 - Night Vision Command</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
             --yellow: #e3b341; --purple: #a371f7; --green: #3fb950; --red: #f85149; --blue: #58a6ff;
-            --neon-green: #39ff14; /* 💡 V42 夜視鏡螢光綠 */
+            --neon-green: #39ff14; 
             --bg-base: #0d1117; --bg-surface: #161b22; --border: #30363d; 
             --text-main: #c9d1d9; --text-muted: #8b949e; 
         }
@@ -41,7 +41,6 @@
         .sym { font-weight: bold; color: var(--text-main); font-size: 15px; }
         .up { color: var(--green); font-weight: bold;} .down { color: var(--red); font-weight: bold;}
         
-        /* 💡 V42 夜視鏡 CSS */
         .elite-news-row { background: rgba(255,255,255,0.03); }
         .elite-title { color: #e1e4e8 !important; } 
         .neon-word { color: var(--neon-green); font-weight: 900; text-shadow: 0 0 5px rgba(57,255,20,0.4); }
@@ -97,6 +96,7 @@
                         <th onclick="setSort('news', 'Code')">代碼 <span id="sort-news-Code"></span></th>
                         <th onclick="setSort('news', 'CatScore')">評分 <span id="sort-news-CatScore">▼</span></th>
                         <th>標題</th>
+                        <th onclick="setSort('news', 'Float')">流通股 <span id="sort-news-Float"></span></th>
                         <th onclick="setSort('news', 'Price')">價格 <span id="sort-news-Price"></span></th>
                         <th onclick="setSort('news', 'RelVol')">量比 <span id="sort-news-RelVol"></span></th>
                         <th onclick="setSort('news', 'Vol')">成交量 <span id="sort-news-Vol"></span></th>
@@ -155,7 +155,7 @@
             const defL = {'win-log':{x:10,y:10,w:750,h:450},'win-rank':{x:10,y:480,w:750,h:450},'win-news':{x:780,y:480,w:650,h:450},'win-detail':{x:780,y:10,w:650,h:450}};
             wins.forEach(id => {
                 const el = document.getElementById(id); if (!el) return;
-                let s = JSON.parse(localStorage.getItem('sniper_v41_layout_' + id)) || defL[id];
+                let s = JSON.parse(localStorage.getItem('sniper_v42_layout_' + id)) || defL[id];
                 el.style.width = s.w+'px'; el.style.height = s.h+'px'; el.style.transform = `translate(${s.x}px, ${s.y}px)`;
                 el.setAttribute('data-x', s.x); el.setAttribute('data-y', s.y);
                 interact(el).draggable({ allowFrom:'.panel-header', listeners:{move:dML, end:sL} }).resizable({ edges:{right:true, bottom:true}, listeners:{move:rML, end:sL} });
@@ -163,7 +163,7 @@
         }
         function dML(e) { let t=e.target, x=(parseFloat(t.getAttribute('data-x'))||0)+e.dx, y=(parseFloat(t.getAttribute('data-y'))||0)+e.dy; t.style.transform=`translate(${x}px, ${y}px)`; t.setAttribute('data-x',x); t.setAttribute('data-y',y); }
         function rML(e) { let t=e.target, x=(parseFloat(t.getAttribute('data-x'))||0), y=(parseFloat(t.getAttribute('data-y'))||0); t.style.width=e.rect.width+'px'; t.style.height=e.rect.height+'px'; t.style.transform=`translate(${x}px, ${y}px)`; t.setAttribute('data-x',x); t.setAttribute('data-y',y); }
-        function sL() { ['win-log','win-rank','win-news','win-detail'].forEach(id=>{ let el=document.getElementById(id); if(el) localStorage.setItem('sniper_v41_layout_'+id, JSON.stringify({x:parseFloat(el.getAttribute('data-x'))||0, y:parseFloat(el.getAttribute('data-y'))||0, w:el.offsetWidth, h:el.offsetHeight})); }); let i=document.getElementById('save-status'); i.style.opacity=1; setTimeout(()=>i.style.opacity=0, 2000); }
+        function sL() { ['win-log','win-rank','win-news','win-detail'].forEach(id=>{ let el=document.getElementById(id); if(el) localStorage.setItem('sniper_v42_layout_'+id, JSON.stringify({x:parseFloat(el.getAttribute('data-x'))||0, y:parseFloat(el.getAttribute('data-y'))||0, w:el.offsetWidth, h:el.offsetHeight})); }); let i=document.getElementById('save-status'); i.style.opacity=1; setTimeout(()=>i.style.opacity=0, 2000); }
         function resetLayout() { localStorage.clear(); location.reload(); }
         
         function toggleETF() { showETF = !showETF; let btn = document.getElementById('etf-btn'); if (showETF) { btn.innerText = "🔘 隱藏 ETF"; btn.style.borderColor = "var(--red)"; btn.style.color = "var(--red)"; } else { btn.innerText = "🔘 顯示 ETF"; btn.style.borderColor = "var(--border)"; btn.style.color = "var(--text-main)"; } if (Object.keys(brain).length > 0) refreshUI(brain); }
@@ -235,7 +235,7 @@
             });
             document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-muted);">無符合標的</td></tr>`;
 
-            // 3. 新聞 (夜視鏡模式與成交量補回)
+            // 3. 新聞 (浮動股數補回)
             let h3 = "";
             if (d.top_catalysts && d.top_catalysts.length > 0) {
                 let fVN = d.top_catalysts.find(n => n.NewsList && n.NewsList.length > 0);
@@ -264,7 +264,8 @@
                     let f_Score = n.CatScore !== undefined ? n.CatScore : (n.score || 0);
                     let f_Pct = n.Pct || "-";
                     let f_Price = n.Price || "-";
-                    let f_Vol = n.Vol || "-"; // 💡 提取並顯示成交量
+                    let f_Vol = n.Vol || "-";
+                    let f_Float = n.Type === 'fund' ? 'N/A' : (n.Float || "-"); // 💡 提取浮動股數
                     
                     let rowClass = isElite ? "elite-news-row" : "tr-green";
                     let titleClass = isElite ? "elite-title" : "";
@@ -274,13 +275,15 @@
                         <td style="color:${latest.is_today?'#ffa500':'var(--text-muted)'}; font-size:11px;">${latest.time||'-'}</td>
                         <td class="sym">${n.Code||n.ticker}</td><td style="color:${f_Score>=6?'var(--yellow)':'var(--text-muted)'}; font-weight:bold;">${f_Score}</td>
                         <td class="${titleClass}" style="font-size:12px; line-height:1.4; max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${hl_text}</td>
-                        <td>${f_Price}</td>
+                        <td style="color:var(--text-muted);">${f_Float}</td> <td>${f_Price}</td>
                         <td style="color:var(--text-muted);">${n.RelVol||"-"}</td>
-                        <td>${f_Vol}</td> <td class="${parseFloat(f_Pct)>0?'up':'down'}" style="font-weight:bold;">${f_Pct}</td>
+                        <td>${f_Vol}</td> 
+                        <td class="${parseFloat(f_Pct)>0?'up':'down'}" style="font-weight:bold;">${f_Pct}</td>
                     </tr>`;
                 });
-                document.getElementById('news-list').innerHTML = h3 || `<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--text-muted);">符合條件之情報已過濾</td></tr>`;
-            } else { document.getElementById('news-list').innerHTML = `<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--text-muted);">今日尚無重大情報</td></tr>`; }
+                // 💡 更新空表格的跨欄數 (colspan) 為 10
+                document.getElementById('news-list').innerHTML = h3 || `<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--text-muted);">符合條件之情報已過濾</td></tr>`;
+            } else { document.getElementById('news-list').innerHTML = `<tr><td colspan="10" style="text-align:center; padding:20px; color:var(--text-muted);">今日尚無重大情報</td></tr>`; }
             if(activeSym) loadDetail(activeSym);
         }
 
