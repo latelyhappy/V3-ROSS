@@ -274,9 +274,9 @@ def scanner_engine():
                     rel_vol_prev = round(v_prev / avg_vol, 2) if avg_vol > 0 else 1.0
                     rel_vol_display = max(rel_vol_live, rel_vol_prev); daily_vol = int(df['volume'].sum())
                     
-                    # 💡 100K 物理預警偵測 (計算最近 3 分鐘成交量總和)
+                    # 💡 安全轉型為原生 bool，避免 numpy.bool_ 引發 JSON 崩潰
                     vol_3m = df['volume'].iloc[-3:].sum() if len(df) >= 3 else v_live
-                    is_100k = vol_3m >= 100000
+                    is_100k = bool(vol_3m >= 100000)
 
                     df['tr'] = pd.concat([(df['high'] - df['low']), (df['high'] - df['close'].shift(1)).abs(), (df['low'] - df['close'].shift(1)).abs()], axis=1).max(axis=1)
                     atr5 = df['tr'].rolling(5, min_periods=3).mean().iloc[-1] if len(df) >= 5 else 0
@@ -287,8 +287,8 @@ def scanner_engine():
                     float_str = stat_data['float_str'] if stat_data['prev'] > 0 else "未知"
                     real_pct = ((p_live - prev_close) / prev_close) * 100
                     
-                    curr_ema10 = df['close'].ewm(span=10, adjust=False).mean().iloc[-1] if len(df) >= 10 else p_live
-                    curr_ema20 = df['close'].ewm(span=20, adjust=False).mean().iloc[-1] if len(df) >= 20 else p_live
+                    curr_ema10 = float(df['close'].ewm(span=10, adjust=False).mean().iloc[-1]) if len(df) >= 10 else p_live
+                    curr_ema20 = float(df['close'].ewm(span=20, adjust=False).mean().iloc[-1]) if len(df) >= 20 else p_live
                     
                     past_high_for_live = df['high'].iloc[-11:-1].max() if len(df) >= 11 else p_live
                     past_high_for_prev = df['high'].iloc[-12:-2].max() if len(df) >= 12 else p_live
@@ -304,15 +304,15 @@ def scanner_engine():
                     if len(df) >= 10:
                         avg_v_60 = df['volume'].iloc[:-1].mean()
                         std_v_60 = df['volume'].iloc[:-1].std()
-                        z_score = (v_live - avg_v_60) / std_v_60 if std_v_60 > 0 else 0
+                        z_score = float((v_live - avg_v_60) / std_v_60) if std_v_60 > 0 else 0.0
                         vol_prev_3 = df['volume'].iloc[-6:-3].sum()
-                        ratio_3v3 = vol_3m / vol_prev_3 if vol_prev_3 > 0 else 1.0
+                        ratio_3v3 = float(vol_3m / vol_prev_3) if vol_prev_3 > 0 else 1.0
                         b1 = df['volume'].iloc[-9:-6].sum()
-                        staircase = (b1 < vol_prev_3 < vol_3m) and (p_live > df['close'].iloc[-10])
+                        staircase = bool((b1 < vol_prev_3 < vol_3m) and (p_live > df['close'].iloc[-10]))
 
-                    if is_open_shock: z_score = 0; ratio_3v3 = 1.0; staircase = False
+                    if is_open_shock: z_score = 0.0; ratio_3v3 = 1.0; staircase = False
 
-                    tracker = STATE_TRACKER.get(ticker, {'state': 'None', 'duration': 0, 'vcp_low': float('inf'), 'shakeout_high': 0})
+                    tracker = STATE_TRACKER.get(ticker, {'state': 'None', 'duration': 0, 'vcp_low': float('inf'), 'shakeout_high': 0.0})
                     dynamic_stop = curr_ema20 * 0.99 
                     
                     if is_spark:
@@ -323,13 +323,15 @@ def scanner_engine():
                         else: tracker['duration'] += 1; tracker['vcp_low'] = min(tracker['vcp_low'], df['low'].iloc[-1])
                     else: tracker['state'] = 'None'; tracker['duration'] = 0; tracker['vcp_low'] = float('inf')
 
+                    # 💡 確保傳給 JSON 的數值為原生 Python float，避免 JSON 不支援
                     if dynamic_stop == float('inf'): dynamic_stop = curr_ema20 * 0.99
+                    dynamic_stop = float(dynamic_stop)
 
                     vol_warn = "(⚠️量低)" if (p_live * max(v_live, v_prev, avg_vol)) < 50000 else ""
                     current_signal = None; current_level = 0; status_color = "green"; is_shakeout = False
                     
                     if (z_score > 2.5 or ratio_3v3 > 2.5) and p_live < p_prev:
-                        is_shakeout = True; tracker['state'] = 'Shakeout'; tracker['shakeout_high'] = df['high'].iloc[-1]
+                        is_shakeout = True; tracker['state'] = 'Shakeout'; tracker['shakeout_high'] = float(df['high'].iloc[-1])
                         current_signal = "💀 洗盤觀察中"; status_color = "border"; current_level = 1
                     elif tracker['state'] == 'Shakeout' and p_live > tracker['shakeout_high']:
                         current_signal = "🔥 絕地反擊(V轉)"; status_color = "yellow"; current_level = 5; tracker['state'] = 'None'
@@ -346,9 +348,9 @@ def scanner_engine():
                         "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": format_vol(daily_vol),
                         "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, 
                         "Signal": current_signal if current_signal else "",
-                        "PriceVal": p_live, "StopLoss": dynamic_stop, "Float": float_str, "Type": stat_data.get('type', 'stock'),
+                        "PriceVal": float(p_live), "StopLoss": dynamic_stop, "Float": float_str, "Type": stat_data.get('type', 'stock'),
                         "VolAcc": f"{ratio_3v3:.1f}x" if ratio_3v3 > 1.0 else "-",
-                        "Is100K": is_100k # 💡 新增 100K 標記給前端
+                        "Is100K": is_100k # 這裡已經被轉型為安全的純布林值！
                     }
                     
                     last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})
@@ -358,10 +360,9 @@ def scanner_engine():
                         
                     is_trap = False
                     if push_signal and not is_shakeout:
-                        is_trap = check_sec_fatal_traps(ticker)
+                        is_trap = bool(check_sec_fatal_traps(ticker))
                         if is_trap: current_signal += " 💀(SEC陷阱)"; stats["Signal"] = current_signal
 
-                    # 💡 終極防閃頻：在迴圈內「即時」更新排行榜，0 秒延遲！
                     with brain_lock:
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "Price": "-", "Pct": "-", "Vol": "-", "RelVol": "-", "Float": "-", "Signal": ""})
                         cell.update(stats)
