@@ -376,16 +376,30 @@ def scanner_engine():
                             audio_target = "nova" if current_level >= 4 else ("spark" if current_level >= 2 else None)
                             if not is_shakeout:
                                 MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": audio_target})
-                                MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:500]
+                                # 💡 系統擴容：解鎖 1000 筆極端動能日誌暫存
+                                MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
 
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell), daemon=True).start()
                 except Exception as e: continue
             
-            # 💡 核心防閃頻緩衝機制：只要有拿到資料才更新排行榜，避免因為 TV 阻擋導致清空陣列！
+            # 💡 V42.2 終極防閃頻：平滑過渡融合器
             with brain_lock:
-                new_board = [MASTER_BRAIN["details"][t] for t in DYNAMIC_WATCHLIST if t in MASTER_BRAIN["details"]][:20]
-                if len(new_board) > 0:
-                    MASTER_BRAIN["leaderboard"] = new_board
+                current_active = [MASTER_BRAIN["details"][t] for t in DYNAMIC_WATCHLIST if t in MASTER_BRAIN["details"]]
+                
+                # 如果這輪成功抓到的新標的太少（< 15 檔），代表正處於名單換血的掃描空窗期
+                # 系統會自動把舊的排行榜資料拿來「補齊」，確保畫面永遠不會清空！
+                if len(current_active) < 15:
+                    active_codes = {x["Code"] for x in current_active}
+                    for old_item in MASTER_BRAIN["leaderboard"]:
+                        if old_item["Code"] not in active_codes:
+                            current_active.append(old_item)
+                
+                # 確保混合後的排行榜依然是依照最高漲幅排序
+                def get_pct(item):
+                    try: return float(item.get('Pct', '0').replace('%', '').replace('+', ''))
+                    except: return -9999
+                    
+                MASTER_BRAIN["leaderboard"] = sorted(current_active, key=get_pct, reverse=True)[:20]
                 MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
             time.sleep(5)
         except Exception as e: time.sleep(10)
