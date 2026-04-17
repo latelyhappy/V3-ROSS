@@ -12,7 +12,6 @@ from deep_translator import GoogleTranslator
 from collections import Counter
 import logging
 
-# 隱藏 tvDatafeed 煩人的紅字警告
 logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
 
 brain_lock = threading.RLock() 
@@ -202,35 +201,43 @@ def auto_trend_updater():
                 top_trends = Counter(all_words).most_common(15)
                 current_content = get_live_trends()
                 added_words = []
+                requires_github_sync = False # 💡 防斷線機制：控制備份頻率
                 
                 for w, count in top_trends:
                     if count >= 2:
                         if w not in current_content:
                             current_content[w] = {"score": min(count*2, 10), "count": 1, "avg_pct_at_birth": round(current_avg_pct, 2), "last_seen": datetime.now(TZ_NY).strftime("%Y-%m-%d")}
                             added_words.append(w)
+                            requires_github_sync = True # 只有真正的新詞彙才允許上傳 GitHub
                         else:
                             old_data = current_content[w]
+                            old_score = old_data.get("score", 5)
                             old_data["count"] = old_data.get("count", 1) + 1
                             old_data["last_seen"] = datetime.now(TZ_NY).strftime("%Y-%m-%d")
-                            if old_data["count"] >= 3 and old_data.get("score", 5) < 15: old_data["score"] += 1
+                            if old_data["count"] >= 3 and old_score < 15: 
+                                old_data["score"] += 1
+                                requires_github_sync = True # 或者分數升級了才允許上傳
                             current_content[w] = old_data
                             added_words.append(w)
 
                 if added_words:
-                    print(f"🔥 [NLP引擎] 收錄/更新 詞彙：{', '.join(added_words[:5])}...")
+                    print(f"🔥 [NLP引擎] 熱點詞彙：{', '.join(added_words[:5])}...")
                     with open(TRENDS_FILE_PATH, 'w', encoding='utf-8') as f: json.dump(current_content, f, ensure_ascii=False, indent=4)
                     global _cached_trends, _last_trends_update
                     _cached_trends = current_content; _last_trends_update = time.time()
                     
-                    github_token = os.getenv('GITHUB_TOKEN'); github_repo = os.getenv('GITHUB_REPO')
-                    if github_token and github_repo:
-                        url = f"https://api.github.com/repos/{github_repo}/contents/trends.json"
-                        headers = {"Authorization": f"Bearer {github_token}", "Accept": "application/vnd.github.v3+json"}
-                        res = requests.get(url, headers=headers)
-                        sha = res.json().get('sha') if res.status_code == 200 else None
-                        payload = {"message": "🤖 AI V42: 動態權重與記憶體更新 [skip ci]", "content": base64.b64encode(json.dumps(current_content, indent=4).encode('utf-8')).decode('utf-8')}
-                        if sha: payload["sha"] = sha
-                        if requests.put(url, headers=headers, json=payload).status_code in [200, 201]: print("✅ [NLP引擎] 成功備份至 GitHub！")
+                    # 💡 阻斷無限重啟迴圈：只在有重大更新時才推給 Railway
+                    if requires_github_sync:
+                        github_token = os.getenv('GITHUB_TOKEN'); github_repo = os.getenv('GITHUB_REPO')
+                        if github_token and github_repo:
+                            url = f"https://api.github.com/repos/{github_repo}/contents/trends.json"
+                            headers = {"Authorization": f"Bearer {github_token}", "Accept": "application/vnd.github.v3+json"}
+                            res = requests.get(url, headers=headers)
+                            sha = res.json().get('sha') if res.status_code == 200 else None
+                            # 強制加入 [skip ci] [skip build] 避免 Railway 重新部署！
+                            payload = {"message": "🤖 AI V42: 權重升級 [skip ci] [skip build]", "content": base64.b64encode(json.dumps(current_content, indent=4).encode('utf-8')).decode('utf-8')}
+                            if sha: payload["sha"] = sha
+                            if requests.put(url, headers=headers, json=payload).status_code in [200, 201]: print("✅ [NLP引擎] 重大突破，已同步至兵工廠！")
                 else: print("💤 [NLP引擎] 本期無新詞彙。")
         except Exception as e: print(f"🚨 [NLP引擎] 異常: {e}")
         time.sleep(86400) 
@@ -382,24 +389,18 @@ def scanner_engine():
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell), daemon=True).start()
                 except Exception as e: continue
             
-            # 💡 V42.2 終極防閃頻：平滑過渡融合器
+            # 💡 終極防閃頻：不管更新掃描到哪裡，永遠拿「現存的所有資料」出來排序，保證不歸零！
             with brain_lock:
-                current_active = [MASTER_BRAIN["details"][t] for t in DYNAMIC_WATCHLIST if t in MASTER_BRAIN["details"]]
-                
-                # 如果這輪成功抓到的新標的太少（< 15 檔），代表正處於名單換血的掃描空窗期
-                # 系統會自動把舊的排行榜資料拿來「補齊」，確保畫面永遠不會清空！
-                if len(current_active) < 15:
-                    active_codes = {x["Code"] for x in current_active}
-                    for old_item in MASTER_BRAIN["leaderboard"]:
-                        if old_item["Code"] not in active_codes:
-                            current_active.append(old_item)
-                
-                # 確保混合後的排行榜依然是依照最高漲幅排序
+                all_items = list(MASTER_BRAIN["details"].values())
                 def get_pct(item):
                     try: return float(item.get('Pct', '0').replace('%', '').replace('+', ''))
                     except: return -9999
-                    
-                MASTER_BRAIN["leaderboard"] = sorted(current_active, key=get_pct, reverse=True)[:20]
+                
+                # 優先顯示還在雷達上的標的，若雷達暫時中斷則顯示所有歷史標的當作緩衝
+                active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST]
+                if not active_items: active_items = all_items 
+                
+                MASTER_BRAIN["leaderboard"] = sorted(active_items, key=get_pct, reverse=True)[:20]
                 MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
             time.sleep(5)
         except Exception as e: time.sleep(10)
