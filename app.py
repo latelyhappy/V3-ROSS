@@ -258,7 +258,6 @@ def scanner_engine():
                     time.sleep(2.0)
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
                     
-                    # 💡 放寬限制：只要有 5 根 K 線就繼續，防止盤前太早導致全軍覆沒！
                     if df is None or df.empty or len(df) < 5: 
                         consecutive_errors += 1
                         if consecutive_errors > 8:
@@ -300,7 +299,6 @@ def scanner_engine():
                     is_ride = (p_live >= curr_ema20) and (abs(p_live - curr_ema20)/curr_ema20 < 0.012) and (rel_vol_prev < 0.8) and (real_pct > 1.0) and not is_spark
                     is_grind = (curr_ema10 > curr_ema20) and (p_live >= curr_ema10) and (0.5 <= rel_vol_display < 2.5) and (real_pct > 2.0) and not is_spark and not is_ride
 
-                    # 💡 V42 量能加速計算 (確保足夠 K 線才算)
                     ratio_3v3 = 1.0; z_score = 0; staircase = False
                     if len(df) >= 10:
                         avg_v_60 = df['volume'].iloc[:-1].mean()
@@ -330,7 +328,6 @@ def scanner_engine():
                     vol_warn = "(⚠️量低)" if (p_live * max(v_live, v_prev, avg_vol)) < 50000 else ""
                     current_signal = None; current_level = 0; status_color = "green"; is_shakeout = False
                     
-                    # V42 訊號防護：洗盤過濾與加速
                     if (z_score > 2.5 or ratio_3v3 > 2.5) and p_live < p_prev:
                         is_shakeout = True; tracker['state'] = 'Shakeout'; tracker['shakeout_high'] = df['high'].iloc[-1]
                         current_signal = "💀 洗盤觀察中"; status_color = "border"; current_level = 1
@@ -350,7 +347,7 @@ def scanner_engine():
                         "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, 
                         "Signal": current_signal if current_signal else "",
                         "PriceVal": p_live, "StopLoss": dynamic_stop, "Float": float_str, "Type": stat_data.get('type', 'stock'),
-                        "VolAcc": f"{ratio_3v3:.1f}x" if ratio_3v3 > 1.0 else "-" # 💡 新增量能加速值給前端
+                        "VolAcc": f"{ratio_3v3:.1f}x" if ratio_3v3 > 1.0 else "-"
                     }
                     
                     last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})
@@ -376,7 +373,7 @@ def scanner_engine():
 
                         if push_signal:
                             cooldown_tracker[ticker] = {'time': now_ts, 'level': current_level}
-                            audio_target = "nova" if current_level == 4 else ("spark" if current_level == 1 else None)
+                            audio_target = "nova" if current_level >= 4 else ("spark" if current_level >= 2 else None)
                             if not is_shakeout:
                                 MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": audio_target})
                                 MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:500]
@@ -384,9 +381,11 @@ def scanner_engine():
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell), daemon=True).start()
                 except Exception as e: continue
             
-            # 💡 移出迴圈外，保證一定會更新排行榜與時間！
+            # 💡 核心防閃頻緩衝機制：只要有拿到資料才更新排行榜，避免因為 TV 阻擋導致清空陣列！
             with brain_lock:
-                MASTER_BRAIN["leaderboard"] = [MASTER_BRAIN["details"][t] for t in DYNAMIC_WATCHLIST if t in MASTER_BRAIN["details"]][:20]
+                new_board = [MASTER_BRAIN["details"][t] for t in DYNAMIC_WATCHLIST if t in MASTER_BRAIN["details"]][:20]
+                if len(new_board) > 0:
+                    MASTER_BRAIN["leaderboard"] = new_board
                 MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
             time.sleep(5)
         except Exception as e: time.sleep(10)
