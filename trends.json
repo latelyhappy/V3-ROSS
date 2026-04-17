@@ -27,7 +27,7 @@
     },
     "ANNOUNCES": {
         "score": 15,
-        "count": 14,
+        "count": 15,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -43,7 +43,7 @@
     },
     "STOCK": {
         "score": 15,
-        "count": 12,
+        "count": 13,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -85,13 +85,13 @@
     },
     "YEAR": {
         "score": 15,
-        "count": 14,
+        "count": 15,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "RESULTS": {
         "score": 15,
-        "count": 14,
+        "count": 15,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -103,13 +103,13 @@
     },
     "EARNINGS": {
         "score": 15,
-        "count": 14,
+        "count": 15,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "HIGHLIGHTS": {
         "score": 15,
-        "count": 14,
+        "count": 15,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -127,25 +127,25 @@
     },
     "QUARTER": {
         "score": 15,
-        "count": 14,
+        "count": 15,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "STOCKS": {
-        "score": 6,
-        "count": 3,
+        "score": 7,
+        "count": 4,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "REVENUE": {
-        "score": 10,
-        "count": 7,
+        "score": 11,
+        "count": 8,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
     "CALL": {
         "score": 15,
-        "count": 14,
+        "count": 15,
         "avg_pct": 0.0,
         "last_seen": "2026-04-17"
     },
@@ -181,7 +181,7 @@
     },
     "FIRST": {
         "score": 15,
-        "count": 13,
+        "count": 14,
         "avg_pct_at_birth": 10.79,
         "last_seen": "2026-04-17"
     },
@@ -205,25 +205,25 @@
     },
     "MILLION": {
         "score": 15,
-        "count": 10,
+        "count": 11,
         "avg_pct_at_birth": 10.08,
         "last_seen": "2026-04-17"
     },
     "GLOBAL": {
-        "score": 10,
-        "count": 2,
+        "score": 11,
+        "count": 3,
         "avg_pct_at_birth": 10.02,
         "last_seen": "2026-04-17"
     },
     "LTD": {
-        "score": 10,
-        "count": 2,
+        "score": 11,
+        "count": 3,
         "avg_pct_at_birth": 10.02,
         "last_seen": "2026-04-17"
     },
     "LIMITED": {
         "score": 10,
-        "count": 1,
+        "count": 2,
         "avg_pct_at_birth": 9.89,
         "last_seen": "2026-04-17"
     }
