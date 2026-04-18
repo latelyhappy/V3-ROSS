@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
 import pytz
 from tvDatafeed import TvDatafeed, Interval
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request # 💡 新增 request
 from deep_translator import GoogleTranslator
 from collections import Counter
 import logging
@@ -25,14 +25,17 @@ TRENDS_CACHE_TTL = 60
 _discovery_buffer = []
 _last_flush_time = time.time()
 
+# 💡 雷達掃描計時器改為全域變數，以便手動強制重置
+_last_list_update = 0
+
 TW_USERNAME = os.getenv('TW_USERNAME', 'guest') 
 TW_PASSWORD = os.getenv('TW_PASSWORD', 'guest')
 PORT = int(os.getenv('PORT', 8080))
 TZ_TW = pytz.timezone('Asia/Taipei')
 TZ_NY = pytz.timezone('America/New_York')
 
-# 💡 V42.8 盤前跳空過濾閾值 (預設：只掃描跳空大於 2% 的強勢股)
-MIN_GAP_PCT = 2.0 
+# 💡 V42.9 將預設跳空幅度調整為 5%
+MIN_GAP_PCT = 5.0 
 
 CATALYST_ARMORY = {}
 armory_path = os.path.join(os.path.dirname(__file__), 'catalysts.json')
@@ -209,10 +212,10 @@ def extract_top_catalysts(master_brain):
     except: return top_list
 
 def update_dynamic_watchlist():
-    global DYNAMIC_WATCHLIST, STATS_MAP
+    global DYNAMIC_WATCHLIST, STATS_MAP, MIN_GAP_PCT
     try:
         url = "https://scanner.tradingview.com/america/scan"
-        # 💡 V42.8: 加入盤前跳空 % 過濾條件 (egreater)
+        # 💡 使用全域的 MIN_GAP_PCT 變數進行動態掃描
         payload = {
             "filter": [
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, 
@@ -235,7 +238,6 @@ def update_dynamic_watchlist():
                 f_str = "N/A (ETF)" if t == 'fund' else (f"{float_m:.1f}M" if float_m > 0 else "未知")
                 if t != 'fund' and float_m > 50.0: f_str = f"⚠️{f_str}"
                 
-                # 💡 V42.8: 記錄跳空 %
                 STATS_MAP[sym] = {'prev': prev_est, 'float_str': f_str, 'type': t, 'gap_pct': float(pct) if pct is not None else 0.0}
     except: pass
 
@@ -321,16 +323,20 @@ def auto_trend_updater():
         time.sleep(86400) 
 
 def scanner_engine():
+    global _last_list_update
     tv = TvDatafeed()
     try:
         if TW_USERNAME != 'guest': tv = TvDatafeed(TW_USERNAME, TW_PASSWORD)
     except: pass
 
-    last_list_update = 0; consecutive_errors = 0 
+    consecutive_errors = 0 
     while True:
         try:
             now_ts = time.time()
-            if now_ts - last_list_update > 300: update_dynamic_watchlist(); last_list_update = now_ts
+            if now_ts - _last_list_update > 300: 
+                update_dynamic_watchlist()
+                _last_list_update = now_ts
+                
             if not DYNAMIC_WATCHLIST: time.sleep(5); continue
 
             now_ny = datetime.now(TZ_NY)
@@ -373,7 +379,7 @@ def scanner_engine():
                     prev_close = float(stat_data['prev']) if stat_data['prev'] > 0 else float(df['low'].min())
                     float_str = stat_data['float_str'] if stat_data['prev'] > 0 else "未知"
                     real_pct = float(((p_live - prev_close) / prev_close) * 100)
-                    gap_pct = float(stat_data['gap_pct']) # 💡 提取跳空 %
+                    gap_pct = float(stat_data['gap_pct']) 
                     
                     curr_ema10 = float(df['close'].ewm(span=10, adjust=False).mean().iloc[-1]) if len(df) >= 10 else p_live
                     curr_ema20 = float(df['close'].ewm(span=20, adjust=False).mean().iloc[-1]) if len(df) >= 20 else p_live
@@ -453,7 +459,7 @@ def scanner_engine():
                         "PriceVal": float(p_live), "StopLoss": dynamic_stop, "Float": float_str, "Type": stat_data.get('type', 'stock'),
                         "VolAcc": vol_acc_str, 
                         "Is100K": is_100k,
-                        "Gap": f"{gap_pct:+.2f}%" # 💡 傳遞跳空 % 至前端
+                        "Gap": f"{gap_pct:+.2f}%" 
                     }
                     
                     last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})
@@ -494,6 +500,18 @@ def scanner_engine():
             time.sleep(5)
         except Exception as e: time.sleep(10)
 
+# 💡 新增 API 端點：接收前端動態修改跳空門檻，並強制重置雷達
+@app.route('/api/config', methods=['POST'])
+def update_config():
+    global MIN_GAP_PCT, _last_list_update
+    data = request.json
+    if 'gap_pct' in data:
+        try:
+            MIN_GAP_PCT = float(data['gap_pct'])
+            _last_list_update = 0 # 💡 將計時器歸零，強制雷達引擎下一秒立刻重新掃描新名單！
+        except: pass
+    return jsonify({"status": "success", "gap_pct": MIN_GAP_PCT})
+
 @app.route('/')
 def index(): return render_template('index.html')
 
@@ -502,6 +520,7 @@ def data():
     with brain_lock: 
         safe_brain = copy.deepcopy(MASTER_BRAIN)
         safe_brain["live_trends"] = get_live_trends()
+        safe_brain["current_gap"] = MIN_GAP_PCT # 💡 下發當前跳空值給前端同步顯示
         try: safe_brain["trends_date"] = datetime.fromtimestamp(os.path.getmtime(TRENDS_FILE_PATH), TZ_TW).strftime("%Y-%m-%d %H:%M:%S")
         except: safe_brain["trends_date"] = "尚未生成"
     return jsonify(safe_brain)

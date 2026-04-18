@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V42.8 - Gap Filter Active</title>
+    <title>Sniper V42.9 - Dynamic Gap Controller</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
@@ -63,12 +63,23 @@
         body.mobile-mode th, body.mobile-mode td { padding: 12px 6px; white-space: nowrap; } 
         body.mobile-mode .sym { font-size: 14px; }
         body.mobile-mode .news-title-cell { max-width: 130px !important; }
+
+        /* 💡 隱藏數字輸入框右側的上/下小箭頭 */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
     </style>
 </head>
 <body>
     <div id="tactical-bar">
         <button id="audio-btn" class="ghost-btn" style="border-color:var(--red); color:var(--red);" onclick="unlockAudio()">🔇 音效</button>
         <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 ETF</button>
+        
+        <div style="display:flex; align-items:center; border:1px solid var(--border); border-radius:6px; padding:4px 8px; margin-right:10px;">
+            <span style="font-size:12px; color:var(--text-muted); margin-right:5px;">跳空門檻:</span>
+            <input type="number" id="gap-input" value="5.0" step="0.5" style="background:transparent; border:none; color:var(--neon-green); width:40px; font-weight:bold; font-size:13px; outline:none; text-align:center;" onchange="updateGap(this.value)">
+            <span style="font-size:12px; color:var(--text-muted);">%</span>
+        </div>
+
         <button class="ghost-btn" style="border-color:var(--blue); color:var(--blue);" onclick="showAITrends()">🧠 AI 戰果詞庫</button>
         <button id="mode-btn" class="ghost-btn" style="border-color:var(--yellow); color:var(--yellow);" onclick="toggleMode()">📱 切換手機版</button>
         <button class="ghost-btn" onclick="resetLayout()">🔄 重置網格</button>
@@ -159,6 +170,20 @@
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
 
+        // 💡 呼叫後端 API 更新跳空門檻
+        function updateGap(val) {
+            let gapVal = parseFloat(val);
+            if (isNaN(gapVal)) return;
+            fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gap_pct: gapVal })
+            }).then(r => r.json()).then(d => {
+                document.getElementById('sys-status').innerText = `⚡ 跳空門檻已更新為 ${d.gap_pct}%，雷達強制重啟中...`;
+                document.getElementById('sys-status').style.color = "var(--yellow)";
+            }).catch(e => console.error(e));
+        }
+
         function toggleMode() {
             isMobileMode = !isMobileMode;
             let btn = document.getElementById('mode-btn');
@@ -179,7 +204,6 @@
             btn.classList.add('active');
         }
 
-        // 💡 確保能夠正確解析跳空 (Gap) 的百分比
         function parseValue(val, col) {
             if (val === undefined || val === null || val === '-') return -999999;
             if (typeof val === 'string' && val.includes('N/A')) return -999999;
@@ -284,6 +308,13 @@
 
         function refreshUI(d) {
             if (!d) return;
+            
+            // 💡 同步後端的目前跳空設定，防止重新整理後數字跑掉（避開正在輸入的狀態）
+            let gapInput = document.getElementById('gap-input');
+            if (d.current_gap !== undefined && document.activeElement !== gapInput) {
+                gapInput.value = d.current_gap;
+            }
+
             document.getElementById('sys-status').innerText = `📡 數據更新: ${d.last_update || '--:--:--'}`;
             document.getElementById('sys-status').style.color = "var(--green)";
             
