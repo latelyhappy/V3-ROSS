@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V42.6 - Tactical Responsive UI</title>
+    <title>Sniper V42.7 - Mobile Adaptive Engine</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
@@ -45,7 +45,7 @@
         .neon-word { color: var(--neon-green); font-weight: 900; text-shadow: 0 0 5px rgba(57,255,20,0.4); }
         .vol-100k { color: var(--neon-purple); font-weight: bold; text-shadow: 0 0 5px rgba(210,146,255,0.3); } 
 
-        /* 💡 V42.6 強制切換響應式佈局 CSS */
+        /* 💡 終極手機端響應式 CSS (解決切斷與排版跑位) */
         #mobile-tabs { display: none; }
         body.mobile-mode { overflow-y: auto !important; padding-bottom: 60px; }
         body.mobile-mode #tactical-bar { overflow-x: auto; white-space: nowrap; padding-right: 20px; }
@@ -58,9 +58,14 @@
         body.mobile-mode .window-panel::after { display: none; }
         body.mobile-mode .panel-header { cursor: default; }
         body.mobile-mode .hide-on-mobile { display: none !important; }
-        body.mobile-mode table { font-size: 12px; }
-        body.mobile-mode th, body.mobile-mode td { padding: 10px 4px; }
+        
+        /* 💡 解決手機截斷的核心代碼：開啟內部水平滑動！ */
+        body.mobile-mode .panel-content { overflow-x: auto !important; -webkit-overflow-scrolling: touch; padding-bottom: 15px;}
+        body.mobile-mode table { font-size: 12px; width: 100%; min-width: max-content; } /* 確保表格可超出螢幕被滑動 */
+        body.mobile-mode th, body.mobile-mode td { padding: 12px 6px; white-space: nowrap; } /* 強制不換行，保持排版整齊 */
         body.mobile-mode .sym { font-size: 14px; }
+        /* 💡 手機模式下，把原本 250px 的標題縮小到 130px，讓更多數字直接擠進螢幕 */
+        body.mobile-mode .news-title-cell { max-width: 130px !important; }
     </style>
 </head>
 <body>
@@ -68,9 +73,7 @@
         <button id="audio-btn" class="ghost-btn" style="border-color:var(--red); color:var(--red);" onclick="unlockAudio()">🔇 音效</button>
         <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 ETF</button>
         <button class="ghost-btn" style="border-color:var(--blue); color:var(--blue);" onclick="showAITrends()">🧠 AI 戰果詞庫</button>
-        
         <button id="mode-btn" class="ghost-btn" style="border-color:var(--yellow); color:var(--yellow);" onclick="toggleMode()">📱 切換手機版</button>
-        
         <button class="ghost-btn" onclick="resetLayout()">🔄 重置網格</button>
         <div style="font-size: 13px; color: var(--text-muted); font-family: monospace; margin-left:10px;">TPE: <span id="sys-clock" style="color: var(--text-main); font-weight: bold;">--:--:--</span></div>
         <span id="sys-status" style="margin-left:auto; font-size:11px; color: var(--text-muted);">📡 系統初始化...</span>
@@ -152,7 +155,6 @@
         const sounds = { spark: new Audio('/static/sounds/spark.mp3'), nova: new Audio('/static/sounds/nova.mp3') };
         let rankCfg = { col: 'Pct', asc: false }, newsCfg = { col: 'CatScore', asc: false };
 
-        // 💡 V42.6 處理佈局切換模式
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
 
@@ -165,7 +167,7 @@
             } else {
                 document.body.classList.remove('mobile-mode');
                 btn.innerText = "📱 切換手機版";
-                initWindowManager(); // 切回 PC 時重新套用網格
+                initWindowManager(); 
             }
         }
 
@@ -211,8 +213,6 @@
         function showAITrends() {
             if (!brain || !brain.live_trends) return alert("📡 系統尚未載入...");
             let msg = `🔥 V42 戰果加權 NLP 詞庫：\n📅 更新時間：${brain.trends_date || '未知'}\n\n`;
-            
-            // 💡 修補 undefined 顯示錯誤：若遇到舊資料直接補 0.00
             Object.keys(brain.live_trends).forEach(k => { 
                 let data = brain.live_trends[k];
                 let score = typeof data === 'object' ? (data.score || 5) : data;
@@ -223,7 +223,7 @@
         }
 
         function initWindowManager() {
-            if (isMobileMode) return; // 手機端不初始化拖拽
+            if (isMobileMode) return; 
             const wins = ['win-log', 'win-rank', 'win-news', 'win-detail'];
             
             let w_half = (window.innerWidth / 2) - 15;
@@ -368,11 +368,12 @@
                     let rowClass = isElite ? "elite-news-row" : "tr-green";
                     let titleClass = isElite ? "elite-title" : "";
 
-                    h3 += `<tr class="${rowClass}" onclick="loadDetail('${n.Code||n.ticker}'); switchTab('win-detail', document.querySelectorAll('.tab-btn')[3]);" ondblclick="openTW('${n.Code||n.ticker}')">
+                    // 💡 加入 news-title-cell CSS 類別，供手機模式強制縮小寬度
+                    h3 += `<tr class="${rowClass}" onclick="loadDetail('${n.Code||n.ticker}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[3]);" ondblclick="openTW('${n.Code||n.ticker}')">
                         <td class="status-indicator" style="background:${f_Score >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
                         <td style="color:${latest.is_today?'#ffa500':'var(--text-muted)'}; font-size:11px;">${latest.time||'-'}</td>
                         <td class="sym">${n.Code||n.ticker}</td><td style="color:${f_Score>=6?'var(--yellow)':'var(--text-muted)'}; font-weight:bold;">${f_Score}</td>
-                        <td class="${titleClass}" style="font-size:12px; line-height:1.4; max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${hl_text}</td>
+                        <td class="${titleClass} news-title-cell" style="font-size:12px; line-height:1.4; max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${hl_text}</td>
                         <td class="hide-on-mobile" style="color:var(--text-muted);">${f_Float}</td>
                         <td>${f_Price}</td>
                         <td class="hide-on-mobile" style="color:var(--text-muted);">${n.RelVol||"-"}</td>
