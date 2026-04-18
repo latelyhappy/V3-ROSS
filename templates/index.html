@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V42.5 - Adaptive Layout & Impact NLP</title>
+    <title>Sniper V42.6 - Tactical Responsive UI</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
@@ -45,27 +45,22 @@
         .neon-word { color: var(--neon-green); font-weight: 900; text-shadow: 0 0 5px rgba(57,255,20,0.4); }
         .vol-100k { color: var(--neon-purple); font-weight: bold; text-shadow: 0 0 5px rgba(210,146,255,0.3); } 
 
-        /* 💡 V42.5 響應式佈局 (Mobile) */
+        /* 💡 V42.6 強制切換響應式佈局 CSS */
         #mobile-tabs { display: none; }
-        @media (max-width: 768px) {
-            body { overflow-y: auto !important; padding-bottom: 60px; }
-            #tactical-bar { overflow-x: auto; white-space: nowrap; padding-right: 20px; }
-            #mobile-tabs { display: flex; position: fixed; bottom: 0; left: 0; width: 100%; background: var(--bg-surface); z-index: 10000; border-top: 1px solid var(--border); }
-            .tab-btn { flex: 1; padding: 15px 0; background: transparent; border: none; color: var(--text-muted); font-weight: bold; font-size: 13px; cursor: pointer; }
-            .tab-btn.active { color: var(--blue); border-top: 2px solid var(--blue); background: rgba(88, 166, 255, 0.05); }
-            
-            #workspace { display: block; overflow: visible; height: auto; min-height: auto; padding: 5px; }
-            .window-panel { position: static !important; width: 100% !important; height: auto !important; min-height: 85vh; transform: none !important; margin-bottom: 15px; display: none; box-shadow: none; border: none; border-bottom: 1px solid var(--border); }
-            .window-panel.active-tab { display: flex !important; }
-            .window-panel::after { display: none; }
-            .panel-header { cursor: default; }
-            
-            /* 手機版隱藏不必要的寬欄位 */
-            .hide-on-mobile { display: none !important; }
-            table { font-size: 12px; }
-            th, td { padding: 10px 4px; }
-            .sym { font-size: 14px; }
-        }
+        body.mobile-mode { overflow-y: auto !important; padding-bottom: 60px; }
+        body.mobile-mode #tactical-bar { overflow-x: auto; white-space: nowrap; padding-right: 20px; }
+        body.mobile-mode #mobile-tabs { display: flex; position: fixed; bottom: 0; left: 0; width: 100%; background: var(--bg-surface); z-index: 10000; border-top: 1px solid var(--border); }
+        body.mobile-mode .tab-btn { flex: 1; padding: 15px 0; background: transparent; border: none; color: var(--text-muted); font-weight: bold; font-size: 13px; cursor: pointer; }
+        body.mobile-mode .tab-btn.active { color: var(--blue); border-top: 2px solid var(--blue); background: rgba(88, 166, 255, 0.05); }
+        body.mobile-mode #workspace { display: block; overflow: visible; height: auto; min-height: auto; padding: 5px; }
+        body.mobile-mode .window-panel { position: static !important; width: 100% !important; height: auto !important; min-height: 85vh; transform: none !important; margin-bottom: 15px; display: none; box-shadow: none; border: none; border-bottom: 1px solid var(--border); }
+        body.mobile-mode .window-panel.active-tab { display: flex !important; }
+        body.mobile-mode .window-panel::after { display: none; }
+        body.mobile-mode .panel-header { cursor: default; }
+        body.mobile-mode .hide-on-mobile { display: none !important; }
+        body.mobile-mode table { font-size: 12px; }
+        body.mobile-mode th, body.mobile-mode td { padding: 10px 4px; }
+        body.mobile-mode .sym { font-size: 14px; }
     </style>
 </head>
 <body>
@@ -73,6 +68,9 @@
         <button id="audio-btn" class="ghost-btn" style="border-color:var(--red); color:var(--red);" onclick="unlockAudio()">🔇 音效</button>
         <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 ETF</button>
         <button class="ghost-btn" style="border-color:var(--blue); color:var(--blue);" onclick="showAITrends()">🧠 AI 戰果詞庫</button>
+        
+        <button id="mode-btn" class="ghost-btn" style="border-color:var(--yellow); color:var(--yellow);" onclick="toggleMode()">📱 切換手機版</button>
+        
         <button class="ghost-btn" onclick="resetLayout()">🔄 重置網格</button>
         <div style="font-size: 13px; color: var(--text-muted); font-family: monospace; margin-left:10px;">TPE: <span id="sys-clock" style="color: var(--text-main); font-weight: bold;">--:--:--</span></div>
         <span id="sys-status" style="margin-left:auto; font-size:11px; color: var(--text-muted);">📡 系統初始化...</span>
@@ -154,6 +152,23 @@
         const sounds = { spark: new Audio('/static/sounds/spark.mp3'), nova: new Audio('/static/sounds/nova.mp3') };
         let rankCfg = { col: 'Pct', asc: false }, newsCfg = { col: 'CatScore', asc: false };
 
+        // 💡 V42.6 處理佈局切換模式
+        let isMobileMode = window.innerWidth <= 768;
+        if (isMobileMode) document.body.classList.add('mobile-mode');
+
+        function toggleMode() {
+            isMobileMode = !isMobileMode;
+            let btn = document.getElementById('mode-btn');
+            if (isMobileMode) {
+                document.body.classList.add('mobile-mode');
+                btn.innerText = "💻 切換電腦版";
+            } else {
+                document.body.classList.remove('mobile-mode');
+                btn.innerText = "📱 切換手機版";
+                initWindowManager(); // 切回 PC 時重新套用網格
+            }
+        }
+
         function switchTab(tabId, btn) {
             document.querySelectorAll('.window-panel').forEach(el => el.classList.remove('active-tab'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -196,20 +211,21 @@
         function showAITrends() {
             if (!brain || !brain.live_trends) return alert("📡 系統尚未載入...");
             let msg = `🔥 V42 戰果加權 NLP 詞庫：\n📅 更新時間：${brain.trends_date || '未知'}\n\n`;
+            
+            // 💡 修補 undefined 顯示錯誤：若遇到舊資料直接補 0.00
             Object.keys(brain.live_trends).forEach(k => { 
                 let data = brain.live_trends[k];
-                let score = typeof data === 'object' ? data.score : data;
-                let exp = typeof data === 'object' ? data.avg_impact_pct : 0;
+                let score = typeof data === 'object' ? (data.score || 5) : data;
+                let exp = typeof data === 'object' ? (data.avg_impact_pct || 0.0).toFixed(2) : "0.00";
                 msg += `► 【 ${k} 】 (權重: ${score} | 歷史期望: +${exp}%)\n`; 
             });
             alert(msg);
         }
 
         function initWindowManager() {
-            if (window.innerWidth <= 768) return; // 手機端不初始化拖拽
+            if (isMobileMode) return; // 手機端不初始化拖拽
             const wins = ['win-log', 'win-rank', 'win-news', 'win-detail'];
             
-            // 💡 V42.5: 自動計算 2x2 網格作為預設佈局
             let w_half = (window.innerWidth / 2) - 15;
             let h_half = (window.innerHeight / 2) - 35;
             const defL = {
@@ -269,7 +285,6 @@
             document.getElementById('sys-status').innerText = `📡 數據更新: ${d.last_update || '--:--:--'}`;
             document.getElementById('sys-status').style.color = "var(--green)";
             
-            // 1. 日誌 
             let h1 = "";
             (d.surge_log || []).forEach(r => {
                 if (r.Type === 'fund' && !showETF) return; 
@@ -292,7 +307,6 @@
             });
             document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="10" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
 
-            // 2. 排行
             let h2 = "", rankData = [...(d.leaderboard || [])].filter(r => !(r?.Type === 'fund' && !showETF));
             rankData.sort((a, b) => {
                 let detA = d.details[a.Code] || {}, detB = d.details[b.Code] || {};
@@ -318,7 +332,6 @@
             });
             document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="8" style="text-align:center; padding:20px; color:var(--text-muted);">無符合標的</td></tr>`;
 
-            // 3. 新聞 
             let h3 = "";
             if (d.top_catalysts && d.top_catalysts.length > 0) {
                 let fVN = d.top_catalysts.find(n => n.NewsList && n.NewsList.length > 0);

@@ -16,13 +16,12 @@ logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
 
 brain_lock = threading.RLock() 
 TRENDS_FILE_PATH = os.path.join(os.path.dirname(__file__), 'trends.json')
-DISCOVERY_LOG_PATH = os.path.join(os.path.dirname(__file__), 'discovery_log.json') # 💡 V42.5 戰場快照日誌
+DISCOVERY_LOG_PATH = os.path.join(os.path.dirname(__file__), 'discovery_log.json') 
 
 _cached_trends = {}
 _last_trends_update = 0
 TRENDS_CACHE_TTL = 60
 
-# 💡 V42.5 寫入緩衝區 (Write Buffer)
 _discovery_buffer = []
 _last_flush_time = time.time()
 
@@ -59,13 +58,19 @@ def get_live_trends():
         if os.path.exists(TRENDS_FILE_PATH):
             with open(TRENDS_FILE_PATH, 'r', encoding='utf-8') as f:
                 raw_data = json.load(f)
-                _cached_trends = {k: (v if isinstance(v, dict) else {"score": v, "count": 1, "avg_impact_pct": 0.0}) for k, v in raw_data.items()}
+                _cached_trends = {}
+                # 💡 修復 undefined：安全修補舊版資料格式
+                for k, v in raw_data.items():
+                    if isinstance(v, dict):
+                        if "avg_impact_pct" not in v: v["avg_impact_pct"] = 0.0
+                        _cached_trends[k] = v
+                    else:
+                        _cached_trends[k] = {"score": v, "count": 1, "avg_impact_pct": 0.0}
                 _last_trends_update = now
         else: _cached_trends = {}
     except: pass
     return _cached_trends
 
-# 💡 V42.5 緩衝區原子化寫入
 def flush_discovery_buffer():
     global _discovery_buffer, _last_flush_time
     with brain_lock:
@@ -80,7 +85,6 @@ def flush_discovery_buffer():
             _last_flush_time = time.time()
         except: pass
 
-# 💡 V42.5 盤後戰果回補程序
 def settle_discovery_logs():
     try:
         if not os.path.exists(DISCOVERY_LOG_PATH): return
@@ -95,7 +99,6 @@ def settle_discovery_logs():
         
         for log in unsettled:
             word = log["Word"]
-            # 簡化版盤後回補：假設隔日結算時將歷史期望漲幅小幅向上平滑修正
             if word in trends:
                 old_impact = trends[word].get("avg_impact_pct", 0.0)
                 trends[word]["avg_impact_pct"] = round(old_impact * 1.05, 2) 
@@ -229,10 +232,11 @@ def auto_trend_updater():
             with brain_lock: target_tickers = DYNAMIC_WATCHLIST.copy()
             if not target_tickers: time.sleep(10); continue
 
-            # 💡 V42.5 蒐集每支股票的真實漲幅，用於戰果加權
-            word_sources = {} 
+            pcts = [float(MASTER_BRAIN['details'][t].get('Pct','0').replace('%','').replace('+','')) for t in target_tickers if t in MASTER_BRAIN['details'] and MASTER_BRAIN['details'][t].get('Pct') != '-']
+            current_avg_pct = sum(pcts)/len(pcts) if pcts else 0
+
             all_words = []
-            
+            word_sources = {}
             for ticker in target_tickers:
                 pct_val = 0.0
                 if ticker in MASTER_BRAIN['details']:
@@ -262,7 +266,6 @@ def auto_trend_updater():
                         max_pct = float(max([p for t, p in word_sources.get(w, [])])) if w in word_sources and word_sources[w] else 0.0
                         
                         if w not in current_content:
-                            # 💡 V42.5: 戰果加權公式 + 權重上限飽和 (Cap at 20)
                             impact_score = min(5 + (max_pct / 10.0), 20)
                             current_content[w] = {"score": round(impact_score), "count": 1, "avg_impact_pct": max_pct, "last_seen": datetime.now(TZ_NY).strftime("%Y-%m-%d")}
                             added_words.append(w); requires_github_sync = True
@@ -274,7 +277,6 @@ def auto_trend_updater():
                             old_score = old_data.get("score", 5)
                             old_data["count"] = old_data.get("count", 1) + 1
                             old_data["last_seen"] = datetime.now(TZ_NY).strftime("%Y-%m-%d")
-                            # 更新歷史期望漲幅 (取最大值)
                             old_data["avg_impact_pct"] = max(old_data.get("avg_impact_pct", 0.0), max_pct)
                             
                             if old_data["count"] >= 3 and old_score < 15: 
@@ -298,7 +300,6 @@ def auto_trend_updater():
                             if sha: payload["sha"] = sha
                             requests.put(url, headers=headers, json=payload)
             
-            # 💡 檢查是否需要刷新 I/O 緩衝區 (每 5 筆或 5 分鐘)
             if len(_discovery_buffer) >= 5 or (time.time() - _last_flush_time > 300): flush_discovery_buffer()
                 
         except: pass
@@ -435,7 +436,7 @@ def scanner_engine():
                         "Signal": current_signal if current_signal else "",
                         "PriceVal": float(p_live), "StopLoss": dynamic_stop, "Float": float_str, "Type": stat_data.get('type', 'stock'),
                         "VolAcc": vol_acc_str, 
-                        "Is100K": is_100k # 💡 numpy.bool_ 防護
+                        "Is100K": is_100k 
                     }
                     
                     last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})
@@ -483,14 +484,13 @@ def index(): return render_template('index.html')
 def data():
     with brain_lock: 
         safe_brain = copy.deepcopy(MASTER_BRAIN)
-        # 💡 將包含 avg_impact_pct 的完整物件傳給前端
         safe_brain["live_trends"] = get_live_trends()
         try: safe_brain["trends_date"] = datetime.fromtimestamp(os.path.getmtime(TRENDS_FILE_PATH), TZ_TW).strftime("%Y-%m-%d %H:%M:%S")
         except: safe_brain["trends_date"] = "尚未生成"
     return jsonify(safe_brain)
 
 if __name__ == '__main__':
-    settle_discovery_logs() # 💡 開機時執行戰果回補
+    settle_discovery_logs() 
     threading.Thread(target=scanner_engine, daemon=True).start()
     threading.Thread(target=auto_trend_updater, daemon=True).start()
     app.run(host='0.0.0.0', port=PORT)
