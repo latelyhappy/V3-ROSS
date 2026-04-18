@@ -1,281 +1,336 @@
 {
     "ETFS": {
         "score": 15,
-        "count": 12,
+        "count": 13,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-18",
+        "avg_impact_pct": 17.73
     },
     "INC": {
         "score": 15,
-        "count": 60,
+        "count": 61,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-18",
+        "avg_impact_pct": 192.34
     },
     "DEFIANCE": {
         "score": 5,
         "count": 1,
-        "avg_pct": 0.0
+        "avg_pct": 0.0,
+        "avg_impact_pct": 0.0
     },
     "BILLION": {
         "score": 5,
         "count": 1,
-        "avg_pct": 0.0
+        "avg_pct": 0.0,
+        "avg_impact_pct": 0.0
     },
     "THERAPEUTICS": {
         "score": 5,
         "count": 1,
-        "avg_pct": 0.0
+        "avg_pct": 0.0,
+        "avg_impact_pct": 0.0
     },
     "ANNOUNCES": {
         "score": 15,
-        "count": 87,
+        "count": 88,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-18",
+        "avg_impact_pct": 192.34
     },
     "LEVERAGED": {
         "score": 5,
         "count": 1,
-        "avg_pct": 0.0
+        "avg_pct": 0.0,
+        "avg_impact_pct": 0.0
     },
     "ETF": {
         "score": 5,
         "count": 1,
-        "avg_pct": 0.0
+        "avg_pct": 0.0,
+        "avg_impact_pct": 0.0
     },
     "STOCK": {
         "score": 15,
-        "count": 80,
+        "count": 81,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-18",
+        "avg_impact_pct": 67.09
     },
     "EXPANDS": {
         "score": 5,
         "count": 1,
-        "avg_pct": 0.0
+        "avg_pct": 0.0,
+        "avg_impact_pct": 0.0
     },
     "FULL": {
         "score": 15,
         "count": 23,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "STRATEGIC": {
         "score": 15,
-        "count": 12,
+        "count": 13,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-18",
+        "avg_impact_pct": 192.34
     },
     "MARKET": {
         "score": 5,
         "count": 1,
-        "avg_pct": 0.0
+        "avg_pct": 0.0,
+        "avg_impact_pct": 0.0
     },
     "SURPASS": {
         "score": 5,
         "count": 1,
-        "avg_pct": 0.0
+        "avg_pct": 0.0,
+        "avg_impact_pct": 0.0
     },
     "ASSETS": {
         "score": 5,
         "count": 1,
-        "avg_pct": 0.0
+        "avg_pct": 0.0,
+        "avg_impact_pct": 0.0
     },
     "QUANTUM": {
         "score": 5,
         "count": 1,
-        "avg_pct": 0.0
+        "avg_pct": 0.0,
+        "avg_impact_pct": 0.0
     },
     "YEAR": {
         "score": 15,
-        "count": 87,
+        "count": 88,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-18",
+        "avg_impact_pct": 192.34
     },
     "RESULTS": {
         "score": 15,
         "count": 87,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "REPORTS": {
         "score": 15,
         "count": 33,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "EARNINGS": {
         "score": 15,
-        "count": 87,
+        "count": 88,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-18",
+        "avg_impact_pct": 192.34
     },
     "HIGHLIGHTS": {
         "score": 15,
-        "count": 82,
+        "count": 83,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-18",
+        "avg_impact_pct": 67.09
     },
     "DATA": {
         "score": 15,
         "count": 35,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "FINANCIAL": {
         "score": 15,
         "count": 19,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "QUARTER": {
         "score": 15,
         "count": 73,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "STOCKS": {
         "score": 15,
-        "count": 23,
+        "count": 24,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-18",
+        "avg_impact_pct": 42.76
     },
     "REVENUE": {
         "score": 15,
         "count": 53,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "CALL": {
         "score": 15,
-        "count": 87,
+        "count": 88,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-18",
+        "avg_impact_pct": 67.09
     },
     "UNDER": {
         "score": 5,
         "count": 1,
-        "avg_pct": 0.0
+        "avg_pct": 0.0,
+        "avg_impact_pct": 0.0
     },
     "ENERGY": {
         "score": 15,
-        "count": 12,
+        "count": 13,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-18",
+        "avg_impact_pct": 192.34
     },
     "BEST": {
         "score": 5,
         "count": 1,
-        "avg_pct": 0.0
+        "avg_pct": 0.0,
+        "avg_impact_pct": 0.0
     },
     "NVIDIA": {
         "score": 5,
         "count": 1,
-        "avg_pct": 0.0
+        "avg_pct": 0.0,
+        "avg_impact_pct": 0.0
     },
     "MANAGEMENT": {
         "score": 5,
         "count": 1,
-        "avg_pct": 0.0
+        "avg_pct": 0.0,
+        "avg_impact_pct": 0.0
     },
     "LAUNCHES": {
         "score": 5,
         "count": 1,
-        "avg_pct": 0.0
+        "avg_pct": 0.0,
+        "avg_impact_pct": 0.0
     },
     "FIRST": {
         "score": 15,
-        "count": 86,
+        "count": 87,
         "avg_pct_at_birth": 10.79,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-18",
+        "avg_impact_pct": 47.98
     },
     "POWER": {
         "score": 15,
         "count": 24,
         "avg_pct_at_birth": 10.79,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "MEDICAL": {
         "score": 10,
         "count": 1,
         "avg_pct_at_birth": 10.79,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "FOURTH": {
         "score": 11,
         "count": 3,
         "avg_pct_at_birth": 11.01,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "MILLION": {
         "score": 15,
         "count": 67,
         "avg_pct_at_birth": 10.08,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "GLOBAL": {
         "score": 15,
         "count": 46,
         "avg_pct_at_birth": 10.02,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "LTD": {
         "score": 15,
         "count": 8,
         "avg_pct_at_birth": 10.02,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "LIMITED": {
         "score": 15,
-        "count": 34,
+        "count": 35,
         "avg_pct_at_birth": 9.89,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-18",
+        "avg_impact_pct": 21.74
     },
     "ADVANCED": {
         "score": 11,
         "count": 3,
         "avg_pct_at_birth": 9.76,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "INFRASTRUCTURE": {
         "score": 15,
         "count": 42,
         "avg_pct_at_birth": 10.41,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "GROUP": {
         "score": 15,
         "count": 10,
         "avg_pct_at_birth": 12.55,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "NASDAQ": {
         "score": 15,
         "count": 7,
         "avg_pct_at_birth": 12.79,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "PLATFORM": {
         "score": 10,
         "count": 2,
         "avg_pct_at_birth": 13.18,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "GROWTH": {
         "score": 10,
         "count": 1,
         "avg_pct_at_birth": 12.61,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "TOP": {
         "score": 15,
         "count": 11,
         "avg_pct_at_birth": 34.37,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-17",
+        "avg_impact_pct": 0.0
     },
     "FOCUS": {
         "score": 15,
-        "count": 11,
+        "count": 12,
         "avg_pct_at_birth": 34.37,
-        "last_seen": "2026-04-17"
+        "last_seen": "2026-04-18",
+        "avg_impact_pct": 192.34
+    },
+    "NAVIGATING": {
+        "score": 12,
+        "count": 1,
+        "avg_impact_pct": 67.09,
+        "last_seen": "2026-04-18"
     }
 }
