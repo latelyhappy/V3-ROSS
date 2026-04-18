@@ -22,14 +22,17 @@ _cached_trends = {}
 _last_trends_update = 0
 TRENDS_CACHE_TTL = 60
 
-# 💡 移除時間倒數計時，改為純陣列緩衝
 _discovery_buffer = []
+_last_flush_time = time.time()
 
 TW_USERNAME = os.getenv('TW_USERNAME', 'guest') 
 TW_PASSWORD = os.getenv('TW_PASSWORD', 'guest')
 PORT = int(os.getenv('PORT', 8080))
 TZ_TW = pytz.timezone('Asia/Taipei')
 TZ_NY = pytz.timezone('America/New_York')
+
+# 💡 V42.8 盤前跳空過濾閾值 (預設：只掃描跳空大於 2% 的強勢股)
+MIN_GAP_PCT = 2.0 
 
 CATALYST_ARMORY = {}
 armory_path = os.path.join(os.path.dirname(__file__), 'catalysts.json')
@@ -77,19 +80,13 @@ def flush_discovery_buffer():
         try:
             logs = []
             if os.path.exists(DISCOVERY_LOG_PATH):
-                # 💡 修復空白檔案崩潰：如果檔案是空白的，略過讀取，直接當作空陣列
                 try:
-                    with open(DISCOVERY_LOG_PATH, 'r', encoding='utf-8') as f: 
-                        logs = json.load(f)
+                    with open(DISCOVERY_LOG_PATH, 'r', encoding='utf-8') as f: logs = json.load(f)
                 except: pass 
             
             logs.extend(_discovery_buffer)
-            
-            with open(DISCOVERY_LOG_PATH, 'w', encoding='utf-8') as f: 
-                json.dump(logs, f, ensure_ascii=False, indent=4)
-            
+            with open(DISCOVERY_LOG_PATH, 'w', encoding='utf-8') as f: json.dump(logs, f, ensure_ascii=False, indent=4)
             _discovery_buffer = []
-            print(f"✅ [NLP引擎] 戰場快照已成功寫入 {DISCOVERY_LOG_PATH}")
         except Exception as e: print(f"🚨 [NLP引擎] 寫入日誌失敗: {e}")
 
 def settle_discovery_logs():
@@ -215,7 +212,17 @@ def update_dynamic_watchlist():
     global DYNAMIC_WATCHLIST, STATS_MAP
     try:
         url = "https://scanner.tradingview.com/america/scan"
-        payload = {"filter": [{"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, {"left": "close", "operation": "in_range", "right": [1, 50]}, {"left": "premarket_change", "operation": "nempty"}], "columns": ["name", "premarket_close", "close", "premarket_change", "premarket_volume", "market_cap_basic", "type"], "sort": {"sortBy": "premarket_change", "sortOrder": "desc"}, "range": [0, 40]}
+        # 💡 V42.8: 加入盤前跳空 % 過濾條件 (egreater)
+        payload = {
+            "filter": [
+                {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, 
+                {"left": "close", "operation": "in_range", "right": [1, 50]}, 
+                {"left": "premarket_change", "operation": "egreater", "right": MIN_GAP_PCT} 
+            ], 
+            "columns": ["name", "premarket_close", "close", "premarket_change", "premarket_volume", "market_cap_basic", "type"], 
+            "sort": {"sortBy": "premarket_change", "sortOrder": "desc"}, 
+            "range": [0, 40]
+        }
         res = requests.post(url, json=payload, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
         data = res.json()
         if data.get('data'):
@@ -227,7 +234,9 @@ def update_dynamic_watchlist():
                 prev_est = p_eff / (1 + (pct/100)) if pct and pct != -100 else p_eff
                 f_str = "N/A (ETF)" if t == 'fund' else (f"{float_m:.1f}M" if float_m > 0 else "未知")
                 if t != 'fund' and float_m > 50.0: f_str = f"⚠️{f_str}"
-                STATS_MAP[sym] = {'prev': prev_est, 'float_str': f_str, 'type': t}
+                
+                # 💡 V42.8: 記錄跳空 %
+                STATS_MAP[sym] = {'prev': prev_est, 'float_str': f_str, 'type': t, 'gap_pct': float(pct) if pct is not None else 0.0}
     except: pass
 
 def auto_trend_updater():
@@ -307,12 +316,9 @@ def auto_trend_updater():
                             if sha: payload["sha"] = sha
                             requests.put(url, headers=headers, json=payload)
             
-            # 💡 移除限制：只要抓到任何一筆新詞彙，就立刻清空陣列寫入檔案！
-            if _discovery_buffer: 
-                flush_discovery_buffer()
-                
+            if _discovery_buffer: flush_discovery_buffer()
         except: pass
-        time.sleep(86400) # 💡 NLP 引擎每天只會執行一次深度掃描
+        time.sleep(86400) 
 
 def scanner_engine():
     tv = TvDatafeed()
@@ -363,10 +369,11 @@ def scanner_engine():
                     atr5 = float(df['tr'].rolling(5, min_periods=3).mean().iloc[-1]) if len(df) >= 5 else 0.0
                     atr20 = float(df['tr'].rolling(20, min_periods=5).mean().iloc[-1]) if len(df) >= 5 else 0.0
 
-                    stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock'})
+                    stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'gap_pct': 0.0})
                     prev_close = float(stat_data['prev']) if stat_data['prev'] > 0 else float(df['low'].min())
                     float_str = stat_data['float_str'] if stat_data['prev'] > 0 else "未知"
                     real_pct = float(((p_live - prev_close) / prev_close) * 100)
+                    gap_pct = float(stat_data['gap_pct']) # 💡 提取跳空 %
                     
                     curr_ema10 = float(df['close'].ewm(span=10, adjust=False).mean().iloc[-1]) if len(df) >= 10 else p_live
                     curr_ema20 = float(df['close'].ewm(span=20, adjust=False).mean().iloc[-1]) if len(df) >= 20 else p_live
@@ -445,7 +452,8 @@ def scanner_engine():
                         "Signal": current_signal if current_signal else "",
                         "PriceVal": float(p_live), "StopLoss": dynamic_stop, "Float": float_str, "Type": stat_data.get('type', 'stock'),
                         "VolAcc": vol_acc_str, 
-                        "Is100K": is_100k 
+                        "Is100K": is_100k,
+                        "Gap": f"{gap_pct:+.2f}%" # 💡 傳遞跳空 % 至前端
                     }
                     
                     last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})
@@ -459,7 +467,7 @@ def scanner_engine():
                         if is_trap: current_signal += " 💀(SEC陷阱)"; stats["Signal"] = current_signal
 
                     with brain_lock:
-                        cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "Price": "-", "Pct": "-", "Vol": "-", "RelVol": "-", "Float": "-", "Signal": ""})
+                        cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "Price": "-", "Pct": "-", "Vol": "-", "RelVol": "-", "Float": "-", "Signal": "", "Gap": "-"})
                         cell.update(stats)
                         if is_trap: cell["IsTrap"] = True
                         
