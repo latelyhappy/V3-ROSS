@@ -22,8 +22,8 @@ _cached_trends = {}
 _last_trends_update = 0
 TRENDS_CACHE_TTL = 60
 
+# 💡 移除時間倒數計時，改為純陣列緩衝
 _discovery_buffer = []
-_last_flush_time = time.time()
 
 TW_USERNAME = os.getenv('TW_USERNAME', 'guest') 
 TW_PASSWORD = os.getenv('TW_PASSWORD', 'guest')
@@ -59,7 +59,6 @@ def get_live_trends():
             with open(TRENDS_FILE_PATH, 'r', encoding='utf-8') as f:
                 raw_data = json.load(f)
                 _cached_trends = {}
-                # 💡 修復 undefined：安全修補舊版資料格式
                 for k, v in raw_data.items():
                     if isinstance(v, dict):
                         if "avg_impact_pct" not in v: v["avg_impact_pct"] = 0.0
@@ -72,18 +71,26 @@ def get_live_trends():
     return _cached_trends
 
 def flush_discovery_buffer():
-    global _discovery_buffer, _last_flush_time
+    global _discovery_buffer
     with brain_lock:
         if not _discovery_buffer: return
         try:
             logs = []
             if os.path.exists(DISCOVERY_LOG_PATH):
-                with open(DISCOVERY_LOG_PATH, 'r', encoding='utf-8') as f: logs = json.load(f)
+                # 💡 修復空白檔案崩潰：如果檔案是空白的，略過讀取，直接當作空陣列
+                try:
+                    with open(DISCOVERY_LOG_PATH, 'r', encoding='utf-8') as f: 
+                        logs = json.load(f)
+                except: pass 
+            
             logs.extend(_discovery_buffer)
-            with open(DISCOVERY_LOG_PATH, 'w', encoding='utf-8') as f: json.dump(logs, f, ensure_ascii=False, indent=4)
+            
+            with open(DISCOVERY_LOG_PATH, 'w', encoding='utf-8') as f: 
+                json.dump(logs, f, ensure_ascii=False, indent=4)
+            
             _discovery_buffer = []
-            _last_flush_time = time.time()
-        except: pass
+            print(f"✅ [NLP引擎] 戰場快照已成功寫入 {DISCOVERY_LOG_PATH}")
+        except Exception as e: print(f"🚨 [NLP引擎] 寫入日誌失敗: {e}")
 
 def settle_discovery_logs():
     try:
@@ -300,10 +307,12 @@ def auto_trend_updater():
                             if sha: payload["sha"] = sha
                             requests.put(url, headers=headers, json=payload)
             
-            if len(_discovery_buffer) >= 5 or (time.time() - _last_flush_time > 300): flush_discovery_buffer()
+            # 💡 移除限制：只要抓到任何一筆新詞彙，就立刻清空陣列寫入檔案！
+            if _discovery_buffer: 
+                flush_discovery_buffer()
                 
         except: pass
-        time.sleep(86400) 
+        time.sleep(86400) # 💡 NLP 引擎每天只會執行一次深度掃描
 
 def scanner_engine():
     tv = TvDatafeed()
