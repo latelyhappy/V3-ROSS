@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V43.3 - SN-Algo Gauge & Zoom Engine</title>
+    <title>Sniper V43.5 - WakeLock & DoubleKill Alert</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
@@ -73,7 +73,7 @@
 </head>
 <body>
     <div id="tactical-bar">
-        <button id="audio-btn" class="ghost-btn" style="border-color:var(--red); color:var(--red);" onclick="unlockAudio()">🔇 音效</button>
+        <button id="audio-btn" class="ghost-btn" style="border-color:var(--red); color:var(--red);" onclick="unlockAudio()">🔇 音效/防睡眠</button>
         <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 ETF</button>
         
         <div style="display:flex; align-items:center; border:1px solid var(--border); border-radius:6px; padding:4px 8px; margin-right:10px; flex-shrink: 0;">
@@ -178,7 +178,23 @@
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
 
-        // 💡 縮放倍率引擎邏輯
+        // 💡 V43.5 螢幕長亮 (Wake Lock) 引擎
+        let wakeLock = null;
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('🛡️ 螢幕長亮模式已啟動');
+                    // 若切換視窗後再回來，需重新申請
+                    document.addEventListener('visibilitychange', async () => {
+                        if (wakeLock !== null && document.visibilityState === 'visible') {
+                            wakeLock = await navigator.wakeLock.request('screen');
+                        }
+                    });
+                }
+            } catch (err) { console.error('Wake Lock failed:', err); }
+        }
+
         let currentZoom = parseFloat(localStorage.getItem('sniper_zoom')) || 1.0;
 
         function applyZoom() {
@@ -295,7 +311,6 @@
             });
         }
         
-        // 💡 視窗拖曳幾何校準 (結合 currentZoom)
         function dML(e) { 
             let t=e.target, 
                 x=(parseFloat(t.getAttribute('data-x'))||0) + (e.dx / currentZoom), 
@@ -324,7 +339,17 @@
         }
         
         function toggleETF() { showETF = !showETF; let btn = document.getElementById('etf-btn'); if (showETF) { btn.innerText = "🔘 隱藏 ETF"; btn.style.borderColor = "var(--red)"; btn.style.color = "var(--red)"; } else { btn.innerText = "🔘 ETF"; btn.style.borderColor = "var(--border)"; btn.style.color = "var(--text-main)"; } if (Object.keys(brain).length > 0) refreshUI(brain); }
-        function unlockAudio() { audioOn = true; let btn = document.getElementById('audio-btn'); btn.style.borderColor="var(--green)"; btn.style.color="var(--green)"; btn.innerText="🔊 音效"; }
+        
+        // 💡 V43.5 啟動音效與防睡眠
+        function unlockAudio() { 
+            audioOn = true; 
+            let btn = document.getElementById('audio-btn'); 
+            btn.style.borderColor="var(--green)"; 
+            btn.style.color="var(--green)"; 
+            btn.innerText="🔊 已啟動/防睡眠"; 
+            requestWakeLock();
+        }
+        
         function openTW(s) { window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank'); }
 
         setInterval(() => { document.getElementById('sys-clock').innerText = new Date().toLocaleTimeString('zh-TW', {timeZone: 'Asia/Taipei', hour12: false}); }, 1000);
@@ -379,11 +404,20 @@
                     <td>${formatVolAcc(r.VolAcc)}</td>
                     <td class="hide-on-mobile"><b class="${parseFloat(r.Gap||0)>0?'up':'down'}">${r.Gap||'-'}</b></td>
                     <td class="hide-on-mobile">${f_vol}</td>
-                    <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'}</td><td style="font-weight:bold;">${r.Signal||'-'}</td>
+                    <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'}</td><td style="font-weight:bold; color:${r.Signal.includes('🎯') ? 'var(--neon-green)' : 'inherit'};">${r.Signal||'-'}</td>
                 </tr>`;
-                if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { played[r.SignalTS] = r.SignalTS; sounds[r.Audio].currentTime=0; sounds[r.Audio].play().catch(e=>{}); }
+                
+                // 💡 V43.5 降噪處理：只有在 Audio === 'nova' 時才觸發提示與強烈震動
+                if (r.Audio && r.Audio === 'nova' && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { 
+                    played[r.SignalTS] = r.SignalTS; 
+                    sounds[r.Audio].currentTime=0; 
+                    sounds[r.Audio].play().catch(e=>{}); 
+                    if ("vibrate" in navigator) {
+                        navigator.vibrate([300, 100, 300, 100, 300]); // 專屬雙重鎖定的戰術連震
+                    }
+                }
             });
-            document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan=\"11\" style=\"text-align:center; padding: 40px; color: var(--text-muted);\">等待極端動能訊號觸發</td></tr>`;
+            document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="11" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
 
             let h2 = "", rankData = [...(d.leaderboard || [])].filter(r => !(r?.Type === 'fund' && !showETF));
             rankData.sort((a, b) => {
@@ -409,13 +443,13 @@
                     <td class="hide-on-mobile">${f_vol}</td><td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'}</td>
                 </tr>`;
             });
-            document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan=\"9\" style=\"text-align:center; padding:20px; color:var(--text-muted);\">無符合標的</td></tr>`;
+            document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--text-muted);">無符合標的</td></tr>`;
 
             let h3 = "";
             if (d.top_catalysts && d.top_catalysts.length > 0) {
                 let fVN = d.top_catalysts.find(n => n.NewsList && n.NewsList.length > 0);
                 let cLH = fVN ? (fVN.NewsList[0].headline || fVN.NewsList[0].raw_title) : "";
-                if (lastTopNewsHeadline !== "" && lastTopNewsHeadline !== cLH && audioOn) { sounds.nova.currentTime=0; sounds.nova.play().catch(e=>{}); }
+                // 💡 移除新聞跳出來時的音效與震動，維持降噪原則
                 lastTopNewsHeadline = cLH;
                 
                 let newsData = [...d.top_catalysts].filter(n => !(n?.Type === 'fund' && !showETF) && n?.NewsList && n.NewsList.length > 0);
@@ -462,8 +496,8 @@
                         <td class="${parseFloat(f_Pct)>0?'up':'down'}" style="font-weight:bold;">${f_Pct}</td>
                     </tr>`;
                 });
-                document.getElementById('news-list').innerHTML = h3 || `<tr><td colspan=\"12\" style=\"text-align:center; padding:20px; color:var(--text-muted);\">符合條件之情報已過濾</td></tr>`;
-            } else { document.getElementById('news-list').innerHTML = `<tr><td colspan=\"12\" style=\"text-align:center; padding:20px; color:var(--text-muted);\">今日尚無重大情報</td></tr>`; }
+                document.getElementById('news-list').innerHTML = h3 || `<tr><td colspan="12" style="text-align:center; padding:20px; color:var(--text-muted);">符合條件之情報已過濾</td></tr>`;
+            } else { document.getElementById('news-list').innerHTML = `<tr><td colspan="12" style="text-align:center; padding:20px; color:var(--text-muted);">今日尚無重大情報</td></tr>`; }
             if(activeSym) loadDetail(activeSym);
         }
 
