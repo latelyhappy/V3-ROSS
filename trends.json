@@ -1,14 +1,14 @@
 {
     "ETFS": {
         "score": 15,
-        "count": 19,
+        "count": 20,
         "avg_pct": 0.0,
         "last_seen": "2026-04-20",
         "avg_impact_pct": 17.73
     },
     "INC": {
         "score": 15,
-        "count": 67,
+        "count": 68,
         "avg_pct": 0.0,
         "last_seen": "2026-04-20",
         "avg_impact_pct": 192.34
@@ -33,14 +33,14 @@
     },
     "ANNOUNCES": {
         "score": 15,
-        "count": 94,
+        "count": 95,
         "avg_pct": 0.0,
         "last_seen": "2026-04-20",
         "avg_impact_pct": 192.34
     },
     "LEVERAGED": {
-        "score": 9,
-        "count": 6,
+        "score": 10,
+        "count": 7,
         "avg_pct": 0.0,
         "avg_impact_pct": 9.56,
         "last_seen": "2026-04-20"
@@ -104,17 +104,17 @@
     },
     "YEAR": {
         "score": 15,
-        "count": 94,
+        "count": 95,
         "avg_pct": 0.0,
         "last_seen": "2026-04-20",
         "avg_impact_pct": 192.34
     },
     "RESULTS": {
         "score": 15,
-        "count": 87,
+        "count": 88,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-17",
-        "avg_impact_pct": 0.0
+        "last_seen": "2026-04-20",
+        "avg_impact_pct": 13.32
     },
     "REPORTS": {
         "score": 15,
@@ -125,14 +125,14 @@
     },
     "EARNINGS": {
         "score": 15,
-        "count": 93,
+        "count": 94,
         "avg_pct": 0.0,
         "last_seen": "2026-04-20",
         "avg_impact_pct": 192.34
     },
     "HIGHLIGHTS": {
         "score": 15,
-        "count": 89,
+        "count": 90,
         "avg_pct": 0.0,
         "last_seen": "2026-04-20",
         "avg_impact_pct": 67.09
@@ -160,10 +160,10 @@
     },
     "STOCKS": {
         "score": 15,
-        "count": 30,
+        "count": 31,
         "avg_pct": 0.0,
         "last_seen": "2026-04-20",
-        "avg_impact_pct": 96.71
+        "avg_impact_pct": 103.29
     },
     "REVENUE": {
         "score": 15,
@@ -174,14 +174,14 @@
     },
     "CALL": {
         "score": 15,
-        "count": 90,
+        "count": 91,
         "avg_pct": 0.0,
         "last_seen": "2026-04-20",
         "avg_impact_pct": 67.09
     },
     "UNDER": {
-        "score": 9,
-        "count": 6,
+        "score": 10,
+        "count": 7,
         "avg_pct": 0.0,
         "avg_impact_pct": 16.96,
         "last_seen": "2026-04-20"
@@ -194,8 +194,8 @@
         "avg_impact_pct": 192.34
     },
     "BEST": {
-        "score": 9,
-        "count": 6,
+        "score": 10,
+        "count": 7,
         "avg_pct": 0.0,
         "avg_impact_pct": 11.5,
         "last_seen": "2026-04-20"
@@ -344,21 +344,21 @@
         "last_seen": "2026-04-19"
     },
     "PERFORMING": {
-        "score": 9,
-        "count": 5,
+        "score": 10,
+        "count": 6,
         "avg_impact_pct": 11.5,
         "last_seen": "2026-04-20"
     },
     "TRUMP": {
         "score": 15,
-        "count": 5,
-        "avg_impact_pct": 96.71,
+        "count": 6,
+        "avg_impact_pct": 103.29,
         "last_seen": "2026-04-20"
     },
     "PSYCHEDELIC": {
         "score": 15,
-        "count": 5,
-        "avg_impact_pct": 96.71,
+        "count": 6,
+        "avg_impact_pct": 103.29,
         "last_seen": "2026-04-20"
     },
     "PRESIDENT": {
