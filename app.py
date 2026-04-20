@@ -318,7 +318,9 @@ def auto_trend_updater():
                             if sha: payload["sha"] = sha
                             requests.put(url, headers=headers, json=payload)
             
-            if _discovery_buffer: flush_discovery_buffer()
+            if not os.path.exists(DISCOVERY_LOG_PATH) or os.path.getsize(DISCOVERY_LOG_PATH) == 0:
+                with open(DISCOVERY_LOG_PATH, 'w') as f:
+                    json.dump([], f)
         except: pass
         time.sleep(86400) 
 
