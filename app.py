@@ -1,4 +1,4 @@
-import time, threading, os, json, re, base64, copy
+import time, threading, os, json, re, base64, copy, math
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
 import pytz
 from tvDatafeed import TvDatafeed, Interval
-from flask import Flask, jsonify, render_template, request # 💡 新增 request
+from flask import Flask, jsonify, render_template, request
 from deep_translator import GoogleTranslator
 from collections import Counter
 import logging
@@ -24,8 +24,6 @@ TRENDS_CACHE_TTL = 60
 
 _discovery_buffer = []
 _last_flush_time = time.time()
-
-# 💡 雷達掃描計時器改為全域變數，以便手動強制重置
 _last_list_update = 0
 
 TW_USERNAME = os.getenv('TW_USERNAME', 'guest') 
@@ -34,7 +32,6 @@ PORT = int(os.getenv('PORT', 8080))
 TZ_TW = pytz.timezone('Asia/Taipei')
 TZ_NY = pytz.timezone('America/New_York')
 
-# 💡 V42.9 將預設跳空幅度調整為 5%
 MIN_GAP_PCT = 5.0 
 
 CATALYST_ARMORY = {}
@@ -100,17 +97,46 @@ def settle_discovery_logs():
         unsettled = [l for l in logs if not l.get("Settled", True)]
         if not unsettled: return
         
-        print("🔄 [NLP引擎] 啟動戰果回補程序，結算昨日遺失數據...")
+        print("🔄 [NLP引擎] 04:10 AM 啟動戰果回補程序，計算 MFE...")
         trends = get_live_trends()
         updated_trends = False
         
+        tv = TvDatafeed()
+        try:
+            if TW_USERNAME != 'guest': tv = TvDatafeed(TW_USERNAME, TW_PASSWORD)
+        except: pass
+
         for log in unsettled:
-            word = log["Word"]
+            ticker = log.get("Ticker")
+            word = log.get("Word")
+            entry_price = float(log.get("Entry_Price", 1.0))
+            impact_pct = 0.0
+            
+            try:
+                # 💡 V43.0 防未來高點陷阱：抓取 5 分鐘 K 線，嚴格切割 entry_timestamp 之後的數據
+                df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_5_minute, n_bars=300, extended_session=True)
+                if df is not None and not df.empty:
+                    entry_dt = datetime.strptime(log["Time"], "%Y-%m-%d %H:%M:%S")
+                    entry_dt = TZ_NY.localize(entry_dt)
+                    df.index = df.index.tz_convert(TZ_NY)
+                    valid_data = df[df.index >= entry_dt]
+                    
+                    if not valid_data.empty:
+                        real_mfe_high = float(valid_data['high'].max())
+                        impact_pct = (real_mfe_high - entry_price) / entry_price if entry_price > 0 else 0.0
+            except Exception as e: pass
+
+            # 💡 V43.0 EMA 權重單位統一與融合
             if word in trends:
-                old_impact = trends[word].get("avg_impact_pct", 0.0)
-                trends[word]["avg_impact_pct"] = round(old_impact * 1.05, 2) 
+                old_weight = float(trends[word].get("score", 5.0))
+                today_score = min(5.0 + (impact_pct * 100.0), 20.0) if impact_pct > 0 else 0.0
+                new_weight = round((old_weight * 0.7) + (today_score * 0.3), 1)
+                
+                trends[word]["score"] = new_weight
+                trends[word]["avg_impact_pct"] = round(max(trends[word].get("avg_impact_pct", 0.0), impact_pct * 100), 2)
                 updated_trends = True
             log["Settled"] = True
+            time.sleep(0.5) # 防止 TV API 封鎖
             
         with open(DISCOVERY_LOG_PATH, 'w', encoding='utf-8') as f: json.dump(logs, f, ensure_ascii=False, indent=4)
         if updated_trends:
@@ -152,10 +178,16 @@ def background_translate_worker(ticker, en_headline, master_brain):
     except: pass
 
 def check_sec_fatal_traps(ticker):
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+    # 💡 V43.0 SEC 防封鎖嚴格執行 (實名 Agent + 0.5s 冷卻)
+    headers = {
+        "User-Agent": "SniperQuantSystem_V42 AdminContact@yourdomain.com",
+        "Accept-Encoding": "gzip, deflate",
+        "Host": "www.sec.gov"
+    }
     url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=&output=atom"
     try:
-        res = requests.get(url, headers=headers, timeout=3)
+        time.sleep(0.5) 
+        res = requests.get(url, headers=headers, timeout=5)
         if res.status_code == 200:
             root = ET.fromstring(res.content)
             for entry in root.findall('{http://www.w3.org/2005/Atom}entry')[:3]:
@@ -215,7 +247,6 @@ def update_dynamic_watchlist():
     global DYNAMIC_WATCHLIST, STATS_MAP, MIN_GAP_PCT
     try:
         url = "https://scanner.tradingview.com/america/scan"
-        # 💡 使用全域的 MIN_GAP_PCT 變數進行動態掃描
         payload = {
             "filter": [
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, 
@@ -238,27 +269,42 @@ def update_dynamic_watchlist():
                 f_str = "N/A (ETF)" if t == 'fund' else (f"{float_m:.1f}M" if float_m > 0 else "未知")
                 if t != 'fund' and float_m > 50.0: f_str = f"⚠️{f_str}"
                 
-                STATS_MAP[sym] = {'prev': prev_est, 'float_str': f_str, 'type': t, 'gap_pct': float(pct) if pct is not None else 0.0}
+                # 💡 V43.0 Float 靜態快取效能優化
+                float_comp = 100.0 / math.sqrt(float_m) if float_m > 0 else 0.0
+                
+                STATS_MAP[sym] = {
+                    'prev': prev_est, 'float_str': f_str, 'type': t, 
+                    'gap_pct': float(pct) if pct is not None else 0.0,
+                    'float_comp': float_comp
+                }
     except: pass
 
 def auto_trend_updater():
     global _discovery_buffer
     STOP_WORDS = {"THE", "TO", "OF", "IN", "FOR", "A", "AND", "IS", "ON", "WITH", "BY", "AS", "AT", "FROM", "IT", "THAT", "THIS", "AN", "BE", "NEW", "UP", "OUT", "ITS", "ARE", "HAS"}
+    last_settle_date = None
+    
     time.sleep(60)
     while True:
         try:
+            now_ny = datetime.now(TZ_NY)
+            # 💡 V43.0 核銷排程：嚴格設定在美東 04:10 AM 執行
+            if now_ny.hour == 4 and now_ny.minute >= 10 and now_ny.date() != last_settle_date:
+                settle_discovery_logs()
+                last_settle_date = now_ny.date()
+
             with brain_lock: target_tickers = DYNAMIC_WATCHLIST.copy()
             if not target_tickers: time.sleep(10); continue
-
-            pcts = [float(MASTER_BRAIN['details'][t].get('Pct','0').replace('%','').replace('+','')) for t in target_tickers if t in MASTER_BRAIN['details'] and MASTER_BRAIN['details'][t].get('Pct') != '-']
-            current_avg_pct = sum(pcts)/len(pcts) if pcts else 0
 
             all_words = []
             word_sources = {}
             for ticker in target_tickers:
                 pct_val = 0.0
+                price_val = 1.0
                 if ticker in MASTER_BRAIN['details']:
-                    try: pct_val = float(MASTER_BRAIN['details'][ticker].get('Pct','0').replace('%','').replace('+',''))
+                    try: 
+                        pct_val = float(MASTER_BRAIN['details'][ticker].get('Pct','0').replace('%','').replace('+',''))
+                        price_val = float(MASTER_BRAIN['details'][ticker].get('PriceVal', 1.0))
                     except: pass
                 
                 try:
@@ -270,7 +316,7 @@ def auto_trend_updater():
                                 if w not in STOP_WORDS and w != ticker: 
                                     all_words.append(w)
                                     if w not in word_sources: word_sources[w] = []
-                                    word_sources[w].append((ticker, pct_val))
+                                    word_sources[w].append((ticker, pct_val, price_val))
                 except: continue
                 time.sleep(0.5) 
 
@@ -281,15 +327,16 @@ def auto_trend_updater():
                 
                 for w, count in top_trends:
                     if count >= 2:
-                        max_pct = float(max([p for t, p in word_sources.get(w, [])])) if w in word_sources and word_sources[w] else 0.0
+                        best_source = max(word_sources.get(w, []), key=lambda x: x[1]) if w in word_sources else ("UNKNOWN", 0.0, 1.0)
+                        max_pct = best_source[1]
+                        entry_price = best_source[2]
                         
                         if w not in current_content:
                             impact_score = min(5 + (max_pct / 10.0), 20)
                             current_content[w] = {"score": round(impact_score), "count": 1, "avg_impact_pct": max_pct, "last_seen": datetime.now(TZ_NY).strftime("%Y-%m-%d")}
                             added_words.append(w); requires_github_sync = True
                             
-                            best_ticker = max(word_sources[w], key=lambda x: x[1])[0] if w in word_sources else "UNKNOWN"
-                            _discovery_buffer.append({"Ticker": best_ticker, "Time": datetime.now(TZ_NY).strftime("%Y-%m-%d %H:%M:%S"), "Word": w, "Entry_Pct": max_pct, "Settled": False})
+                            _discovery_buffer.append({"Ticker": best_source[0], "Time": datetime.now(TZ_NY).strftime("%Y-%m-%d %H:%M:%S"), "Word": w, "Entry_Price": entry_price, "Settled": False})
                         else:
                             old_data = current_content[w]
                             old_score = old_data.get("score", 5)
@@ -318,9 +365,7 @@ def auto_trend_updater():
                             if sha: payload["sha"] = sha
                             requests.put(url, headers=headers, json=payload)
             
-            if not os.path.exists(DISCOVERY_LOG_PATH) or os.path.getsize(DISCOVERY_LOG_PATH) == 0:
-                with open(DISCOVERY_LOG_PATH, 'w') as f:
-                    json.dump([], f)
+            if _discovery_buffer: flush_discovery_buffer()
         except: pass
         time.sleep(86400) 
 
@@ -377,7 +422,7 @@ def scanner_engine():
                     atr5 = float(df['tr'].rolling(5, min_periods=3).mean().iloc[-1]) if len(df) >= 5 else 0.0
                     atr20 = float(df['tr'].rolling(20, min_periods=5).mean().iloc[-1]) if len(df) >= 5 else 0.0
 
-                    stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'gap_pct': 0.0})
+                    stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'gap_pct': 0.0, 'float_comp': 0.0})
                     prev_close = float(stat_data['prev']) if stat_data['prev'] > 0 else float(df['low'].min())
                     float_str = stat_data['float_str'] if stat_data['prev'] > 0 else "未知"
                     real_pct = float(((p_live - prev_close) / prev_close) * 100)
@@ -423,6 +468,23 @@ def scanner_engine():
 
                     if is_open_shock: z_score = 0.0; ratio_3v3 = 1.0; staircase = False; vol_acc_str = "-"
 
+                    # 💡 V43.0: 盤中高頻動態運算 (SN-Score)
+                    base_score = stat_data['float_comp'] + (gap_pct * 2.0) + real_pct
+                    r_er = real_pct / rel_vol_display if rel_vol_display > 0 else real_pct
+                    
+                    vsa_state = 0
+                    if rel_vol_display > 5 and r_er < 1.0:
+                        m_vsa = 0.2
+                        vsa_state = 2
+                    elif rel_vol_display > 3 and r_er < 1.0:
+                        m_vsa = 0.5
+                        vsa_state = 1
+                    else:
+                        m_vsa = 1.0 + (math.log(max(rel_vol_display, 1.0)) * 0.1)
+
+                    a_m = ratio_3v3 if ratio_3v3 > 1.0 else ratio_3v3 * 0.5
+                    sn_score = int(round(base_score * m_vsa * a_m))
+
                     tracker = STATE_TRACKER.get(ticker, {'state': 'None', 'duration': 0, 'vcp_low': float('inf'), 'shakeout_high': 0.0})
                     dynamic_stop = curr_ema20 * 0.99 
                     
@@ -458,10 +520,12 @@ def scanner_engine():
                         "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": format_vol(daily_vol),
                         "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, 
                         "Signal": current_signal if current_signal else "",
-                        "PriceVal": float(p_live), "StopLoss": dynamic_stop, "Float": float_str, "Type": stat_data.get('type', 'stock'),
+                        "PriceVal": float(p_live), "StopLoss": dynamic_stop, "Float": float_str if float_str != "未知" else "-", "Type": stat_data.get('type', 'stock'),
                         "VolAcc": vol_acc_str, 
                         "Is100K": is_100k,
-                        "Gap": f"{gap_pct:+.2f}%" 
+                        "Gap": f"{gap_pct:+.2f}%",
+                        "SN_Score": sn_score,   # 💡 傳遞超新星分數
+                        "VsaState": vsa_state   # 💡 傳遞量價協同警告狀態
                     }
                     
                     last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})
@@ -475,7 +539,7 @@ def scanner_engine():
                         if is_trap: current_signal += " 💀(SEC陷阱)"; stats["Signal"] = current_signal
 
                     with brain_lock:
-                        cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "Price": "-", "Pct": "-", "Vol": "-", "RelVol": "-", "Float": "-", "Signal": "", "Gap": "-"})
+                        cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "Price": "-", "Pct": "-", "Vol": "-", "RelVol": "-", "Float": "-", "Signal": "", "Gap": "-", "SN_Score": 0, "VsaState": 0})
                         cell.update(stats)
                         if is_trap: cell["IsTrap"] = True
                         
@@ -502,7 +566,6 @@ def scanner_engine():
             time.sleep(5)
         except Exception as e: time.sleep(10)
 
-# 💡 新增 API 端點：接收前端動態修改跳空門檻，並強制重置雷達
 @app.route('/api/config', methods=['POST'])
 def update_config():
     global MIN_GAP_PCT, _last_list_update
@@ -510,7 +573,7 @@ def update_config():
     if 'gap_pct' in data:
         try:
             MIN_GAP_PCT = float(data['gap_pct'])
-            _last_list_update = 0 # 💡 將計時器歸零，強制雷達引擎下一秒立刻重新掃描新名單！
+            _last_list_update = 0
         except: pass
     return jsonify({"status": "success", "gap_pct": MIN_GAP_PCT})
 
@@ -522,13 +585,16 @@ def data():
     with brain_lock: 
         safe_brain = copy.deepcopy(MASTER_BRAIN)
         safe_brain["live_trends"] = get_live_trends()
-        safe_brain["current_gap"] = MIN_GAP_PCT # 💡 下發當前跳空值給前端同步顯示
+        safe_brain["current_gap"] = MIN_GAP_PCT 
         try: safe_brain["trends_date"] = datetime.fromtimestamp(os.path.getmtime(TRENDS_FILE_PATH), TZ_TW).strftime("%Y-%m-%d %H:%M:%S")
         except: safe_brain["trends_date"] = "尚未生成"
     return jsonify(safe_brain)
 
 if __name__ == '__main__':
-    settle_discovery_logs() 
+    # 確認初始檔案狀態
+    if not os.path.exists(DISCOVERY_LOG_PATH) or os.path.getsize(DISCOVERY_LOG_PATH) == 0:
+        with open(DISCOVERY_LOG_PATH, 'w') as f: json.dump([], f)
+        
     threading.Thread(target=scanner_engine, daemon=True).start()
     threading.Thread(target=auto_trend_updater, daemon=True).start()
     app.run(host='0.0.0.0', port=PORT)
