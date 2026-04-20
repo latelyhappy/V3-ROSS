@@ -17,7 +17,6 @@ logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
 brain_lock = threading.RLock() 
 TRENDS_FILE_PATH = os.path.join(os.path.dirname(__file__), 'trends.json')
 DISCOVERY_LOG_PATH = os.path.join(os.path.dirname(__file__), 'discovery_log.json') 
-# 💡 V43.4 新增盤中狀態救援存檔路徑
 SESSION_BACKUP_PATH = os.path.join(os.path.dirname(__file__), 'session_state.json')
 
 _cached_trends = {}
@@ -50,16 +49,12 @@ cooldown_tracker = {}
 STATE_TRACKER = {}
 app = Flask(__name__)
 
-# ==========================================
-# 💡 V43.4 盤中狀態防護盾 (Intraday State Recovery)
-# ==========================================
 def load_intraday_state():
     global MASTER_BRAIN, DYNAMIC_WATCHLIST, STATS_MAP, cooldown_tracker, STATE_TRACKER
     try:
         if os.path.exists(SESSION_BACKUP_PATH):
             with open(SESSION_BACKUP_PATH, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            # 檢查是否為同一交易日，若是則恢復記憶，若否則丟棄舊資料
             current_date = datetime.now(TZ_NY).strftime("%Y-%m-%d")
             if data.get("date") == current_date:
                 with brain_lock:
@@ -76,7 +71,7 @@ def load_intraday_state():
 
 def state_auto_save_worker():
     while True:
-        time.sleep(15) # 每 15 秒自動備份一次大腦狀態
+        time.sleep(15) 
         try:
             with brain_lock:
                 backup_data = {
@@ -90,7 +85,6 @@ def state_auto_save_worker():
             with open(SESSION_BACKUP_PATH, 'w', encoding='utf-8') as f:
                 json.dump(backup_data, f, ensure_ascii=False)
         except: pass
-# ==========================================
 
 def format_vol(n):
     if n >= 1_000_000: return f"{n/1_000_000:.1f}M"
@@ -312,11 +306,8 @@ def update_dynamic_watchlist():
                 f_str = "N/A (ETF)" if t == 'fund' else (f"{float_m:.1f}M" if float_m > 0 else "未知")
                 if t != 'fund' and float_m > 50.0: f_str = f"⚠️{f_str}"
                 
-                # SN-Score Base: Float Component 緩存
                 float_comp = 100.0 / math.sqrt(float_m) if float_m > 0 else 0.0
                 
-                # 保留已存在的動態狀態，避免重整時資料閃爍
-                existing_stat = STATS_MAP.get(sym, {})
                 STATS_MAP[sym] = {
                     'prev': prev_est, 'float_str': f_str, 'type': t, 
                     'gap_pct': float(pct) if pct is not None else 0.0,
@@ -439,7 +430,6 @@ def scanner_engine():
             m_shock_end = now_ny.replace(hour=9, minute=35, second=0, microsecond=0)
             is_open_shock = m_open <= now_ny < m_shock_end
 
-            # 複製清單以確保執行序安全
             current_watchlist = DYNAMIC_WATCHLIST.copy()
 
             for ticker in current_watchlist:
@@ -519,7 +509,6 @@ def scanner_engine():
 
                     if is_open_shock: z_score = 0.0; ratio_3v3 = 1.0; staircase = False; vol_acc_str = "-"
 
-                    # 💡 V43.0 SN-Algo V2.0 量價評分引擎
                     base_score = stat_data.get('float_comp', 0) + (gap_pct * 2.0) + real_pct
                     r_er = real_pct / rel_vol_display if rel_vol_display > 0 else real_pct
                     
@@ -596,7 +585,15 @@ def scanner_engine():
                         
                         if push_signal:
                             cooldown_tracker[ticker] = {'time': now_ts, 'level': current_level}
-                            audio_target = "nova" if current_level >= 4 else ("spark" if current_level >= 2 else None)
+                            
+                            # 💡 V43.5 音效降噪與雙重鎖定：預設關閉所有音效
+                            audio_target = None
+                            
+                            # 💡 只有當股票滿足：1.爆量100K 2.跳空大於門檻 3.非洗盤狀態 時，強制啟用最高級音效與標籤
+                            if is_100k and gap_pct >= MIN_GAP_PCT and not is_shakeout:
+                                audio_target = "nova"
+                                stats["Signal"] = f"🎯雙鎖定: {stats['Signal']}" if stats["Signal"] else "🎯雙鎖定: 爆量跳空"
+
                             if not is_shakeout:
                                 MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": audio_target})
                                 MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
@@ -642,13 +639,12 @@ def data():
     return jsonify(safe_brain)
 
 if __name__ == '__main__':
-    # 💡 啟動時第一步：先嘗試恢復盤中記憶！
     load_intraday_state()
     
     if not os.path.exists(DISCOVERY_LOG_PATH) or os.path.getsize(DISCOVERY_LOG_PATH) == 0:
         with open(DISCOVERY_LOG_PATH, 'w') as f: json.dump([], f)
         
-    threading.Thread(target=state_auto_save_worker, daemon=True).start() # 💡 啟動防斷線備份線程
+    threading.Thread(target=state_auto_save_worker, daemon=True).start()
     threading.Thread(target=scanner_engine, daemon=True).start()
     threading.Thread(target=auto_trend_updater, daemon=True).start()
     app.run(host='0.0.0.0', port=PORT)
