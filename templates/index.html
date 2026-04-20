@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V43.1 - Gauge Dashboard UI</title>
+    <title>Sniper V43.2 - Global Zoom Engine</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
@@ -13,8 +13,11 @@
             --text-main: #c9d1d9; --text-muted: #8b949e; 
         }
         body { margin: 0; background: var(--bg-base); color: var(--text-main); font-family: -apple-system, sans-serif; overflow-x: hidden; padding-top: 50px; user-select: none; }
-        #tactical-bar { position: fixed; top: 0; left: 0; width: 100%; height: 50px; background: rgba(13, 17, 23, 0.95); border-bottom: 1px solid var(--border); z-index: 9999; display: flex; align-items: center; padding: 0 15px; box-sizing: border-box; }
-        .ghost-btn { background: transparent; border: 1px solid var(--border); color: var(--text-main); padding: 6px 15px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; transition: all 0.2s ease; margin-right: 10px; }
+        
+        /* 調整戰情列的排版，確保按鈕多時能夠水平捲動 */
+        #tactical-bar { position: fixed; top: 0; left: 0; width: 100%; height: 50px; background: rgba(13, 17, 23, 0.95); border-bottom: 1px solid var(--border); z-index: 9999; display: flex; align-items: center; padding: 0 15px; box-sizing: border-box; overflow-x: auto; white-space: nowrap; }
+        
+        .ghost-btn { background: transparent; border: 1px solid var(--border); color: var(--text-main); padding: 6px 15px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; transition: all 0.2s ease; margin-right: 10px; flex-shrink: 0; }
         .ghost-btn:hover { background: rgba(163, 113, 247, 0.2); border-color: var(--purple); color: #fff; }
         #workspace { position: relative; width: 100vw; min-height: 150vh; padding: 10px; box-sizing: border-box; overflow: hidden; }
         .window-panel { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.6); position: absolute; touch-action: none; }
@@ -66,6 +69,10 @@
 
         input[type=number]::-webkit-inner-spin-button, 
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        
+        /* 隱藏捲軸但保持可捲動 */
+        #tactical-bar::-webkit-scrollbar { display: none; }
+        #tactical-bar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body>
@@ -73,17 +80,23 @@
         <button id="audio-btn" class="ghost-btn" style="border-color:var(--red); color:var(--red);" onclick="unlockAudio()">🔇 音效</button>
         <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 ETF</button>
         
-        <div style="display:flex; align-items:center; border:1px solid var(--border); border-radius:6px; padding:4px 8px; margin-right:10px;">
+        <div style="display:flex; align-items:center; border:1px solid var(--border); border-radius:6px; padding:4px 8px; margin-right:10px; flex-shrink: 0;">
             <span style="font-size:12px; color:var(--text-muted); margin-right:5px;">跳空門檻:</span>
             <input type="number" id="gap-input" value="5.0" step="0.5" style="background:transparent; border:none; color:var(--neon-green); width:40px; font-weight:bold; font-size:13px; outline:none; text-align:center;" onchange="updateGap(this.value)">
             <span style="font-size:12px; color:var(--text-muted);">%</span>
         </div>
 
+        <div style="display:flex; align-items:center; border:1px solid var(--border); border-radius:6px; padding:2px 5px; margin-right:10px; background:rgba(0,0,0,0.2); flex-shrink: 0;">
+            <button style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-weight:bold; padding:0 8px; font-size:14px; outline:none;" onclick="changeZoom(-0.1)">-</button>
+            <span id="zoom-label" style="font-size:12px; color:var(--text-main); min-width:40px; text-align:center; font-weight:bold; cursor:default;">100%</span>
+            <button style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-weight:bold; padding:0 8px; font-size:14px; outline:none;" onclick="changeZoom(0.1)">+</button>
+        </div>
+
         <button class="ghost-btn" style="border-color:var(--blue); color:var(--blue);" onclick="showAITrends()">🧠 AI 戰果詞庫</button>
-        <button id="mode-btn" class="ghost-btn" style="border-color:var(--yellow); color:var(--yellow);" onclick="toggleMode()">📱 切換手機版</button>
+        <button id="mode-btn" class="ghost-btn" style="border-color:var(--yellow); color:var(--yellow);" onclick="toggleMode()">📱 手機版</button>
         <button class="ghost-btn" onclick="resetLayout()">🔄 重置網格</button>
-        <div style="font-size: 13px; color: var(--text-muted); font-family: monospace; margin-left:10px;">TPE: <span id="sys-clock" style="color: var(--text-main); font-weight: bold;">--:--:--</span></div>
-        <span id="sys-status" style="margin-left:auto; font-size:11px; color: var(--text-muted);">📡 系統初始化...</span>
+        <div style="font-size: 13px; color: var(--text-muted); font-family: monospace; margin-left:10px; flex-shrink: 0;">TPE: <span id="sys-clock" style="color: var(--text-main); font-weight: bold;">--:--:--</span></div>
+        <span id="sys-status" style="margin-left:auto; font-size:11px; color: var(--text-muted); padding-left: 15px;">📡 系統初始化...</span>
     </div>
 
     <div id="workspace">
@@ -169,6 +182,25 @@
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
 
+        // 💡 V43.2 全域縮放倍率引擎
+        let currentZoom = parseFloat(localStorage.getItem('sniper_zoom')) || 1.0;
+
+        function applyZoom() {
+            document.body.style.zoom = currentZoom;
+            let zl = document.getElementById('zoom-label');
+            if(zl) zl.innerText = Math.round(currentZoom * 100) + '%';
+        }
+
+        function changeZoom(delta) {
+            currentZoom += delta;
+            if(currentZoom < 0.5) currentZoom = 0.5;
+            if(currentZoom > 2.0) currentZoom = 2.0;
+            // 修正浮點數精度問題 (如 0.8999999)
+            currentZoom = Math.round(currentZoom * 10) / 10;
+            localStorage.setItem('sniper_zoom', currentZoom);
+            applyZoom();
+        }
+
         function updateGap(val) {
             let gapVal = parseFloat(val);
             if (isNaN(gapVal)) return;
@@ -187,10 +219,10 @@
             let btn = document.getElementById('mode-btn');
             if (isMobileMode) {
                 document.body.classList.add('mobile-mode');
-                btn.innerText = "💻 切換電腦版";
+                btn.innerText = "💻 電腦版";
             } else {
                 document.body.classList.remove('mobile-mode');
-                btn.innerText = "📱 切換手機版";
+                btn.innerText = "📱 手機版";
                 initWindowManager(); 
             }
         }
@@ -267,12 +299,32 @@
                 interact(el).draggable({ allowFrom:'.panel-header', listeners:{move:dML, end:sL} }).resizable({ edges:{right:true, bottom:true}, listeners:{move:rML, end:sL} });
             });
         }
-        function dML(e) { let t=e.target, x=(parseFloat(t.getAttribute('data-x'))||0)+e.dx, y=(parseFloat(t.getAttribute('data-y'))||0)+e.dy; t.style.transform=`translate(${x}px, ${y}px)`; t.setAttribute('data-x',x); t.setAttribute('data-y',y); }
-        function rML(e) { let t=e.target, x=(parseFloat(t.getAttribute('data-x'))||0), y=(parseFloat(t.getAttribute('data-y'))||0); t.style.width=e.rect.width+'px'; t.style.height=e.rect.height+'px'; t.style.transform=`translate(${x}px, ${y}px)`; t.setAttribute('data-x',x); t.setAttribute('data-y',y); }
+
+        // 💡 V43.2 視窗拖曳與縮放幾何校準 (防止縮放時游標偏移)
+        function dML(e) { 
+            let t=e.target, 
+                x=(parseFloat(t.getAttribute('data-x'))||0) + (e.dx / currentZoom), 
+                y=(parseFloat(t.getAttribute('data-y'))||0) + (e.dy / currentZoom); 
+            t.style.transform=`translate(${x}px, ${y}px)`; 
+            t.setAttribute('data-x',x); 
+            t.setAttribute('data-y',y); 
+        }
+        function rML(e) { 
+            let t=e.target, 
+                x=(parseFloat(t.getAttribute('data-x'))||0), 
+                y=(parseFloat(t.getAttribute('data-y'))||0); 
+            t.style.width = (e.rect.width / currentZoom) + 'px'; 
+            t.style.height = (e.rect.height / currentZoom) + 'px'; 
+            t.style.transform=`translate(${x}px, ${y}px)`; 
+            t.setAttribute('data-x',x); 
+            t.setAttribute('data-y',y); 
+        }
         function sL() { ['win-log','win-rank','win-news','win-detail'].forEach(id=>{ let el=document.getElementById(id); if(el) localStorage.setItem('sniper_v42_layout_'+id, JSON.stringify({x:parseFloat(el.getAttribute('data-x'))||0, y:parseFloat(el.getAttribute('data-y'))||0, w:el.offsetWidth, h:el.offsetHeight})); }); }
         
         function resetLayout() { 
+            let savedZoom = localStorage.getItem('sniper_zoom');
             localStorage.clear(); 
+            if(savedZoom) localStorage.setItem('sniper_zoom', savedZoom); // 網格重置但不重置縮放倍率
             location.reload(); 
         }
         
@@ -436,18 +488,15 @@
             let vsaWarning = "✅ 量價配合健康";
             let flashClass = "";
             
-            // 💡 儀表板顏色與標籤判斷邏輯
             if (snScore >= 400) { scoreLabel = "🔥 極佳"; snColor = "var(--neon-green)"; }
             else if (snScore >= 200) { scoreLabel = "↗️ 過半"; snColor = "var(--yellow)"; }
 
-            // 💡 陷阱覆蓋機制
             if (vsaState === 2) { vsaWarning = "🚨 致命出貨 (爆量滯漲)"; flashClass = "trap-row"; snColor = "var(--red)"; scoreLabel = "💀 危險"; }
             else if (vsaState === 1) { vsaWarning = "⚠️ 背離警告 (推升困難)"; snColor = "var(--red)"; scoreLabel = "⚠️ 背離"; }
 
-            // 💡 SVG 儀表板動態計算
             let gaugeMax = 600;
             let fillRatio = Math.min(snScore / gaugeMax, 1);
-            let dashOffset = 141.37 * (1 - fillRatio); // 141.37 是半徑 45 的半圓周長
+            let dashOffset = 141.37 * (1 - fillRatio); 
 
             let gaugeHTML = `
             <div class="${flashClass}" style="position:relative; width:120px; height:70px; display:flex; flex-direction:column; align-items:center; justify-content:flex-end;">
@@ -501,7 +550,9 @@
             });
             document.getElementById('detail-list').innerHTML = html + `</div>`;
         }
-        window.onload = () => { initWindowManager(); refresh(); };
+        
+        // 💡 初始化時套用記憶的縮放設定
+        window.onload = () => { applyZoom(); initWindowManager(); refresh(); };
     </script>
 </body>
 </html>
