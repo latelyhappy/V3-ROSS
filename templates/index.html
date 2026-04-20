@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V43.0 - SN-Algo V2.0 Integration</title>
+    <title>Sniper V43.1 - Gauge Dashboard UI</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
@@ -429,15 +429,38 @@
 
             let volHTML = d.Is100K ? `<b class="vol-100k" style="font-size:14px;">${d.Vol||'-'} 📦</b>` : `<b style="color:var(--text-main); font-size:14px;">${d.Vol||'-'}</b>`;
 
-            // 💡 V43.0 整合 SN-Score 與 VSA State 儀表板
             let snScore = d.SN_Score || 0;
             let vsaState = d.VsaState || 0;
-            let snColor = snScore >= 80 ? "var(--neon-green)" : (snScore >= 50 ? "var(--yellow)" : "var(--text-muted)");
+            let snColor = "var(--text-muted)";
+            let scoreLabel = "🧊 偏弱";
             let vsaWarning = "✅ 量價配合健康";
             let flashClass = "";
             
-            if (vsaState === 2) { vsaWarning = "🚨 致命出貨 (爆量滯漲)"; flashClass = "trap-row"; snColor = "var(--red)"; }
-            else if (vsaState === 1) { vsaWarning = "⚠️ 背離警告 (推升困難)"; snColor = "var(--red)"; }
+            // 💡 儀表板顏色與標籤判斷邏輯
+            if (snScore >= 400) { scoreLabel = "🔥 極佳"; snColor = "var(--neon-green)"; }
+            else if (snScore >= 200) { scoreLabel = "↗️ 過半"; snColor = "var(--yellow)"; }
+
+            // 💡 陷阱覆蓋機制
+            if (vsaState === 2) { vsaWarning = "🚨 致命出貨 (爆量滯漲)"; flashClass = "trap-row"; snColor = "var(--red)"; scoreLabel = "💀 危險"; }
+            else if (vsaState === 1) { vsaWarning = "⚠️ 背離警告 (推升困難)"; snColor = "var(--red)"; scoreLabel = "⚠️ 背離"; }
+
+            // 💡 SVG 儀表板動態計算
+            let gaugeMax = 600;
+            let fillRatio = Math.min(snScore / gaugeMax, 1);
+            let dashOffset = 141.37 * (1 - fillRatio); // 141.37 是半徑 45 的半圓周長
+
+            let gaugeHTML = `
+            <div class="${flashClass}" style="position:relative; width:120px; height:70px; display:flex; flex-direction:column; align-items:center; justify-content:flex-end;">
+                <svg viewBox="0 0 120 70" style="position:absolute; top:0; left:0; width:100%; height:100%;">
+                    <path d="M 15 60 A 45 45 0 0 1 105 60" fill="none" stroke="var(--border)" stroke-width="10" stroke-linecap="round" />
+                    <path d="M 15 60 A 45 45 0 0 1 105 60" fill="none" stroke="${snColor}" stroke-width="10" stroke-linecap="round" stroke-dasharray="141.37" stroke-dashoffset="${dashOffset}" style="transition: stroke-dashoffset 1s ease-out; filter: drop-shadow(0 0 4px ${snColor});" />
+                </svg>
+                <div style="z-index:2; text-align:center; margin-bottom:-8px;">
+                    <div style="font-size:22px; font-weight:900; color:${snColor}; line-height:1; text-shadow: 0 0 8px ${snColor}80;">${snScore}</div>
+                    <div style="font-size:10px; color:${snColor}; font-weight:bold; margin-top:2px;">${scoreLabel}</div>
+                </div>
+            </div>
+            `;
 
             let html = `<div style="text-align:center;">${trapWarn}
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
@@ -450,10 +473,7 @@
                         </div>
                     </div>
                     <div style="display:flex; gap:10px; align-items:center;">
-                        <div class="${flashClass}" style="background:rgba(0,0,0,0.4); border:1px solid ${snColor}; border-radius:8px; padding:6px 15px; text-align:center; box-shadow: 0 0 10px ${snColor}40;">
-                            <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:2px;">SN-Score</div>
-                            <div style="font-size:24px; font-weight:900; color:${snColor}; text-shadow: 0 0 8px ${snColor}80;">${snScore}</div>
-                        </div>
+                        ${gaugeHTML}
                         <button class="ghost-btn" style="padding:4px 10px; font-size:12px; height:fit-content; margin:0;" onclick="openTW('${sym}')">TV ↗</button>
                     </div>
                 </div>
