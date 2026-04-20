@@ -17,6 +17,8 @@ logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
 brain_lock = threading.RLock() 
 TRENDS_FILE_PATH = os.path.join(os.path.dirname(__file__), 'trends.json')
 DISCOVERY_LOG_PATH = os.path.join(os.path.dirname(__file__), 'discovery_log.json') 
+# 💡 V43.4 新增盤中狀態救援存檔路徑
+SESSION_BACKUP_PATH = os.path.join(os.path.dirname(__file__), 'session_state.json')
 
 _cached_trends = {}
 _last_trends_update = 0
@@ -47,6 +49,48 @@ news_cache = {}
 cooldown_tracker = {}
 STATE_TRACKER = {}
 app = Flask(__name__)
+
+# ==========================================
+# 💡 V43.4 盤中狀態防護盾 (Intraday State Recovery)
+# ==========================================
+def load_intraday_state():
+    global MASTER_BRAIN, DYNAMIC_WATCHLIST, STATS_MAP, cooldown_tracker, STATE_TRACKER
+    try:
+        if os.path.exists(SESSION_BACKUP_PATH):
+            with open(SESSION_BACKUP_PATH, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            # 檢查是否為同一交易日，若是則恢復記憶，若否則丟棄舊資料
+            current_date = datetime.now(TZ_NY).strftime("%Y-%m-%d")
+            if data.get("date") == current_date:
+                with brain_lock:
+                    MASTER_BRAIN = data.get("MASTER_BRAIN", MASTER_BRAIN)
+                    DYNAMIC_WATCHLIST = data.get("DYNAMIC_WATCHLIST", [])
+                    STATS_MAP = data.get("STATS_MAP", {})
+                    cooldown_tracker = data.get("cooldown_tracker", {})
+                    STATE_TRACKER = data.get("STATE_TRACKER", {})
+                print(f"🛡️ [防護盾] 偵測到重啟，已成功恢復 {current_date} 的盤中戰鬥狀態！")
+            else:
+                print(f"🔄 [防護盾] 偵測到跨日 ({current_date})，已清除舊有盤中狀態。")
+    except Exception as e: 
+        print(f"⚠️ [防護盾] 狀態恢復失敗: {e}")
+
+def state_auto_save_worker():
+    while True:
+        time.sleep(15) # 每 15 秒自動備份一次大腦狀態
+        try:
+            with brain_lock:
+                backup_data = {
+                    "date": datetime.now(TZ_NY).strftime("%Y-%m-%d"),
+                    "MASTER_BRAIN": MASTER_BRAIN,
+                    "DYNAMIC_WATCHLIST": DYNAMIC_WATCHLIST,
+                    "STATS_MAP": STATS_MAP,
+                    "cooldown_tracker": cooldown_tracker,
+                    "STATE_TRACKER": STATE_TRACKER
+                }
+            with open(SESSION_BACKUP_PATH, 'w', encoding='utf-8') as f:
+                json.dump(backup_data, f, ensure_ascii=False)
+        except: pass
+# ==========================================
 
 def format_vol(n):
     if n >= 1_000_000: return f"{n/1_000_000:.1f}M"
@@ -113,7 +157,6 @@ def settle_discovery_logs():
             impact_pct = 0.0
             
             try:
-                # 💡 V43.0 防未來高點陷阱：抓取 5 分鐘 K 線，嚴格切割 entry_timestamp 之後的數據
                 df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_5_minute, n_bars=300, extended_session=True)
                 if df is not None and not df.empty:
                     entry_dt = datetime.strptime(log["Time"], "%Y-%m-%d %H:%M:%S")
@@ -126,7 +169,6 @@ def settle_discovery_logs():
                         impact_pct = (real_mfe_high - entry_price) / entry_price if entry_price > 0 else 0.0
             except Exception as e: pass
 
-            # 💡 V43.0 EMA 權重單位統一與融合
             if word in trends:
                 old_weight = float(trends[word].get("score", 5.0))
                 today_score = min(5.0 + (impact_pct * 100.0), 20.0) if impact_pct > 0 else 0.0
@@ -136,7 +178,7 @@ def settle_discovery_logs():
                 trends[word]["avg_impact_pct"] = round(max(trends[word].get("avg_impact_pct", 0.0), impact_pct * 100), 2)
                 updated_trends = True
             log["Settled"] = True
-            time.sleep(0.5) # 防止 TV API 封鎖
+            time.sleep(0.5) 
             
         with open(DISCOVERY_LOG_PATH, 'w', encoding='utf-8') as f: json.dump(logs, f, ensure_ascii=False, indent=4)
         if updated_trends:
@@ -178,7 +220,6 @@ def background_translate_worker(ticker, en_headline, master_brain):
     except: pass
 
 def check_sec_fatal_traps(ticker):
-    # 💡 V43.0 SEC 防封鎖嚴格執行 (實名 Agent + 0.5s 冷卻)
     headers = {
         "User-Agent": "SniperQuantSystem_V42 AdminContact@yourdomain.com",
         "Accept-Encoding": "gzip, deflate",
@@ -260,23 +301,31 @@ def update_dynamic_watchlist():
         res = requests.post(url, json=payload, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
         data = res.json()
         if data.get('data'):
-            DYNAMIC_WATCHLIST = [x['d'][0] for x in data['data']]
+            new_watchlist = []
             for x in data['data']:
                 sym, p, c, pct, v, mc, t = x['d'][0], x['d'][1], x['d'][2], x['d'][3], x['d'][4], x['d'][5], x['d'][6]
+                new_watchlist.append(sym)
+                
                 p_eff = p if p is not None else c
                 float_m = (mc / p_eff) / 1_000_000 if mc and p_eff else 0.0
                 prev_est = p_eff / (1 + (pct/100)) if pct and pct != -100 else p_eff
                 f_str = "N/A (ETF)" if t == 'fund' else (f"{float_m:.1f}M" if float_m > 0 else "未知")
                 if t != 'fund' and float_m > 50.0: f_str = f"⚠️{f_str}"
                 
-                # 💡 V43.0 Float 靜態快取效能優化
+                # SN-Score Base: Float Component 緩存
                 float_comp = 100.0 / math.sqrt(float_m) if float_m > 0 else 0.0
                 
+                # 保留已存在的動態狀態，避免重整時資料閃爍
+                existing_stat = STATS_MAP.get(sym, {})
                 STATS_MAP[sym] = {
                     'prev': prev_est, 'float_str': f_str, 'type': t, 
                     'gap_pct': float(pct) if pct is not None else 0.0,
                     'float_comp': float_comp
                 }
+            
+            with brain_lock:
+                DYNAMIC_WATCHLIST.clear()
+                DYNAMIC_WATCHLIST.extend(new_watchlist)
     except: pass
 
 def auto_trend_updater():
@@ -288,7 +337,6 @@ def auto_trend_updater():
     while True:
         try:
             now_ny = datetime.now(TZ_NY)
-            # 💡 V43.0 核銷排程：嚴格設定在美東 04:10 AM 執行
             if now_ny.hour == 4 and now_ny.minute >= 10 and now_ny.date() != last_settle_date:
                 settle_discovery_logs()
                 last_settle_date = now_ny.date()
@@ -391,7 +439,10 @@ def scanner_engine():
             m_shock_end = now_ny.replace(hour=9, minute=35, second=0, microsecond=0)
             is_open_shock = m_open <= now_ny < m_shock_end
 
-            for ticker in DYNAMIC_WATCHLIST:
+            # 複製清單以確保執行序安全
+            current_watchlist = DYNAMIC_WATCHLIST.copy()
+
+            for ticker in current_watchlist:
                 try:
                     time.sleep(2.0)
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
@@ -468,8 +519,8 @@ def scanner_engine():
 
                     if is_open_shock: z_score = 0.0; ratio_3v3 = 1.0; staircase = False; vol_acc_str = "-"
 
-                    # 💡 V43.0: 盤中高頻動態運算 (SN-Score)
-                    base_score = stat_data['float_comp'] + (gap_pct * 2.0) + real_pct
+                    # 💡 V43.0 SN-Algo V2.0 量價評分引擎
+                    base_score = stat_data.get('float_comp', 0) + (gap_pct * 2.0) + real_pct
                     r_er = real_pct / rel_vol_display if rel_vol_display > 0 else real_pct
                     
                     vsa_state = 0
@@ -524,8 +575,8 @@ def scanner_engine():
                         "VolAcc": vol_acc_str, 
                         "Is100K": is_100k,
                         "Gap": f"{gap_pct:+.2f}%",
-                        "SN_Score": sn_score,   # 💡 傳遞超新星分數
-                        "VsaState": vsa_state   # 💡 傳遞量價協同警告狀態
+                        "SN_Score": sn_score, 
+                        "VsaState": vsa_state 
                     }
                     
                     last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})
@@ -573,7 +624,7 @@ def update_config():
     if 'gap_pct' in data:
         try:
             MIN_GAP_PCT = float(data['gap_pct'])
-            _last_list_update = 0
+            _last_list_update = 0 
         except: pass
     return jsonify({"status": "success", "gap_pct": MIN_GAP_PCT})
 
@@ -591,10 +642,13 @@ def data():
     return jsonify(safe_brain)
 
 if __name__ == '__main__':
-    # 確認初始檔案狀態
+    # 💡 啟動時第一步：先嘗試恢復盤中記憶！
+    load_intraday_state()
+    
     if not os.path.exists(DISCOVERY_LOG_PATH) or os.path.getsize(DISCOVERY_LOG_PATH) == 0:
         with open(DISCOVERY_LOG_PATH, 'w') as f: json.dump([], f)
         
+    threading.Thread(target=state_auto_save_worker, daemon=True).start() # 💡 啟動防斷線備份線程
     threading.Thread(target=scanner_engine, daemon=True).start()
     threading.Thread(target=auto_trend_updater, daemon=True).start()
     app.run(host='0.0.0.0', port=PORT)
