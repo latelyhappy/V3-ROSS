@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V43.5 - WakeLock & DoubleKill Alert</title>
+    <title>Sniper V43.6 - Mobile Full Table & Scroll</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
@@ -19,7 +19,10 @@
         
         .ghost-btn { background: transparent; border: 1px solid var(--border); color: var(--text-main); padding: 6px 15px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; transition: all 0.2s ease; margin-right: 10px; flex-shrink: 0;}
         .ghost-btn:hover { background: rgba(163, 113, 247, 0.2); border-color: var(--purple); color: #fff; }
-        #workspace { position: relative; width: 100vw; min-height: 150vh; padding: 10px; box-sizing: border-box; overflow: visible; }
+        
+        /* PC 端維持 200vw 的雙螢幕寬度 */
+        #workspace { position: relative; width: 200vw; min-height: 150vh; padding: 10px; box-sizing: border-box; overflow: visible; }
+        
         .window-panel { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.6); position: absolute; touch-action: none; }
         .window-panel::after { content: ''; position: absolute; bottom: 0; right: 0; width: 15px; height: 15px; cursor: se-resize; background: linear-gradient(135deg, transparent 50%, rgba(139, 148, 158, 0.4) 50%); z-index: 20; }
         .panel-header { background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border); padding: 12px 15px; font-size: 13px; font-weight: bold; color: var(--text-muted); cursor: move; display: flex; justify-content: space-between; align-items: center; }
@@ -49,23 +52,35 @@
         .vol-100k { color: var(--neon-purple); font-weight: bold; text-shadow: 0 0 5px rgba(210,146,255,0.3); } 
 
         #mobile-tabs { display: none; }
-        body.mobile-mode { overflow-y: auto !important; padding-bottom: 60px; }
+        
+        /* ========================================================= */
+        /* 💡 終極手機版排版修正 (解決表格擠壓與欄位隱藏問題) */
+        /* ========================================================= */
+        body.mobile-mode { overflow-y: auto !important; overflow-x: hidden !important; padding-bottom: 60px; }
         body.mobile-mode #tactical-bar { overflow-x: auto; white-space: nowrap; padding-right: 20px; }
         body.mobile-mode #mobile-tabs { display: flex; position: fixed; bottom: 0; left: 0; width: 100%; background: var(--bg-surface); z-index: 10000; border-top: 1px solid var(--border); }
         body.mobile-mode .tab-btn { flex: 1; padding: 15px 0; background: transparent; border: none; color: var(--text-muted); font-weight: bold; font-size: 13px; cursor: pointer; }
         body.mobile-mode .tab-btn.active { color: var(--blue); border-top: 2px solid var(--blue); background: rgba(88, 166, 255, 0.05); }
-        body.mobile-mode #workspace { display: block; overflow: visible; height: auto; min-height: auto; padding: 5px; width: 100vw; }
+        
+        /* 強制鎖死手機工作區寬度為 100vw，防止整個網頁亂滑 */
+        body.mobile-mode #workspace { display: block; overflow: hidden; height: auto; min-height: auto; padding: 5px; width: 100vw; box-sizing: border-box; }
+        
         body.mobile-mode .window-panel { position: static !important; width: 100% !important; height: auto !important; min-height: 85vh; transform: none !important; margin-bottom: 15px; display: none; box-shadow: none; border: none; border-bottom: 1px solid var(--border); }
-        body.mobile-mode .window-panel.active-tab { display: flex !important; }
+        body.mobile-mode .window-panel.active-tab { display: flex !important; flex-direction: column; }
         body.mobile-mode .window-panel::after { display: none; }
         body.mobile-mode .panel-header { cursor: default; }
-        body.mobile-mode .hide-on-mobile { display: none !important; }
         
-        body.mobile-mode .panel-content { overflow-x: auto !important; -webkit-overflow-scrolling: touch; padding-bottom: 15px;}
+        /* 💡 核心解鎖：移除隱藏欄位的指令，讓所有數據都出來！ */
+        /* body.mobile-mode .hide-on-mobile { display: none !important; } */
+        
+        /* 💡 內部水平捲動引擎：讓內容可以超出面板，並透過觸控順滑捲動 */
+        body.mobile-mode .panel-content { flex: 1; overflow-x: auto !important; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: 15px; width: 100%; display: block; }
         body.mobile-mode table { font-size: 12px; width: 100%; min-width: max-content; } 
         body.mobile-mode th, body.mobile-mode td { padding: 12px 6px; white-space: nowrap; } 
         body.mobile-mode .sym { font-size: 14px; }
-        body.mobile-mode .news-title-cell { max-width: 130px !important; }
+        
+        /* 限制新聞標題不要拉得無限長 */
+        body.mobile-mode .news-title-cell { max-width: 180px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
         input[type=number]::-webkit-inner-spin-button, 
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
@@ -102,10 +117,10 @@
                 <table id="surge-log-table">
                     <thead><tr>
                         <th class="status-indicator"></th><th>時間</th><th>代碼</th>
-                        <th class="hide-on-mobile">流通股</th><th>價格</th><th class="hide-on-mobile">量比</th>
+                        <th>流通股</th><th>價格</th><th>量比</th>
                         <th>加速</th>
-                        <th class="hide-on-mobile">跳空</th>
-                        <th class="hide-on-mobile">成交量</th><th>漲幅</th><th>訊號</th>
+                        <th>跳空</th>
+                        <th>成交量</th><th>漲幅</th><th>訊號</th>
                     </tr></thead>
                     <tbody id="surge-log-body"><tr><td colspan="11" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr></tbody>
                 </table>
@@ -119,12 +134,12 @@
                     <thead><tr>
                         <th class="status-indicator"></th>
                         <th onclick="setSort('rank', 'Code')">代碼 <span id="sort-rank-Code"></span></th>
-                        <th class="hide-on-mobile" onclick="setSort('rank', 'Float')">流通股 <span id="sort-rank-Float"></span></th>
+                        <th onclick="setSort('rank', 'Float')">流通股 <span id="sort-rank-Float"></span></th>
                         <th onclick="setSort('rank', 'Price')">價格 <span id="sort-rank-Price"></span></th>
-                        <th class="hide-on-mobile" onclick="setSort('rank', 'RelVol')">量比 <span id="sort-rank-RelVol"></span></th>
+                        <th onclick="setSort('rank', 'RelVol')">量比 <span id="sort-rank-RelVol"></span></th>
                         <th onclick="setSort('rank', 'VolAcc')">加速 <span id="sort-rank-VolAcc"></span></th>
                         <th onclick="setSort('rank', 'Gap')">跳空 <span id="sort-rank-Gap"></span></th>
-                        <th class="hide-on-mobile" onclick="setSort('rank', 'Vol')">成交量 <span id="sort-rank-Vol"></span></th>
+                        <th onclick="setSort('rank', 'Vol')">成交量 <span id="sort-rank-Vol"></span></th>
                         <th onclick="setSort('rank', 'Pct')">漲幅 <span id="sort-rank-Pct">▼</span></th>
                     </tr></thead>
                     <tbody id="rank-list"></tbody>
@@ -142,12 +157,12 @@
                         <th onclick="setSort('news', 'Code')">代碼 <span id="sort-news-Code"></span></th>
                         <th onclick="setSort('news', 'CatScore')">評分 <span id="sort-news-CatScore">▼</span></th>
                         <th>標題</th>
-                        <th class="hide-on-mobile" onclick="setSort('news', 'Float')">流通股 <span id="sort-news-Float"></span></th>
+                        <th onclick="setSort('news', 'Float')">流通股 <span id="sort-news-Float"></span></th>
                         <th onclick="setSort('news', 'Price')">價格 <span id="sort-news-Price"></span></th>
-                        <th class="hide-on-mobile" onclick="setSort('news', 'RelVol')">量比 <span id="sort-news-RelVol"></span></th>
+                        <th onclick="setSort('news', 'RelVol')">量比 <span id="sort-news-RelVol"></span></th>
                         <th onclick="setSort('news', 'VolAcc')">加速 <span id="sort-news-VolAcc"></span></th> 
-                        <th class="hide-on-mobile" onclick="setSort('news', 'Gap')">跳空 <span id="sort-news-Gap"></span></th>
-                        <th class="hide-on-mobile" onclick="setSort('news', 'Vol')">成交量 <span id="sort-news-Vol"></span></th>
+                        <th onclick="setSort('news', 'Gap')">跳空 <span id="sort-news-Gap"></span></th>
+                        <th onclick="setSort('news', 'Vol')">成交量 <span id="sort-news-Vol"></span></th>
                         <th onclick="setSort('news', 'Pct')">漲幅 <span id="sort-news-Pct"></span></th>
                     </tr></thead>
                     <tbody id="news-list"></tbody>
@@ -185,7 +200,6 @@
                 if ('wakeLock' in navigator) {
                     wakeLock = await navigator.wakeLock.request('screen');
                     console.log('🛡️ 螢幕長亮模式已啟動');
-                    // 若切換視窗後再回來，需重新申請
                     document.addEventListener('visibilitychange', async () => {
                         if (wakeLock !== null && document.visibilityState === 'visible') {
                             wakeLock = await navigator.wakeLock.request('screen');
@@ -340,13 +354,12 @@
         
         function toggleETF() { showETF = !showETF; let btn = document.getElementById('etf-btn'); if (showETF) { btn.innerText = "🔘 隱藏 ETF"; btn.style.borderColor = "var(--red)"; btn.style.color = "var(--red)"; } else { btn.innerText = "🔘 ETF"; btn.style.borderColor = "var(--border)"; btn.style.color = "var(--text-main)"; } if (Object.keys(brain).length > 0) refreshUI(brain); }
         
-        // 💡 V43.5 啟動音效與防睡眠
         function unlockAudio() { 
             audioOn = true; 
             let btn = document.getElementById('audio-btn'); 
             btn.style.borderColor="var(--green)"; 
             btn.style.color="var(--green)"; 
-            btn.innerText="🔊 已啟動/防睡眠"; 
+            btn.innerText="🔊 警報/防睡眠"; 
             requestWakeLock();
         }
         
@@ -400,20 +413,19 @@
 
                 h1 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                     <td class="status-indicator"></td><td style="color:var(--text-muted);">${r.Time||'-'}</td><td class="sym">${r.Code}${icon}</td>
-                    <td class="hide-on-mobile" style="color:var(--text-muted);">${f_float}</td><td>${r.Price||'-'}</td><td class="hide-on-mobile">${r.RelVol||'-'}</td>
+                    <td>${f_float}</td><td>${r.Price||'-'}</td><td>${r.RelVol||'-'}</td>
                     <td>${formatVolAcc(r.VolAcc)}</td>
-                    <td class="hide-on-mobile"><b class="${parseFloat(r.Gap||0)>0?'up':'down'}">${r.Gap||'-'}</b></td>
-                    <td class="hide-on-mobile">${f_vol}</td>
+                    <td><b class="${parseFloat(r.Gap||0)>0?'up':'down'}">${r.Gap||'-'}</b></td>
+                    <td>${f_vol}</td>
                     <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'}</td><td style="font-weight:bold; color:${r.Signal.includes('🎯') ? 'var(--neon-green)' : 'inherit'};">${r.Signal||'-'}</td>
                 </tr>`;
                 
-                // 💡 V43.5 降噪處理：只有在 Audio === 'nova' 時才觸發提示與強烈震動
                 if (r.Audio && r.Audio === 'nova' && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { 
                     played[r.SignalTS] = r.SignalTS; 
                     sounds[r.Audio].currentTime=0; 
                     sounds[r.Audio].play().catch(e=>{}); 
                     if ("vibrate" in navigator) {
-                        navigator.vibrate([300, 100, 300, 100, 300]); // 專屬雙重鎖定的戰術連震
+                        navigator.vibrate([300, 100, 300, 100, 300]); 
                     }
                 }
             });
@@ -436,11 +448,11 @@
                 if (det.Is100K) { f_vol = `<span class="vol-100k">${f_vol}</span>`; icon += " 📦"; }
 
                 h2 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
-                    <td class="status-indicator"></td><td class="sym">${r.Code}${icon}</td><td class="hide-on-mobile" style="color:var(--text-muted);">${r.Type==='fund'?'N/A':(r.Float||det.Float||"-")}</td>
-                    <td>${r.Price||'-'}</td><td class="hide-on-mobile">${det.RelVol||r.RelVol||'-'}</td>
+                    <td class="status-indicator"></td><td class="sym">${r.Code}${icon}</td><td>${r.Type==='fund'?'N/A':(r.Float||det.Float||"-")}</td>
+                    <td>${r.Price||'-'}</td><td>${det.RelVol||r.RelVol||'-'}</td>
                     <td>${formatVolAcc(det.VolAcc||r.VolAcc)}</td>
                     <td><b class="${parseFloat(det.Gap||r.Gap||0)>0?'up':'down'}">${det.Gap||r.Gap||'-'}</b></td>
-                    <td class="hide-on-mobile">${f_vol}</td><td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'}</td>
+                    <td>${f_vol}</td><td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'}</td>
                 </tr>`;
             });
             document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--text-muted);">無符合標的</td></tr>`;
@@ -449,7 +461,6 @@
             if (d.top_catalysts && d.top_catalysts.length > 0) {
                 let fVN = d.top_catalysts.find(n => n.NewsList && n.NewsList.length > 0);
                 let cLH = fVN ? (fVN.NewsList[0].headline || fVN.NewsList[0].raw_title) : "";
-                // 💡 移除新聞跳出來時的音效與震動，維持降噪原則
                 lastTopNewsHeadline = cLH;
                 
                 let newsData = [...d.top_catalysts].filter(n => !(n?.Type === 'fund' && !showETF) && n?.NewsList && n.NewsList.length > 0);
@@ -487,12 +498,12 @@
                         <td style="color:${latest.is_today?'#ffa500':'var(--text-muted)'}; font-size:11px;">${latest.time||'-'}</td>
                         <td class="sym">${n.Code||n.ticker}</td><td style="color:${f_Score>=6?'var(--yellow)':'var(--text-muted)'}; font-weight:bold;">${f_Score}</td>
                         <td class="${titleClass} news-title-cell" style="font-size:12px; line-height:1.4; max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${hl_text}</td>
-                        <td class="hide-on-mobile" style="color:var(--text-muted);">${f_Float}</td>
+                        <td>${f_Float}</td>
                         <td>${f_Price}</td>
-                        <td class="hide-on-mobile" style="color:var(--text-muted);">${n.RelVol||"-"}</td>
+                        <td>${n.RelVol||"-"}</td>
                         <td>${formatVolAcc(n.VolAcc)}</td>
-                        <td class="hide-on-mobile"><b class="${parseFloat(f_Gap)>0?'up':'down'}">${f_Gap}</b></td>
-                        <td class="hide-on-mobile">${f_vol}</td> 
+                        <td><b class="${parseFloat(f_Gap)>0?'up':'down'}">${f_Gap}</b></td>
+                        <td>${f_vol}</td> 
                         <td class="${parseFloat(f_Pct)>0?'up':'down'}" style="font-weight:bold;">${f_Pct}</td>
                     </tr>`;
                 });
