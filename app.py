@@ -321,19 +321,25 @@ def update_dynamic_watchlist():
 
 def auto_trend_updater():
     global _discovery_buffer
-    STOP_WORDS = {"THE", "TO", "OF", "IN", "FOR", "A", "AND", "IS", "ON", "WITH", "BY", "AS", "AT", "FROM", "IT", "THAT", "THIS", "AN", "BE", "NEW", "UP", "OUT", "ITS", "ARE", "HAS"}
+    # 稍微擴充無效字彙過濾網
+    STOP_WORDS = {"THE", "TO", "OF", "IN", "FOR", "A", "AND", "IS", "ON", "WITH", "BY", "AS", "AT", "FROM", "IT", "THAT", "THIS", "AN", "BE", "NEW", "UP", "OUT", "ITS", "ARE", "HAS", "INC", "CORP", "CO", "LTD"}
     last_settle_date = None
     
-    time.sleep(60)
+    # 💡 修改 1：啟動後僅等待 10 秒即發動第一波新聞掃描，拒絕空轉！
+    time.sleep(10)
+    
     while True:
         try:
             now_ny = datetime.now(TZ_NY)
+            # 💡 因為巡邏頻率變高了，這裡可以完美且及時地捕捉到 04:10 AM 的盤後核銷點
             if now_ny.hour == 4 and now_ny.minute >= 10 and now_ny.date() != last_settle_date:
                 settle_discovery_logs()
                 last_settle_date = now_ny.date()
 
             with brain_lock: target_tickers = DYNAMIC_WATCHLIST.copy()
-            if not target_tickers: time.sleep(10); continue
+            if not target_tickers: 
+                time.sleep(10)
+                continue
 
             all_words = []
             word_sources = {}
@@ -392,21 +398,19 @@ def auto_trend_updater():
                     with open(TRENDS_FILE_PATH, 'w', encoding='utf-8') as f: json.dump(current_content, f, ensure_ascii=False, indent=4)
                     global _cached_trends, _last_trends_update
                     _cached_trends = current_content; _last_trends_update = time.time()
-                    
-                    if requires_github_sync:
-                        github_token = os.getenv('GITHUB_TOKEN'); github_repo = os.getenv('GITHUB_REPO')
-                        if github_token and github_repo:
-                            url = f"https://api.github.com/repos/{github_repo}/contents/trends.json"
-                            headers = {"Authorization": f"Bearer {github_token}", "Accept": "application/vnd.github.v3+json"}
-                            res = requests.get(url, headers=headers)
-                            sha = res.json().get('sha') if res.status_code == 200 else None
-                            payload = {"message": "🤖 AI V42: 戰果權重升級 [skip ci]", "content": base64.b64encode(json.dumps(current_content, indent=4).encode('utf-8')).decode('utf-8')}
-                            if sha: payload["sha"] = sha
-                            requests.put(url, headers=headers, json=payload)
             
-            if _discovery_buffer: flush_discovery_buffer()
-        except: pass
-        time.sleep(86400) 
+            # 只要有抓到新詞（_discovery_buffer 有資料），立刻安全存檔
+            if _discovery_buffer: 
+                flush_discovery_buffer()
+                print(f"✅ [NLP引擎] 發現市場新勢力，戰場快照已成功寫入硬碟！")
+                
+        except Exception as e: 
+            print(f"⚠️ [NLP引擎] 巡邏發生小幅擾動: {e}")
+            pass
+        
+        # 💡 修改 2：將 86400 (24小時) 改為 300 (5分鐘)
+        # 只要伺服器開著，每 5 分鐘就進行一輪深度情報蒐集
+        time.sleep(300)
 
 def scanner_engine():
     global _last_list_update
