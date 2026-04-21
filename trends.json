@@ -1,16 +1,16 @@
 {
     "ETFS": {
         "score": 15,
-        "count": 36,
+        "count": 37,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-20",
+        "last_seen": "2026-04-21",
         "avg_impact_pct": 29.02
     },
     "INC": {
         "score": 15,
-        "count": 84,
+        "count": 85,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-20",
+        "last_seen": "2026-04-21",
         "avg_impact_pct": 192.34
     },
     "DEFIANCE": {
@@ -53,9 +53,9 @@
     },
     "STOCK": {
         "score": 15,
-        "count": 94,
+        "count": 95,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-20",
+        "last_seen": "2026-04-21",
         "avg_impact_pct": 67.09
     },
     "EXPANDS": {
@@ -125,16 +125,16 @@
     },
     "EARNINGS": {
         "score": 15,
-        "count": 110,
+        "count": 111,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-20",
+        "last_seen": "2026-04-21",
         "avg_impact_pct": 192.34
     },
     "HIGHLIGHTS": {
         "score": 15,
-        "count": 106,
+        "count": 107,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-20",
+        "last_seen": "2026-04-21",
         "avg_impact_pct": 67.09
     },
     "DATA": {
@@ -160,9 +160,9 @@
     },
     "STOCKS": {
         "score": 15,
-        "count": 47,
+        "count": 48,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-20",
+        "last_seen": "2026-04-21",
         "avg_impact_pct": 103.29
     },
     "REVENUE": {
@@ -188,9 +188,9 @@
     },
     "ENERGY": {
         "score": 15,
-        "count": 24,
+        "count": 25,
         "avg_pct": 0.0,
-        "last_seen": "2026-04-20",
+        "last_seen": "2026-04-21",
         "avg_impact_pct": 192.34
     },
     "BEST": {
@@ -339,9 +339,9 @@
     },
     "AFTER": {
         "score": 15,
-        "count": 11,
+        "count": 12,
         "avg_impact_pct": 67.09,
-        "last_seen": "2026-04-20"
+        "last_seen": "2026-04-21"
     },
     "PERFORMING": {
         "score": 15,
@@ -351,15 +351,15 @@
     },
     "TRUMP": {
         "score": 15,
-        "count": 22,
+        "count": 23,
         "avg_impact_pct": 103.29,
-        "last_seen": "2026-04-20"
+        "last_seen": "2026-04-21"
     },
     "PSYCHEDELIC": {
         "score": 15,
-        "count": 22,
+        "count": 23,
         "avg_impact_pct": 103.29,
-        "last_seen": "2026-04-20"
+        "last_seen": "2026-04-21"
     },
     "PRESIDENT": {
         "score": 15,
@@ -369,9 +369,9 @@
     },
     "ORDER": {
         "score": 15,
-        "count": 13,
+        "count": 14,
         "avg_impact_pct": 96.71,
-        "last_seen": "2026-04-20"
+        "last_seen": "2026-04-21"
     },
     "HOLDING": {
         "score": 8,
@@ -380,27 +380,27 @@
         "last_seen": "2026-04-20"
     },
     "OIL": {
-        "score": 14,
-        "count": 10,
+        "score": 15,
+        "count": 11,
         "avg_impact_pct": 12.86,
-        "last_seen": "2026-04-20"
+        "last_seen": "2026-04-21"
     },
     "ACTIVE": {
         "score": 15,
-        "count": 10,
+        "count": 11,
         "avg_impact_pct": 40.36,
-        "last_seen": "2026-04-20"
+        "last_seen": "2026-04-21"
     },
     "BUY": {
         "score": 15,
-        "count": 10,
+        "count": 11,
         "avg_impact_pct": 35.29,
-        "last_seen": "2026-04-20"
+        "last_seen": "2026-04-21"
     },
     "MOST": {
         "score": 15,
-        "count": 10,
+        "count": 11,
         "avg_impact_pct": 40.36,
-        "last_seen": "2026-04-20"
+        "last_seen": "2026-04-21"
     }
 }
