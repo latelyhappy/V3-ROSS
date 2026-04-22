@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V43.6 - Mobile Full Table & Scroll</title>
+    <title>Sniper V43.7 - Full UI Restored</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
@@ -20,7 +20,6 @@
         .ghost-btn { background: transparent; border: 1px solid var(--border); color: var(--text-main); padding: 6px 15px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; transition: all 0.2s ease; margin-right: 10px; flex-shrink: 0;}
         .ghost-btn:hover { background: rgba(163, 113, 247, 0.2); border-color: var(--purple); color: #fff; }
         
-        /* PC 端維持 200vw 的雙螢幕寬度 */
         #workspace { position: relative; width: 200vw; min-height: 150vh; padding: 10px; box-sizing: border-box; overflow: visible; }
         
         .window-panel { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.6); position: absolute; touch-action: none; }
@@ -53,30 +52,20 @@
 
         #mobile-tabs { display: none; }
         
-        /* ========================================================= */
-        /* 💡 終極手機版排版修正 (解決表格擠壓與欄位隱藏問題) */
-        /* ========================================================= */
         body.mobile-mode { overflow-y: auto !important; overflow-x: hidden !important; padding-bottom: 60px; }
         body.mobile-mode #tactical-bar { overflow-x: auto; white-space: nowrap; padding-right: 20px; }
         body.mobile-mode #mobile-tabs { display: flex; position: fixed; bottom: 0; left: 0; width: 100%; background: var(--bg-surface); z-index: 10000; border-top: 1px solid var(--border); }
         body.mobile-mode .tab-btn { flex: 1; padding: 15px 0; background: transparent; border: none; color: var(--text-muted); font-weight: bold; font-size: 13px; cursor: pointer; }
         body.mobile-mode .tab-btn.active { color: var(--blue); border-top: 2px solid var(--blue); background: rgba(88, 166, 255, 0.05); }
-        
-        /* 強制鎖死手機工作區寬度為 100vw，防止整個網頁亂滑 */
         body.mobile-mode #workspace { display: block; overflow: hidden; height: auto; min-height: auto; padding: 5px; width: 100vw; box-sizing: border-box; }
-        
         body.mobile-mode .window-panel { position: static !important; width: 100% !important; height: auto !important; min-height: 85vh; transform: none !important; margin-bottom: 15px; display: none; box-shadow: none; border: none; border-bottom: 1px solid var(--border); }
         body.mobile-mode .window-panel.active-tab { display: flex !important; flex-direction: column; }
         body.mobile-mode .window-panel::after { display: none; }
         body.mobile-mode .panel-header { cursor: default; }
-        
-        /* 💡 內部水平捲動引擎：讓內容可以超出面板，並透過觸控順滑捲動 */
         body.mobile-mode .panel-content { flex: 1; overflow-x: auto !important; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: 15px; width: 100%; display: block; }
         body.mobile-mode table { font-size: 12px; width: 100%; min-width: max-content; } 
         body.mobile-mode th, body.mobile-mode td { padding: 12px 6px; white-space: nowrap; } 
         body.mobile-mode .sym { font-size: 14px; }
-        
-        /* 限制新聞標題不要拉得無限長 */
         body.mobile-mode .news-title-cell { max-width: 180px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
         input[type=number]::-webkit-inner-spin-button, 
@@ -190,7 +179,7 @@
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
 
-        // 💡 V43.5 螢幕長亮 (Wake Lock) 引擎
+        // 💡 螢幕長亮 (Wake Lock) 引擎
         let wakeLock = null;
         async function requestWakeLock() {
             try {
@@ -270,7 +259,6 @@
             return num;
         }
 
-        // 💡 修復 1：格式化加速標籤顏色 (偵測到 🩸 或 🔻 變為紅色)
         function formatVolAcc(v) {
             if (!v || v === '-' || v.trim() === '') return `<span style="color:var(--text-muted);">-</span>`;
             let color = "var(--text-muted)";
@@ -405,11 +393,9 @@
                 let isFatal = r.Signal && r.Signal.includes("💀"), icon = isFatal ? " 💀" : ((det.CatScore || 0) > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
                 let rowClass = r.Status ? `tr-${r.Status}` : ""; if (r.Signal && r.Signal.includes("⚡VCP")) rowClass += " tr-vcp"; if (isFatal) rowClass += " trap-row"; 
                 let f_float = r.Type === 'fund' ? '<span style="color:var(--border);">N/A(ETF)</span>' : (r.Float||'-');
-                
-                let f_vol = r.Vol || "-";
-                if (r.Is100K) { f_vol = `<span class="vol-100k">${f_vol}</span>`; icon += " 📦"; }
+                let f_vol = r.Is100K ? `<span class="vol-100k">${r.Vol}</span>` : (r.Vol||"-");
 
-                // 💡 修復 4：補上日誌與排行榜的 Pct(Amt) 呈現
+                // 💡 修復 1: 加入 ondblclick 雙擊前往 TradingView
                 h1 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                     <td class="status-indicator"></td><td style="color:var(--text-muted);">${r.Time||'-'}</td><td class="sym">${r.Code}${icon}</td>
                     <td>${f_float}</td><td>${r.Price||'-'}</td><td>${r.RelVol||'-'}</td>
@@ -442,10 +428,9 @@
                 let det = d.details[r.Code] || {}, isFatal = det.IsTrap;
                 let icon = isFatal ? " 💀" : ((det.CatScore||0)>8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
                 let rowClass = `tr-${det.Status || r.Status || 'green'}`; if (isFatal) rowClass += " trap-row";
-                
-                let f_vol = r.Vol || "-";
-                if (det.Is100K) { f_vol = `<span class="vol-100k">${f_vol}</span>`; icon += " 📦"; }
+                let f_vol = det.Is100K ? `<span class="vol-100k">${r.Vol}</span>` : (r.Vol||"-");
 
+                // 💡 修復 1: 加入 ondblclick 雙擊前往 TradingView
                 h2 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                     <td class="status-indicator"></td><td class="sym">${r.Code}${icon}</td><td>${r.Type==='fund'?'N/A':(r.Float||det.Float||"-")}</td>
                     <td>${r.Price||'-'}</td><td>${det.RelVol||r.RelVol||'-'}</td>
@@ -456,6 +441,7 @@
             });
             document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--text-muted);">無符合標的</td></tr>`;
 
+            // 💡 修復 2：重新加回情報雷達 (News List) 的渲染迴圈
             let h3 = "";
             if (d.top_catalysts && d.top_catalysts.length > 0) {
                 let fVN = d.top_catalysts.find(n => n.NewsList && n.NewsList.length > 0);
@@ -486,12 +472,11 @@
                     let f_Float = n.Type === 'fund' ? 'N/A' : (n.Float || "-");
                     let f_Gap = n.Gap || "-";
                     
-                    let f_vol = n.Vol || "-";
-                    if (n.Is100K) { f_vol = `<span class="vol-100k">${f_vol} 📦</span>`; }
-                    
+                    let f_vol = n.Is100K ? `<span class="vol-100k">${n.Vol||"-"} 📦</span>` : (n.Vol||"-");
                     let rowClass = isElite ? "elite-news-row" : "tr-green";
                     let titleClass = isElite ? "elite-title" : "";
 
+                    // 💡 加入 ondblclick 雙擊前往 TradingView
                     h3 += `<tr class="${rowClass}" onclick="loadDetail('${n.Code||n.ticker}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[3]);" ondblclick="openTW('${n.Code||n.ticker}')">
                         <td class="status-indicator" style="background:${f_Score >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
                         <td style="color:${latest.is_today?'#ffa500':'var(--text-muted)'}; font-size:11px;">${latest.time||'-'}</td>
@@ -508,6 +493,7 @@
                 });
                 document.getElementById('news-list').innerHTML = h3 || `<tr><td colspan="12" style="text-align:center; padding:20px; color:var(--text-muted);">符合條件之情報已過濾</td></tr>`;
             } else { document.getElementById('news-list').innerHTML = `<tr><td colspan="12" style="text-align:center; padding:20px; color:var(--text-muted);">今日尚無重大情報</td></tr>`; }
+            
             if(activeSym) loadDetail(activeSym);
         }
 
@@ -516,8 +502,6 @@
             if (!d && !rankData) return; if (!d && rankData) d = { Price:rankData.Price, Pct:rankData.Pct, Vol:rankData.Vol, RelVol:"-", Float:rankData.Type==='fund'?"N/A(ETF)":(rankData.Float||"-"), StopLoss:0, CatScore:0, IsTrap:false, NewsList:[], VolAcc:"-", Is100K:false, Gap:"-", SN_Score:0, VsaState:0 };
             
             let trapWarn = d.IsTrap ? `<div style="background:rgba(248,81,73,0.2); border:1px solid var(--red); color:var(--red); padding:8px; margin-bottom:10px; border-radius:6px; font-weight:bold; font-size:13px; animation:blood-pulse 1s infinite;">🩸 致命警告：偵測到 S-1/S-3 增發稀釋</div>` : "";
-            
-            // 💡 修復 2：精準抓取並繪製 VCP 壓縮進度條
             let vcpHTML = ""; if (d.Signal && d.Signal.includes("VCP")) { let m = d.Signal.match(/\((\d+)m\)/); let mins = m ? parseInt(m[1]) : 1; vcpHTML = `<div style="font-size:11px; color:var(--text-muted);">⚡ 壓縮蓄力 (${mins} mins)</div><div class="vcp-bar-container"><div class="vcp-bar" style="width:${Math.min(mins*10,100)}%; background:${mins>=10?'#fff':'#ffa500'};"></div></div>`; }
 
             let volHTML = d.Is100K ? `<b class="vol-100k" style="font-size:14px;">${d.Vol||'-'} 📦</b>` : `<b style="color:var(--text-main); font-size:14px;">${d.Vol||'-'}</b>`;
