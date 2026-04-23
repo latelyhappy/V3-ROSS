@@ -20,6 +20,7 @@ DISCOVERY_LOG_PATH = os.path.join(os.path.dirname(__file__), 'discovery_log.json
 SESSION_BACKUP_PATH = os.path.join(os.path.dirname(__file__), 'session_state.json')
 
 # === 開發規格書 (戰術設定) ===
+# 🛡️ 讀取 Railway 環境變數中的金鑰
 FINNHUB_TOKEN = os.getenv('FINNHUB_TOKEN')
 
 _cached_trends = {}
@@ -318,7 +319,7 @@ def auto_trend_updater():
                     except: pass
                 
                 try:
-                    # 🛡️ 這裡的 RSS 僅供 AI 分析詞頻，不作為雷達新聞來源
+                    # 這裡保留微量的 RSS 僅供 NLP 分析詞頻，完全不參與雷達顯示
                     res = requests.get(f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US", headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
                     if res.status_code == 200:
                         for item in ET.fromstring(res.text).findall('./channel/item')[:3]:
@@ -372,90 +373,100 @@ def auto_trend_updater():
             pass
         time.sleep(300)
 
+# ==============================================================================
+# 💡 V43.11 點射狙擊模式 (Precision Company-News Endpoint)
+# ==============================================================================
 def finnhub_news_monitor_worker():
     if not FINNHUB_TOKEN:
         print("⚠️ [情報雷達] Railway 未設定環境變數 FINNHUB_TOKEN。請立即設定以啟動雷達！")
         return
     
-    print("📡 [情報雷達] 純淨引擎 (Pure Finnhub) 已啟動！Yahoo 備援已全數摘除。")
+    print("📡 [情報雷達] 極致點射狙擊引擎已啟動！專注掃描自選股專屬公關稿。")
     time.sleep(10)
     seen_news_urls = set()
     
     while True:
         try:
-            url = f"https://finnhub.io/api/v1/news?category=general&token={FINNHUB_TOKEN}"
-            headers = {"User-Agent": "Mozilla/5.0 Sniper news engine"}
-            res = requests.get(url, headers=headers, timeout=10)
-            if res.status_code == 200:
-                articles = res.json()
-                
-                with brain_lock:
-                    current_watchlist = DYNAMIC_WATCHLIST.copy()
-                
-                for art in articles[:10]:
-                    art_url = art.get('url', '')
-                    art_headline = art.get('headline', '')
-                    
-                    if not art_url or not art_headline or art_url in seen_news_urls: continue
-                    
-                    found_tickers = []
-                    art_headline_upper = art_headline.upper()
-                    for ticker in current_watchlist:
-                        if re.search(r'\b' + re.escape(ticker) + r'\b', art_headline_upper):
-                            found_tickers.append(ticker)
-                    
-                    if found_tickers:
-                        score, is_trap, elites = calculate_hft_score(art_headline)
-                        art_time = art.get('datetime', time.time())
-                        dt_utc = datetime.fromtimestamp(art_time, pytz.UTC)
-                        dt_tpe = dt_utc.astimezone(TZ_TW)
-                        time_str_tpe = dt_tpe.strftime("%m-%d %H:%M")
-                        is_today_tpe = (dt_tpe.date() == datetime.now(TZ_TW).date())
+            with brain_lock:
+                current_watchlist = DYNAMIC_WATCHLIST.copy()
+            
+            if not current_watchlist:
+                time.sleep(10)
+                continue
 
-                        ticker_str = ",".join(found_tickers)
+            # 設定時間區間 (只抓過去 3 天內的公司新聞)
+            now_ny = datetime.now(TZ_NY)
+            end_date = now_ny.strftime('%Y-%m-%d')
+            start_date = (now_ny - timedelta(days=3)).strftime('%Y-%m-%d')
+
+            # 💡 精準狙擊：逐一向 Finnhub 索要名單上的特定股票新聞
+            for ticker in current_watchlist:
+                try:
+                    url = f"https://finnhub.io/api/v1/company-news?symbol={ticker}&from={start_date}&to={end_date}&token={FINNHUB_TOKEN}"
+                    headers = {"User-Agent": "Mozilla/5.0 Sniper news engine"}
+                    res = requests.get(url, headers=headers, timeout=5)
+                    
+                    if res.status_code == 200:
+                        articles = res.json()
                         
-                        new_article = {
-                            "ticker": ticker_str, 
-                            "title": "⏳ 翻譯中...",
-                            "raw_title": art_headline,
-                            "link": art_url,
-                            "time": time_str_tpe,
-                            "is_today": is_today_tpe,
-                            "score": score,
-                            "elites": list(elites),
-                            "source": "Finnhub"
-                        }
-                        
-                        with brain_lock:
-                            update_top_catalysts = False
-                            for ticker in found_tickers:
+                        for art in articles[:5]: # 只取每檔股票最新的前 5 則
+                            art_url = art.get('url', '')
+                            art_headline = art.get('headline', '')
+                            
+                            if not art_url or not art_headline or art_url in seen_news_urls: 
+                                continue
+                                
+                            score, is_trap, elites = calculate_hft_score(art_headline)
+                            
+                            # 解析並校正為台灣時間 (TPE)
+                            art_time = art.get('datetime', time.time())
+                            dt_utc = datetime.fromtimestamp(art_time, pytz.UTC)
+                            dt_tpe = dt_utc.astimezone(TZ_TW)
+                            time_str_tpe = dt_tpe.strftime("%m-%d %H:%M")
+                            is_today_tpe = (dt_tpe.date() == datetime.now(TZ_TW).date())
+                            
+                            new_article = {
+                                "ticker": ticker, 
+                                "title": "⏳ 翻譯中...",
+                                "raw_title": art_headline,
+                                "link": art_url,
+                                "time": time_str_tpe,
+                                "is_today": is_today_tpe,
+                                "score": score,
+                                "elites": list(elites),
+                                "source": "Finnhub PR"
+                            }
+                            
+                            with brain_lock:
                                 if ticker in MASTER_BRAIN["details"]:
                                     details = MASTER_BRAIN["details"][ticker]
                                     if 'NewsList' not in details: details['NewsList'] = []
                                     
-                                    if not any(n['raw_title'] == art_headline for n in details['NewsList']):
+                                    # 利用 URL 去重
+                                    if not any(n['link'] == art_url for n in details['NewsList']):
                                         details['NewsList'].insert(0, new_article)
                                         details['NewsList'] = details['NewsList'][:10]
                                         
-                                        total_score_combined = sum(n['score'] for n in details["NewsList"])
-                                        details["CatScore"] = total_score_combined
-                                        
+                                        details["CatScore"] = sum(n['score'] for n in details["NewsList"])
                                         details["IsTrap"] = details.get("IsTrap", False) or is_trap
                                         details["HasNews"] = True
-                                        update_top_catalysts = True
                                         
-                                        threading.Thread(target=background_translate_worker, args=(ticker_str, art_headline, MASTER_BRAIN), daemon=True).start()
+                                        MASTER_BRAIN["top_catalysts"] = extract_top_catalysts(MASTER_BRAIN)
+                                        for e in elites:
+                                            if e not in MASTER_BRAIN["elite_words"]: MASTER_BRAIN["elite_words"].append(e)
+                                        
+                                        # 啟動翻譯
+                                        threading.Thread(target=background_translate_worker, args=(ticker, art_headline, MASTER_BRAIN), daemon=True).start()
                                         time.sleep(0.5)
 
-                            if update_top_catalysts:
-                                MASTER_BRAIN["top_catalysts"] = extract_top_catalysts(MASTER_BRAIN)
-                                for e in elites:
-                                    if e not in MASTER_BRAIN["elite_words"]: MASTER_BRAIN["elite_words"].append(e)
-
-                    seen_news_urls.add(art_url) 
-                    if len(seen_news_urls) > 500: seen_news_urls.pop() 
-
-            time.sleep(60) 
+                            seen_news_urls.add(art_url) 
+                            if len(seen_news_urls) > 1000: seen_news_urls.pop() 
+                except Exception as inner_e:
+                    pass
+                
+                # 🛡️ 閃避被砍的絕對防線：每狙擊一檔，強制休眠 1.5 秒
+                # 40 檔股票 * 1.5 秒 = 60 秒 (完美等於免費版的每分鐘 60 次限制)
+                time.sleep(1.5)
 
         except Exception as e:
             time.sleep(30) 
@@ -612,10 +623,6 @@ def scanner_engine():
                     vol_warn = "(⚠️量低)" if (p_live * max(v_live, v_prev, avg_vol)) < 50000 else ""
                     current_signal = None; current_level = 0; status_color = "green"; is_shakeout = False
                     
-                    # 💡 🛡️ 已修復語法錯誤：&& -> and
-                    if is_100k and gap_pct >= MIN_GAP_PCT and not is_shakeout:
-                        pass # 此行僅作展示修復，實際邏輯在下方
-                    
                     if (z_score > 2.5 or ratio_3v3 > 2.5) and p_live < p_prev:
                         is_shakeout = True; tracker['state'] = 'Shakeout'; tracker['shakeout_high'] = float(df['high'].iloc[-1])
                         current_signal = "💀 洗盤觀察中"; status_color = "border"; current_level = 1
@@ -666,7 +673,7 @@ def scanner_engine():
                             cooldown_tracker[ticker] = {'time': now_ts, 'level': current_level}
                             audio_target = None
                             
-                            # 💡 🛡️ 已修復語法錯誤：&& -> and
+                            # 💡 已確保修正為 Python 語法的 'and'
                             if is_100k and gap_pct >= MIN_GAP_PCT and not is_shakeout:
                                 audio_target = "nova"
                                 is_double_lock = True
@@ -691,8 +698,6 @@ def scanner_engine():
                         
                         MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
 
-                    # 💡 🛡️ 摘除手術完成：徹底拔除 Yahoo 抓取線程，只依靠背景的 Finnhub
-                    # threading.Thread(target=fetch_and_score_news, args=(ticker, cell, is_double_lock), daemon=True).start()
                 except Exception as e: continue
             time.sleep(5)
         except Exception as e: time.sleep(10)
