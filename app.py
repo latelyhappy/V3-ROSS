@@ -742,7 +742,7 @@ def scanner_engine():
                             cooldown_tracker[ticker] = {'time': now_ts, 'level': current_level}
                             audio_target = None
                             
-                            if is_100k && gap_pct >= MIN_GAP_PCT && not is_shakeout:
+                            if is_100k and gap_pct >= MIN_GAP_PCT and not is_shakeout:
                                 audio_target = "nova"
                                 is_double_lock = True
                                 stats["Signal"] = f"🎯雙鎖定: {stats['Signal']}" if stats["Signal"] else "🎯雙鎖定:爆量跳空"
