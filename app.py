@@ -27,6 +27,10 @@ _discovery_buffer = []
 _last_flush_time = time.time()
 _last_list_update = 0
 
+# 💡 V43.8 新增全域 SPY 同步變數
+SPY_real_pct = 0.0
+_last_spy_update = 0
+
 TW_USERNAME = os.getenv('TW_USERNAME', 'guest') 
 TW_PASSWORD = os.getenv('TW_PASSWORD', 'guest')
 PORT = int(os.getenv('PORT', 8080))
@@ -42,7 +46,7 @@ try:
         CATALYST_ARMORY = json.load(f)
 except: CATALYST_ARMORY = {"INVERTED_TRAPS":{}, "RED":{}, "ORANGE":{}, "YELLOW":{}, "BLACK":{}}
 
-MASTER_BRAIN = {"surge_log": [], "details": {}, "leaderboard": [], "top_catalysts": [], "last_update": "", "elite_words": []}
+MASTER_BRAIN = {"surge_log": [], "details": {}, "leaderboard": [], "alpha_list": [], "top_catalysts": [], "last_update": "", "elite_words": []}
 DYNAMIC_WATCHLIST = []
 STATS_MAP = {} 
 news_cache = {} 
@@ -232,7 +236,6 @@ def check_sec_fatal_traps(ticker):
         return False
     except: return False
 
-# 💡 修復 3：情報神經極速化 (加入 force 參數無視冷卻)
 def fetch_and_score_news(ticker, cell, force=False):
     now = time.time()
     if not force and ticker in news_cache and (now - news_cache[ticker] < 900): return
@@ -324,10 +327,8 @@ def update_dynamic_watchlist():
 
 def auto_trend_updater():
     global _discovery_buffer
-    # 稍微擴充無效字彙過濾網
     STOP_WORDS = {"THE", "TO", "OF", "IN", "FOR", "A", "AND", "IS", "ON", "WITH", "BY", "AS", "AT", "FROM", "IT", "THAT", "THIS", "AN", "BE", "NEW", "UP", "OUT", "ITS", "ARE", "HAS", "INC", "CORP", "CO", "LTD"}
     last_settle_date = None
-    
     time.sleep(10)
     
     while True:
@@ -381,7 +382,6 @@ def auto_trend_updater():
                             impact_score = min(5 + (max_pct / 10.0), 20)
                             current_content[w] = {"score": round(impact_score), "count": 1, "avg_impact_pct": max_pct, "last_seen": datetime.now(TZ_NY).strftime("%Y-%m-%d")}
                             added_words.append(w); requires_github_sync = True
-                            
                             _discovery_buffer.append({"Ticker": best_source[0], "Time": datetime.now(TZ_NY).strftime("%Y-%m-%d %H:%M:%S"), "Word": w, "Entry_Price": entry_price, "Settled": False})
                         else:
                             old_data = current_content[w]
@@ -407,11 +407,10 @@ def auto_trend_updater():
         except Exception as e: 
             print(f"⚠️ [NLP引擎] 巡邏發生小幅擾動: {e}")
             pass
-        
         time.sleep(300)
 
 def scanner_engine():
-    global _last_list_update
+    global _last_list_update, SPY_real_pct, _last_spy_update
     tv = TvDatafeed()
     try:
         if TW_USERNAME != 'guest': tv = TvDatafeed(TW_USERNAME, TW_PASSWORD)
@@ -421,6 +420,23 @@ def scanner_engine():
     while True:
         try:
             now_ts = time.time()
+            
+            # 💡 V43.8 SPY 全域同步引擎
+            if now_ts - _last_spy_update > 30:
+                try:
+                    url = "https://scanner.tradingview.com/america/scan"
+                    payload = {"symbols": {"tickers": ["AMEX:SPY"]}, "columns": ["close", "premarket_change", "change"]}
+                    res = requests.post(url, json=payload, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+                    data = res.json()
+                    if data.get('data'):
+                        spy_data = data['data'][0]['d']
+                        now_ny = datetime.now(TZ_NY)
+                        is_premarket = now_ny.time() < datetime.strptime("09:30", "%H:%M").time()
+                        pct = spy_data[1] if is_premarket and spy_data[1] is not None else spy_data[2]
+                        if pct is not None: SPY_real_pct = float(pct)
+                    _last_spy_update = now_ts
+                except: pass
+
             if now_ts - _last_list_update > 300: 
                 update_dynamic_watchlist()
                 _last_list_update = now_ts
@@ -485,6 +501,7 @@ def scanner_engine():
                     is_grind = bool((curr_ema10 > curr_ema20) and (p_live >= curr_ema10) and (0.5 <= rel_vol_display < 2.5) and (real_pct > 2.0) and not is_spark and not is_ride)
 
                     ratio_3v3 = 1.0; z_score = 0.0; staircase = False; vol_acc_str = "-"
+                    vr_acc = 0.0 # 💡 V43.8 新增量比加速度初始化
                     
                     if len(df) >= 6:
                         avg_v_60 = float(df['volume'].iloc[:-1].mean())
@@ -495,9 +512,11 @@ def scanner_engine():
                         vol_B = float(df['volume'].iloc[-6:-3].sum())
                         vol_C = float(df['volume'].iloc[-9:-6].sum()) if len(df) >= 9 else 0.0
                         
+                        # 💡 V43.8 SMA 量比加速度運算 (防呆 max 分母)
+                        if vol_B >= 0: vr_acc = float(round(((vol_A - vol_B) / max(vol_B, 0.01)) * 100, 2))
+                        
                         if vol_B > 0:
                             ratio_3v3 = float(vol_A / vol_B)
-                            # 💡 修復 1：根據價格漲跌，將加速符號方向化
                             sym_up, sym_extreme = ("↗", "🔥") if p_live >= p_prev else ("🔻", "🩸")
                             if len(df) >= 9:
                                 if vol_A > vol_B > vol_C: vol_acc_str = f"{sym_extreme} {ratio_3v3:.2f}x"
@@ -517,17 +536,16 @@ def scanner_engine():
                     r_er = real_pct / rel_vol_display if rel_vol_display > 0 else real_pct
                     
                     vsa_state = 0
-                    if rel_vol_display > 5 and r_er < 1.0:
-                        m_vsa = 0.2
-                        vsa_state = 2
-                    elif rel_vol_display > 3 and r_er < 1.0:
-                        m_vsa = 0.5
-                        vsa_state = 1
-                    else:
-                        m_vsa = 1.0 + (math.log(max(rel_vol_display, 1.0)) * 0.1)
+                    if rel_vol_display > 5 and r_er < 1.0: m_vsa = 0.2; vsa_state = 2
+                    elif rel_vol_display > 3 and r_er < 1.0: m_vsa = 0.5; vsa_state = 1
+                    else: m_vsa = 1.0 + (math.log(max(rel_vol_display, 1.0)) * 0.1)
 
                     a_m = ratio_3v3 if ratio_3v3 > 1.0 else ratio_3v3 * 0.5
                     sn_score = int(round(base_score * m_vsa * a_m))
+
+                    # 💡 V43.8 Alpha 超額收益計算
+                    alpha_val = float(round(real_pct - SPY_real_pct, 2))
+                    alpha_rating = "High" if alpha_val > 2.0 else ("Mid" if alpha_val > 0.5 else "Low")
 
                     tracker = STATE_TRACKER.get(ticker, {'state': 'None', 'duration': 0, 'vcp_low': float('inf'), 'shakeout_high': 0.0})
                     dynamic_stop = curr_ema20 * 0.99 
@@ -554,7 +572,6 @@ def scanner_engine():
                     elif z_score > 3.0 or (ratio_3v3 > 2.0 and staircase):
                         current_signal = "🔥 極端加速"; status_color = "yellow"; current_level = 4
                     elif is_spark: current_signal = f"🔥強力點火 {vol_warn}"; current_level = 4; status_color = "yellow"
-                    # 💡 修復 2：VCP 訊號帶入壓縮時間，讓前端讀取
                     elif tracker['state'] == 'VCP' and tracker['duration'] >= 3: current_signal = f"⚡VCP壓縮鎖定 ({tracker['duration']}m) {vol_warn}"; current_level = 3; status_color = "vcp" 
                     elif is_grind: current_signal = f"🚜穩步推升 {vol_warn}"; current_level = 2; status_color = "blue"  
                     elif is_ride: current_signal = f"💎趨勢滑行 {vol_warn}"; current_level = 1; status_color = "purple"
@@ -570,7 +587,10 @@ def scanner_engine():
                         "Is100K": is_100k,
                         "Gap": f"{gap_pct:+.2f}%",
                         "SN_Score": sn_score, 
-                        "VsaState": vsa_state 
+                        "VsaState": vsa_state,
+                        "VR_Acc": vr_acc,             # 💡 傳遞 V43.8 參數
+                        "Alpha": alpha_val,           # 💡 傳遞 V43.8 參數
+                        "Alpha_Rating": alpha_rating  # 💡 傳遞 V43.8 參數
                     }
                     
                     last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})
@@ -612,9 +632,13 @@ def scanner_engine():
                         if not active_items: active_items = all_items 
                         
                         MASTER_BRAIN["leaderboard"] = sorted(active_items, key=get_pct, reverse=True)[:20]
+                        
+                        # 💡 V43.8 更新 Alpha 動能清單陣列
+                        alpha_items = [x for x in active_items if x.get("VR_Acc", 0) > 30.0 and x.get("Alpha", 0) > 0.0]
+                        MASTER_BRAIN["alpha_list"] = sorted(alpha_items, key=lambda x: x.get("Alpha", 0), reverse=True)
+                        
                         MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
 
-                    # 💡 修復 3：如果觸發雙鎖定，無視 15 分鐘冷卻，立刻傳遞給線程更新新聞！
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell, is_double_lock), daemon=True).start()
                 except Exception as e: continue
             time.sleep(5)

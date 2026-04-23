@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V43.7 - Full UI Restored</title>
+    <title>Sniper V43.8 - Alpha Screener Active</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
@@ -133,6 +133,25 @@
             </div>
         </div>
 
+        <div id="win-alpha" class="window-panel">
+            <div class="panel-header"><span style="color:var(--neon-green); text-shadow:0 0 5px rgba(57,255,20,0.3);">🚀 Alpha 動能清單</span></div>
+            <div class="panel-content">
+                <table>
+                    <thead><tr>
+                        <th class="status-indicator"></th>
+                        <th>代碼</th>
+                        <th>Alpha 超額</th>
+                        <th>量比加速度</th>
+                        <th>漲幅</th>
+                        <th>量比</th>
+                        <th>加速</th>
+                        <th>訊號</th>
+                    </tr></thead>
+                    <tbody id="alpha-list"><tr><td colspan="8" style="text-align:center; padding: 20px; color: var(--text-muted);">掃描中...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
         <div id="win-news" class="window-panel">
             <div class="panel-header"><span>🗞️ 情報雷達</span></div>
             <div class="panel-content">
@@ -166,7 +185,8 @@
 
     <div id="mobile-tabs">
         <button class="tab-btn active" onclick="switchTab('win-rank', this)">🏆 排行</button>
-        <button class="tab-btn" onclick="switchTab('win-log', this)">🚀 日誌</button>
+        <button class="tab-btn" onclick="switchTab('win-alpha', this)">🚀 Alpha</button>
+        <button class="tab-btn" onclick="switchTab('win-log', this)">動態</button>
         <button class="tab-btn" onclick="switchTab('win-news', this)">🗞️ 情報</button>
         <button class="tab-btn" onclick="switchTab('win-detail', this)">📊 戰報</button>
     </div>
@@ -179,7 +199,6 @@
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
 
-        // 💡 螢幕長亮 (Wake Lock) 引擎
         let wakeLock = null;
         async function requestWakeLock() {
             try {
@@ -291,7 +310,8 @@
 
         function initWindowManager() {
             if (isMobileMode) return; 
-            const wins = ['win-log', 'win-rank', 'win-news', 'win-detail'];
+            // 💡 新增 win-alpha 到視窗管理器
+            const wins = ['win-log', 'win-rank', 'win-news', 'win-detail', 'win-alpha'];
             
             let w_half = (window.innerWidth / 2) - 15;
             let h_half = (window.innerHeight / 2) - 35;
@@ -299,7 +319,8 @@
                 'win-log': {x:10, y:10, w: w_half, h: h_half},
                 'win-detail': {x:10 + w_half + 10, y:10, w: w_half, h: h_half},
                 'win-rank': {x:10, y:10 + h_half + 10, w: w_half, h: h_half},
-                'win-news': {x:10 + w_half + 10, y:10 + h_half + 10, w: w_half, h: h_half}
+                'win-news': {x:10 + w_half + 10, y:10 + h_half + 10, w: w_half, h: h_half},
+                'win-alpha': {x:10 + w_half + 10, y:10 + h_half + 10, w: w_half, h: h_half} // 預設放在情報雷達附近
             };
 
             wins.forEach(id => {
@@ -329,7 +350,7 @@
             t.setAttribute('data-x',x); 
             t.setAttribute('data-y',y); 
         }
-        function sL() { ['win-log','win-rank','win-news','win-detail'].forEach(id=>{ let el=document.getElementById(id); if(el) localStorage.setItem('sniper_v42_layout_'+id, JSON.stringify({x:parseFloat(el.getAttribute('data-x'))||0, y:parseFloat(el.getAttribute('data-y'))||0, w:el.offsetWidth, h:el.offsetHeight})); }); }
+        function sL() { ['win-log','win-rank','win-news','win-detail','win-alpha'].forEach(id=>{ let el=document.getElementById(id); if(el) localStorage.setItem('sniper_v42_layout_'+id, JSON.stringify({x:parseFloat(el.getAttribute('data-x'))||0, y:parseFloat(el.getAttribute('data-y'))||0, w:el.offsetWidth, h:el.offsetHeight})); }); }
         
         function resetLayout() { 
             let savedZoom = localStorage.getItem('sniper_zoom');
@@ -395,7 +416,6 @@
                 let f_float = r.Type === 'fund' ? '<span style="color:var(--border);">N/A(ETF)</span>' : (r.Float||'-');
                 let f_vol = r.Is100K ? `<span class="vol-100k">${r.Vol}</span>` : (r.Vol||"-");
 
-                // 💡 修復 1: 加入 ondblclick 雙擊前往 TradingView
                 h1 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                     <td class="status-indicator"></td><td style="color:var(--text-muted);">${r.Time||'-'}</td><td class="sym">${r.Code}${icon}</td>
                     <td>${f_float}</td><td>${r.Price||'-'}</td><td>${r.RelVol||'-'}</td>
@@ -409,9 +429,7 @@
                     played[r.SignalTS] = r.SignalTS; 
                     sounds[r.Audio].currentTime=0; 
                     sounds[r.Audio].play().catch(e=>{}); 
-                    if ("vibrate" in navigator) {
-                        navigator.vibrate([300, 100, 300, 100, 300]); 
-                    }
+                    if ("vibrate" in navigator) navigator.vibrate([300, 100, 300, 100, 300]); 
                 }
             });
             document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="11" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
@@ -430,7 +448,6 @@
                 let rowClass = `tr-${det.Status || r.Status || 'green'}`; if (isFatal) rowClass += " trap-row";
                 let f_vol = det.Is100K ? `<span class="vol-100k">${r.Vol}</span>` : (r.Vol||"-");
 
-                // 💡 修復 1: 加入 ondblclick 雙擊前往 TradingView
                 h2 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                     <td class="status-indicator"></td><td class="sym">${r.Code}${icon}</td><td>${r.Type==='fund'?'N/A':(r.Float||det.Float||"-")}</td>
                     <td>${r.Price||'-'}</td><td>${det.RelVol||r.RelVol||'-'}</td>
@@ -441,7 +458,28 @@
             });
             document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--text-muted);">無符合標的</td></tr>`;
 
-            // 💡 修復 2：重新加回情報雷達 (News List) 的渲染迴圈
+            // 💡 V43.8 渲染 Alpha 動能清單
+            let h_alpha = "";
+            (d.alpha_list || []).forEach(r => {
+                let det = d.details[r.Code] || {};
+                let icon = det.IsTrap ? " 💀" : ((det.CatScore||0)>8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
+                let rowClass = `tr-${det.Status || r.Status || 'green'}`; if (det.IsTrap) rowClass += " trap-row";
+                
+                let alphaColor = r.Alpha_Rating === 'High' ? 'var(--neon-green)' : (r.Alpha_Rating === 'Mid' ? 'var(--yellow)' : 'var(--text-muted)');
+                let alphaGlow = r.Alpha_Rating === 'High' ? 'text-shadow: 0 0 5px rgba(57,255,20,0.4);' : '';
+                
+                h_alpha += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
+                    <td class="status-indicator"></td><td class="sym">${r.Code}${icon}</td>
+                    <td style="color:${alphaColor}; font-weight:bold; ${alphaGlow}">${r.Alpha > 0 ? '+'+r.Alpha : r.Alpha}%</td>
+                    <td style="color:var(--yellow); font-weight:bold;">${r.VR_Acc}%</td>
+                    <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct}</td>
+                    <td>${r.RelVol}</td>
+                    <td>${formatVolAcc(r.VolAcc)}</td>
+                    <td style="font-weight:bold; color:${r.Signal.includes('🎯') ? 'var(--neon-green)' : 'inherit'};">${r.Signal}</td>
+                </tr>`;
+            });
+            document.getElementById('alpha-list').innerHTML = h_alpha || `<tr><td colspan="8" style="text-align:center; padding:20px; color:var(--text-muted);">尚未掃描到 Alpha 超額動能</td></tr>`;
+
             let h3 = "";
             if (d.top_catalysts && d.top_catalysts.length > 0) {
                 let fVN = d.top_catalysts.find(n => n.NewsList && n.NewsList.length > 0);
@@ -476,8 +514,7 @@
                     let rowClass = isElite ? "elite-news-row" : "tr-green";
                     let titleClass = isElite ? "elite-title" : "";
 
-                    // 💡 加入 ondblclick 雙擊前往 TradingView
-                    h3 += `<tr class="${rowClass}" onclick="loadDetail('${n.Code||n.ticker}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[3]);" ondblclick="openTW('${n.Code||n.ticker}')">
+                    h3 += `<tr class="${rowClass}" onclick="loadDetail('${n.Code||n.ticker}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[4]);" ondblclick="openTW('${n.Code||n.ticker}')">
                         <td class="status-indicator" style="background:${f_Score >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
                         <td style="color:${latest.is_today?'#ffa500':'var(--text-muted)'}; font-size:11px;">${latest.time||'-'}</td>
                         <td class="sym">${n.Code||n.ticker}</td><td style="color:${f_Score>=6?'var(--yellow)':'var(--text-muted)'}; font-weight:bold;">${f_Score}</td>
@@ -499,7 +536,7 @@
 
         function loadDetail(sym) {
             activeSym = sym; let d = (brain.details && brain.details[sym]) ? brain.details[sym] : null; let rankData = brain.leaderboard ? brain.leaderboard.find(x => x.Code === sym) : null;
-            if (!d && !rankData) return; if (!d && rankData) d = { Price:rankData.Price, Pct:rankData.Pct, Vol:rankData.Vol, RelVol:"-", Float:rankData.Type==='fund'?"N/A(ETF)":(rankData.Float||"-"), StopLoss:0, CatScore:0, IsTrap:false, NewsList:[], VolAcc:"-", Is100K:false, Gap:"-", SN_Score:0, VsaState:0 };
+            if (!d && !rankData) return; if (!d && rankData) d = { Price:rankData.Price, Pct:rankData.Pct, Vol:rankData.Vol, RelVol:"-", Float:rankData.Type==='fund'?"N/A(ETF)":(rankData.Float||"-"), StopLoss:0, CatScore:0, IsTrap:false, NewsList:[], VolAcc:"-", Is100K:false, Gap:"-", SN_Score:0, VsaState:0, VR_Acc:0, Alpha:0, Alpha_Rating:"Low" };
             
             let trapWarn = d.IsTrap ? `<div style="background:rgba(248,81,73,0.2); border:1px solid var(--red); color:var(--red); padding:8px; margin-bottom:10px; border-radius:6px; font-weight:bold; font-size:13px; animation:blood-pulse 1s infinite;">🩸 致命警告：偵測到 S-1/S-3 增發稀釋</div>` : "";
             let vcpHTML = ""; if (d.Signal && d.Signal.includes("VCP")) { let m = d.Signal.match(/\((\d+)m\)/); let mins = m ? parseInt(m[1]) : 1; vcpHTML = `<div style="font-size:11px; color:var(--text-muted);">⚡ 壓縮蓄力 (${mins} mins)</div><div class="vcp-bar-container"><div class="vcp-bar" style="width:${Math.min(mins*10,100)}%; background:${mins>=10?'#fff':'#ffa500'};"></div></div>`; }
@@ -536,6 +573,10 @@
             </div>
             `;
 
+            // 💡 V43.8 動態計算 Alpha 樣式
+            let alphaColor = d.Alpha_Rating === 'High' ? 'var(--neon-green)' : (d.Alpha_Rating === 'Mid' ? 'var(--yellow)' : 'var(--text-muted)');
+            let alphaGlow = d.Alpha_Rating === 'High' ? 'text-shadow: 0 0 5px rgba(57,255,20,0.4);' : '';
+
             let html = `<div style="text-align:center;">${trapWarn}
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
                     <div style="text-align:left; display:flex; flex-direction:column; justify-content:center;">
@@ -553,17 +594,18 @@
                     </div>
                 </div>
                 
-                <div style="background:rgba(0,0,0,0.3); padding:10px; border-radius:8px; display:grid; grid-template-columns:repeat(5, 1fr); gap:8px; font-size:12px; border:1px solid rgba(255,255,255,0.05);">
+                <div style="background:rgba(0,0,0,0.3); padding:10px; border-radius:8px; display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; font-size:12px; border:1px solid rgba(255,255,255,0.05);">
                     <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center;">成交量<br>${volHTML}</div>
                     <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center;">量比<br><b style="color:var(--text-main); font-size:14px;">${d.RelVol||'-'}</b></div>
+                    <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center;">量能加速<br><b style="font-size:14px;">${formatVolAcc(d.VolAcc)}</b></div>
+                    <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center; box-shadow: 0 0 5px rgba(227, 179, 65, 0.2);">量比加速度<br><b style="color:var(--yellow); font-size:14px;">${d.VR_Acc||0}%</b></div>
                     
-                    <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center; box-shadow: 0 0 5px rgba(227, 179, 65, 0.2);">量能加速<br><b style="font-size:14px;">${formatVolAcc(d.VolAcc)}</b></div>
-                    
+                    <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center;">Alpha 超額<br><b style="color:${alphaColor}; font-size:14px; ${alphaGlow}">${d.Alpha>0?'+'+d.Alpha:d.Alpha}%</b></div>
                     <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center;">跳空<br><b class="${parseFloat(d.Gap||0)>0?'up':'down'}" style="font-size:14px;">${d.Gap||'-'}</b></div>
-                    <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center;">催化<br><b style="color:var(--yellow); font-size:14px;">${d.CatScore||0}</b></div>
+                    <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center; grid-column:span 2;">催化評分<br><b style="color:var(--yellow); font-size:14px;">${d.CatScore||0}</b></div>
                     
                     <div style="grid-column:span 2; padding-left:4px;">籌碼: <b style="color:var(--text-main);">${d.Float||'-'}</b></div>
-                    <div style="grid-column:span 3; padding-left:4px;">當前狀態: <b style="color:${d.Signal.includes('洗盤')?'var(--text-muted)':'var(--yellow)'};">${d.Signal||'掃描中...'}</b></div>
+                    <div style="grid-column:span 2; padding-left:4px;">當前狀態: <b style="color:${d.Signal.includes('洗盤')?'var(--text-muted)':'var(--yellow)'};">${d.Signal||'掃描中...'}</b></div>
                     ${vcpHTML ? `<div style="grid-column:1/-1;">${vcpHTML}</div>` : ''}
                 </div>
                 <h3 style="color:var(--text-muted); font-size:12px; border-bottom:1px solid var(--border); padding-bottom:4px; margin-top:12px; margin-bottom:8px; text-align:left;">🗞️ 情報分析</h3>`;
