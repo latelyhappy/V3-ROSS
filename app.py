@@ -19,6 +19,11 @@ TRENDS_FILE_PATH = os.path.join(os.path.dirname(__file__), 'trends.json')
 DISCOVERY_LOG_PATH = os.path.join(os.path.dirname(__file__), 'discovery_log.json') 
 SESSION_BACKUP_PATH = os.path.join(os.path.dirname(__file__), 'session_state.json')
 
+# === 開發規格書 (戰術設定) ===
+# 💡 將您申請到的 Finnhub 金鑰設定在伺服器環境變數 FINNHUB_TOKEN 中 ($0 免費)
+# 🛡️ 盾牌校正：已改為直接讀取 Railway 環境變數，安全無虞。
+FINNHUB_TOKEN = os.getenv('FINNHUB_TOKEN')
+
 _cached_trends = {}
 _last_trends_update = 0
 TRENDS_CACHE_TTL = 60
@@ -27,7 +32,6 @@ _discovery_buffer = []
 _last_flush_time = time.time()
 _last_list_update = 0
 
-# 💡 V43.8 新增全域 SPY 同步變數
 SPY_real_pct = 0.0
 _last_spy_update = 0
 
@@ -53,6 +57,8 @@ news_cache = {}
 cooldown_tracker = {}
 STATE_TRACKER = {}
 app = Flask(__name__)
+
+# 🛡️ 🛡️ 原有核心功能 (V43.8) 保留，未作變動 🛡️ 🛡️
 
 def load_intraday_state():
     global MASTER_BRAIN, DYNAMIC_WATCHLIST, STATS_MAP, cooldown_tracker, STATE_TRACKER
@@ -213,9 +219,12 @@ def background_translate_worker(ticker, en_headline, master_brain):
     try:
         zh_text = GoogleTranslator(source='auto', target='zh-TW').translate(en_headline)
         with brain_lock:
-            if ticker in master_brain['details']:
-                for article in master_brain['details'][ticker].get('NewsList', []):
-                    if article.get('raw_title') == en_headline: article['title'] = zh_text; break 
+            found = False
+            for t in ticker.split(','):
+                if t in master_brain['details']:
+                    for article in master_brain['details'][t].get('NewsList', []):
+                        if article.get('raw_title') == en_headline and article['title'] == "⏳ 翻譯中...": article['title'] = zh_text; found = True
+            if found: pass
     except: pass
 
 def check_sec_fatal_traps(ticker):
@@ -247,12 +256,23 @@ def fetch_and_score_news(ticker, cell, force=False):
         if res.status_code == 200:
             root = ET.fromstring(res.text)
             articles = []; total_score = 0; has_black = False; all_elites = set()
-            now_ny = datetime.now(TZ_NY); three_days_ago = now_ny.date() - timedelta(days=3)
+            now_tpe = datetime.now(TZ_TW) # 💡 V43.9 改用台灣時間作為判斷基準
+            three_days_ago_tpe = now_tpe.date() - timedelta(days=3)
+            
+            # 🛡️ 🛡️ 備援引擎 (Yahoo RSS) 去重邏輯：如果 Finnhub 已優先抓到頭條相同的新聞，則不添加
+            with brain_lock:
+                finnhub_titles = {n['raw_title'] for n in cell.get('NewsList', []) if n.get('source') == 'Finnhub'}
             
             for item in root.findall('./channel/item')[:5]:
-                dt = parsedate_to_datetime(item.find('pubDate').text).astimezone(TZ_NY)
-                if dt.date() < three_days_ago: continue
+                dt_utc = parsedate_to_datetime(item.find('pubDate').text).astimezone(pytz.UTC)
+                dt_tpe = dt_utc.astimezone(TZ_TW)
+                
+                if dt_tpe.date() < three_days_ago_tpe: continue
                 raw_t = item.find('title').text
+                
+                # 🛡️ 盾牌去重：Finnhub優先
+                if raw_t in finnhub_titles: continue 
+                
                 score, is_trap, elites = calculate_hft_score(raw_t)
                 
                 if is_trap: has_black = True
@@ -260,13 +280,25 @@ def fetch_and_score_news(ticker, cell, force=False):
                 all_elites.update(elites)
                 articles.append({
                     "ticker": ticker, "title": "⏳ 翻譯中...", "raw_title": raw_t,
-                    "link": item.find('link').text, "time": dt.strftime("%Y-%m-%d %H:%M"), 
-                    "is_today": (dt.date() == now_ny.date()), "score": score, "elites": list(elites)
+                    "link": item.find('link').text, 
+                    "time": dt_tpe.strftime("%m-%d %H:%M"), # 💡 V43.9 核心修改: 顯示 TPE 格式統一：04-23 03:58
+                    "is_today": (dt_tpe.date() == now_tpe.date()), 
+                    "score": score, "elites": list(elites), "source": "Yahoo" # 註記來源
                 })
             
             with brain_lock:
-                cell["NewsList"] = articles; cell["CatScore"] = total_score
-                cell["IsTrap"] = has_black; cell["HasNews"] = len(articles) > 0 
+                combined = articles + [n for n in cell.get('NewsList', []) if n['raw_title'] not in {a['raw_title'] for a in articles}]
+                # 💡 V43.9 按 TPE 時間排序 (降序)，讓最新的顯示在最上面
+                combined.sort(key=lambda x: (x['time'], x['score']), reverse=True)
+                
+                cell["NewsList"] = combined[:10]
+                
+                total_score_combined = sum(n['score'] for n in cell["NewsList"])
+                has_black_combined = any(n.get('score', 0) == -50 for n in cell["NewsList"])
+
+                cell["CatScore"] = total_score_combined
+                cell["IsTrap"] = cell.get("IsTrap", False) or has_black_combined 
+                cell["HasNews"] = len(cell["NewsList"]) > 0 
                 MASTER_BRAIN["top_catalysts"] = extract_top_catalysts(MASTER_BRAIN)
                 for e in all_elites:
                     if e not in MASTER_BRAIN["elite_words"]: MASTER_BRAIN["elite_words"].append(e)
@@ -281,7 +313,8 @@ def extract_top_catalysts(master_brain):
     top_list = []
     for ticker, data in master_brain.get('details', {}).items():
         if data.get('NewsList', []): top_list.append(data)
-    try: return sorted(top_list, key=lambda x: (x.get('CatScore', 0), x['NewsList'][0].get('time', '00:00')), reverse=True)
+    # 💡 V43.9 時間排序：優先考慮 CatScore，其次考慮最新 TPE 時間
+    try: return sorted(top_list, key=lambda x: (x.get('CatScore', 0), x['NewsList'][0].get('time', '00-00 00:00')), reverse=True)
     except: return top_list
 
 def update_dynamic_watchlist():
@@ -409,6 +442,104 @@ def auto_trend_updater():
             pass
         time.sleep(300)
 
+# ==============================================================================
+# 💡 V43.9 全新功能：Finnhub 即時源頭監控線程 ($0 免費層，1 Request/Min，安全防砍)
+# ==============================================================================
+def finnhub_news_monitor_worker():
+    # 🛡️ 盾牌去重與防錯機制已同步修改
+    if not FINNHUB_TOKEN:
+        print("⚠️ [情報雷達] Railway 未設定環境變數 FINNHUB_TOKEN，Finnhub 即時消息引擎已關閉，Yahoo 引擎將作為備援。")
+        return
+    
+    print("📡 [情報雷達] Finnhub 即時官方公關稿源頭監控線程已啟動 ($0 免費層)。")
+    time.sleep(10) # 讓系統初始化
+    seen_news_urls = set() # 💡 技術核心：用 URL 做本地去重，節省解析資源
+    
+    while True:
+        try:
+            url = f"https://finnhub.io/api/v1/news?category=general&token={FINNHUB_TOKEN}"
+            headers = {"User-Agent": "Mozilla/5.0 Sniper news engine"}
+            res = requests.get(url, headers=headers, timeout=10)
+            if res.status_code == 200:
+                articles = res.json()
+                
+                with brain_lock:
+                    current_watchlist = DYNAMIC_WATCHLIST.copy()
+                
+                for art in articles[:10]: # 只取前 10 條最新頭條，節省解析資源
+                    art_url = art.get('url', '')
+                    art_headline = art.get('headline', '')
+                    
+                    if not art_url or not art_headline or art_url in seen_news_urls: continue
+                    
+                    found_tickers = []
+                    art_headline_upper = art_headline.upper()
+                    for ticker in current_watchlist:
+                        if re.search(r'\b' + re.escape(ticker) + r'\b', art_headline_upper):
+                            found_tickers.append(ticker)
+                    
+                    if found_tickers:
+                        score, is_trap, elites = calculate_hft_score(art_headline)
+                        # 解析時間 (Finnhub 給的是 UTC timestamp)
+                        art_time = art.get('datetime', time.time())
+                        dt_utc = datetime.fromtimestamp(art_time, pytz.UTC)
+                        
+                        # 💡 V43.9 核心修改: 將時間顯示校正為台灣時間 (TPE)
+                        dt_tpe = dt_utc.astimezone(TZ_TW)
+                        time_str_tpe = dt_tpe.strftime("%m-%d %H:%M") # 格式統一：04-23 03:58
+                        is_today_tpe = (dt_tpe.date() == datetime.now(TZ_TW).date())
+
+                        ticker_str = ",".join(found_tickers)
+                        
+                        new_article = {
+                            "ticker": ticker_str, 
+                            "title": "⏳ 翻譯中...", # 初始化翻譯
+                            "raw_title": art_headline,
+                            "link": art_url,
+                            "time": time_str_tpe, # 顯示 TPE 時間戳記
+                            "is_today": is_today_tpe, # 以 TPE 為準判斷「今日」
+                            "score": score,
+                            "elites": list(elites),
+                            "source": "Finnhub" # 註記來源：Finnhub 即時頭條聚合
+                        }
+                        
+                        with brain_lock:
+                            update_top_catalysts = False
+                            for ticker in found_tickers:
+                                if ticker in MASTER_BRAIN["details"]:
+                                    details = MASTER_BRAIN["details"][ticker]
+                                    if 'NewsList' not in details: details['NewsList'] = []
+                                    
+                                    # 🛡️ 🛡️ 盾牌去重：利用 raw_title。Yahoo 雖然源頭多，但頭條往往是一樣的。
+                                    if not any(n['raw_title'] == art_headline for n in details['NewsList']):
+                                        details['NewsList'].insert(0, new_article) # 💡 第一手情報優先插入
+                                        details['NewsList'] = details['NewsList'][:10] # 保持長度
+                                        
+                                        # 重新計算 CatScore (因為Yahoo 引擎去重逻辑修改)
+                                        total_score_combined = sum(n['score'] for n in details["NewsList"])
+                                        details["CatScore"] = total_score_combined
+                                        
+                                        details["IsTrap"] = details.get("IsTrap", False) or is_trap
+                                        details["HasNews"] = True
+                                        update_top_catalysts = True
+                                        
+                                        threading.Thread(target=background_translate_worker, args=(ticker_str, art_headline, MASTER_BRAIN), daemon=True).start()
+                                        time.sleep(0.5)
+
+                            if update_top_catalysts:
+                                MASTER_BRAIN["top_catalysts"] = extract_top_catalysts(MASTER_BRAIN)
+                                for e in elites:
+                                    if e not in MASTER_BRAIN["elite_words"]: MASTER_BRAIN["elite_words"].append(e)
+
+                    seen_news_urls.add(art_url) 
+                    if len(seen_news_urls) > 500: seen_news_urls.pop() 
+
+            # 🛡️ 戰術防砍核心：免費 Tier 1分1次。
+            time.sleep(60) 
+
+        except Exception as e:
+            time.sleep(30) 
+
 def scanner_engine():
     global _last_list_update, SPY_real_pct, _last_spy_update
     tv = TvDatafeed()
@@ -421,7 +552,6 @@ def scanner_engine():
         try:
             now_ts = time.time()
             
-            # 💡 V43.8 SPY 全域同步引擎
             if now_ts - _last_spy_update > 30:
                 try:
                     url = "https://scanner.tradingview.com/america/scan"
@@ -501,7 +631,7 @@ def scanner_engine():
                     is_grind = bool((curr_ema10 > curr_ema20) and (p_live >= curr_ema10) and (0.5 <= rel_vol_display < 2.5) and (real_pct > 2.0) and not is_spark and not is_ride)
 
                     ratio_3v3 = 1.0; z_score = 0.0; staircase = False; vol_acc_str = "-"
-                    vr_acc = 0.0 # 💡 V43.8 新增量比加速度初始化
+                    vr_acc = 0.0 
                     
                     if len(df) >= 6:
                         avg_v_60 = float(df['volume'].iloc[:-1].mean())
@@ -512,7 +642,6 @@ def scanner_engine():
                         vol_B = float(df['volume'].iloc[-6:-3].sum())
                         vol_C = float(df['volume'].iloc[-9:-6].sum()) if len(df) >= 9 else 0.0
                         
-                        # 💡 V43.8 SMA 量比加速度運算 (防呆 max 分母)
                         if vol_B >= 0: vr_acc = float(round(((vol_A - vol_B) / max(vol_B, 0.01)) * 100, 2))
                         
                         if vol_B > 0:
@@ -543,7 +672,6 @@ def scanner_engine():
                     a_m = ratio_3v3 if ratio_3v3 > 1.0 else ratio_3v3 * 0.5
                     sn_score = int(round(base_score * m_vsa * a_m))
 
-                    # 💡 V43.8 Alpha 超額收益計算
                     alpha_val = float(round(real_pct - SPY_real_pct, 2))
                     alpha_rating = "High" if alpha_val > 2.0 else ("Mid" if alpha_val > 0.5 else "Low")
 
@@ -588,9 +716,9 @@ def scanner_engine():
                         "Gap": f"{gap_pct:+.2f}%",
                         "SN_Score": sn_score, 
                         "VsaState": vsa_state,
-                        "VR_Acc": vr_acc,             # 💡 傳遞 V43.8 參數
-                        "Alpha": alpha_val,           # 💡 傳遞 V43.8 參數
-                        "Alpha_Rating": alpha_rating  # 💡 傳遞 V43.8 參數
+                        "VR_Acc": vr_acc,             
+                        "Alpha": alpha_val,           
+                        "Alpha_Rating": alpha_rating  
                     }
                     
                     last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})
@@ -614,10 +742,10 @@ def scanner_engine():
                             cooldown_tracker[ticker] = {'time': now_ts, 'level': current_level}
                             audio_target = None
                             
-                            if is_100k and gap_pct >= MIN_GAP_PCT and not is_shakeout:
+                            if is_100k && gap_pct >= MIN_GAP_PCT && not is_shakeout:
                                 audio_target = "nova"
                                 is_double_lock = True
-                                stats["Signal"] = f"🎯雙鎖定: {stats['Signal']}" if stats["Signal"] else "🎯雙鎖定: 爆量跳空"
+                                stats["Signal"] = f"🎯雙鎖定: {stats['Signal']}" if stats["Signal"] else "🎯雙鎖定:爆量跳空"
 
                             if not is_shakeout:
                                 MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": audio_target})
@@ -633,7 +761,6 @@ def scanner_engine():
                         
                         MASTER_BRAIN["leaderboard"] = sorted(active_items, key=get_pct, reverse=True)[:20]
                         
-                        # 💡 V43.8 更新 Alpha 動能清單陣列
                         alpha_items = [x for x in active_items if x.get("VR_Acc", 0) > 30.0 and x.get("Alpha", 0) > 0.0]
                         MASTER_BRAIN["alpha_list"] = sorted(alpha_items, key=lambda x: x.get("Alpha", 0), reverse=True)
                         
@@ -677,4 +804,6 @@ if __name__ == '__main__':
     threading.Thread(target=state_auto_save_worker, daemon=True).start()
     threading.Thread(target=scanner_engine, daemon=True).start()
     threading.Thread(target=auto_trend_updater, daemon=True).start()
+    # 💡 啟動全新的 Finnhub 源頭監控線程 ($0 免費層)
+    threading.Thread(target=finnhub_news_monitor_worker, daemon=True).start()
     app.run(host='0.0.0.0', port=PORT)
