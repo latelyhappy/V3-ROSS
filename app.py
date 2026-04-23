@@ -533,13 +533,26 @@ def scanner_engine():
                         continue
                     consecutive_errors = 0 
 
-                    p_live = float(df['close'].iloc[-1]); p_prev = float(df['close'].iloc[-2]) if len(df) > 1 else p_live
-                    v_live = float(df['volume'].iloc[-1]); v_prev = float(df['volume'].iloc[-2]) if len(df) > 1 else v_live
-                    lookback = min(12, len(df)); avg_vol = float(df['volume'].iloc[-lookback:-2].mean()) if lookback > 2 else float(df['volume'].iloc[-2]) if len(df) > 1 else v_live
+                    p_live = float(df['close'].iloc[-1])
+                    p_prev = float(df['close'].iloc[-2]) if len(df) > 1 else p_live
+                    v_live = float(df['volume'].iloc[-1])
+                    v_prev = float(df['volume'].iloc[-2]) if len(df) > 1 else v_live
                     
-                    rel_vol_live = float(round(v_live / avg_vol, 2)) if avg_vol > 0 else 1.0
-                    rel_vol_prev = float(round(v_prev / avg_vol, 2)) if avg_vol > 0 else 1.0
-                    rel_vol_display = max(rel_vol_live, rel_vol_prev); daily_vol = int(df['volume'].sum())
+                    # 💡 核心修正 1：將基準均量的取樣從 10 分鐘拉長至 30 分鐘
+                    # 排除當前跳動的半成品 K 棒 (-1)，取過去 30 根已完成的 K 棒平均，使分母極度穩定
+                    lookback_vol = min(31, len(df)) 
+                    if lookback_vol > 2:
+                        avg_vol = float(df['volume'].iloc[-lookback_vol:-1].mean())
+                    else:
+                        avg_vol = v_live
+                    if avg_vol == 0: avg_vol = 1.0 # 絕對防呆，防止除以零
+                        
+                    rel_vol_live = float(round(v_live / avg_vol, 2))
+                    rel_vol_prev = float(round(v_prev / avg_vol, 2))
+                    
+                    # 💡 核心修正 2：保留 max 保護傘，確保爆量訊號能在面板上停留至少 1~2 分鐘供您決策
+                    rel_vol_display = max(rel_vol_live, rel_vol_prev)
+                    daily_vol = int(df['volume'].sum())
                     
                     vol_3m = float(df['volume'].iloc[-3:].sum()) if len(df) >= 3 else v_live
                     is_100k = bool(vol_3m >= 100000)
