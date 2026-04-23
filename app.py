@@ -241,11 +241,16 @@ def check_sec_fatal_traps(ticker):
         return False
     except: return False
 
+# 💡 核心修正區：確保排行榜嚴格遵守時間排序
 def extract_top_catalysts(master_brain):
     top_list = []
     for ticker, data in master_brain.get('details', {}).items():
-        if data.get('NewsList', []): top_list.append(data)
-    try: return sorted(top_list, key=lambda x: (x.get('CatScore', 0), x['NewsList'][0].get('time', '00-00 00:00')), reverse=True)
+        if data.get('NewsList', []): 
+            # 🛡️ 確保內部陣列嚴格依照時間排序
+            data['NewsList'].sort(key=lambda x: x.get('time', '00-00 00:00'), reverse=True)
+            top_list.append(data)
+    # 💡 核心修正：強制將「最新發布時間」設為第一排序權重，其次才是「評分」
+    try: return sorted(top_list, key=lambda x: (x['NewsList'][0].get('time', '00-00 00:00'), x.get('CatScore', 0)), reverse=True)
     except: return top_list
 
 def update_dynamic_watchlist():
@@ -444,7 +449,9 @@ def finnhub_news_monitor_worker():
                                     
                                     # 利用 URL 去重
                                     if not any(n['link'] == art_url for n in details['NewsList']):
-                                        details['NewsList'].insert(0, new_article)
+                                        # 💡 核心修正區：改為 append 後，立刻依據 time 進行內部降序排序
+                                        details['NewsList'].append(new_article)
+                                        details['NewsList'].sort(key=lambda x: x.get('time', '00-00 00:00'), reverse=True)
                                         details['NewsList'] = details['NewsList'][:10]
                                         
                                         details["CatScore"] = sum(n['score'] for n in details["NewsList"])
@@ -465,7 +472,6 @@ def finnhub_news_monitor_worker():
                     pass
                 
                 # 🛡️ 閃避被砍的絕對防線：每狙擊一檔，強制休眠 1.5 秒
-                # 40 檔股票 * 1.5 秒 = 60 秒 (完美等於免費版的每分鐘 60 次限制)
                 time.sleep(1.5)
 
         except Exception as e:
@@ -673,7 +679,6 @@ def scanner_engine():
                             cooldown_tracker[ticker] = {'time': now_ts, 'level': current_level}
                             audio_target = None
                             
-                            # 💡 已確保修正為 Python 語法的 'and'
                             if is_100k and gap_pct >= MIN_GAP_PCT and not is_shakeout:
                                 audio_target = "nova"
                                 is_double_lock = True
