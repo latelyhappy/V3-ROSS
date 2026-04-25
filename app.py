@@ -20,7 +20,6 @@ DISCOVERY_LOG_PATH = os.path.join(os.path.dirname(__file__), 'discovery_log.json
 SESSION_BACKUP_PATH = os.path.join(os.path.dirname(__file__), 'session_state.json')
 
 # === 開發規格書 (戰術設定) ===
-# 🛡️ 讀取 Railway 環境變數中的金鑰
 FINNHUB_TOKEN = os.getenv('FINNHUB_TOKEN')
 
 _cached_trends = {}
@@ -41,6 +40,7 @@ TZ_TW = pytz.timezone('Asia/Taipei')
 TZ_NY = pytz.timezone('America/New_York')
 
 MIN_GAP_PCT = 5.0 
+MIN_RELVOL_LIMIT = 3.0 
 
 CATALYST_ARMORY = {}
 armory_path = os.path.join(os.path.dirname(__file__), 'catalysts.json')
@@ -49,9 +49,10 @@ try:
         CATALYST_ARMORY = json.load(f)
 except: CATALYST_ARMORY = {"INVERTED_TRAPS":{}, "RED":{}, "ORANGE":{}, "YELLOW":{}, "BLACK":{}}
 
-MASTER_BRAIN = {"surge_log": [], "details": {}, "leaderboard": [], "alpha_list": [], "top_catalysts": [], "last_update": "", "elite_words": []}
+MASTER_BRAIN = {"surge_log": [], "details": {}, "leaderboard": [], "vwap_list": [], "top_catalysts": [], "last_update": "", "elite_words": []}
 DYNAMIC_WATCHLIST = []
 STATS_MAP = {} 
+news_cache = {} 
 cooldown_tracker = {}
 STATE_TRACKER = {}
 app = Flask(__name__)
@@ -73,8 +74,7 @@ def load_intraday_state():
                 print(f"🛡️ [防護盾] 偵測到重啟，已成功恢復 {current_date} 的盤中戰鬥狀態！")
             else:
                 print(f"🔄 [防護盾] 偵測到跨日 ({current_date})，已清除舊有盤中狀態。")
-    except Exception as e: 
-        print(f"⚠️ [防護盾] 狀態恢復失敗: {e}")
+    except Exception as e: pass
 
 def state_auto_save_worker():
     while True:
@@ -138,7 +138,6 @@ def settle_discovery_logs():
     try:
         if not os.path.exists(DISCOVERY_LOG_PATH): return
         with open(DISCOVERY_LOG_PATH, 'r', encoding='utf-8') as f: logs = json.load(f)
-        
         unsettled = [l for l in logs if not l.get("Settled", True)]
         if not unsettled: return
         
@@ -156,7 +155,6 @@ def settle_discovery_logs():
             word = log.get("Word")
             entry_price = float(log.get("Entry_Price", 1.0))
             impact_pct = 0.0
-            
             try:
                 df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_5_minute, n_bars=300, extended_session=True)
                 if df is not None and not df.empty:
@@ -164,17 +162,15 @@ def settle_discovery_logs():
                     entry_dt = TZ_NY.localize(entry_dt)
                     df.index = df.index.tz_convert(TZ_NY)
                     valid_data = df[df.index >= entry_dt]
-                    
                     if not valid_data.empty:
                         real_mfe_high = float(valid_data['high'].max())
                         impact_pct = (real_mfe_high - entry_price) / entry_price if entry_price > 0 else 0.0
-            except Exception as e: pass
+            except: pass
 
             if word in trends:
                 old_weight = float(trends[word].get("score", 5.0))
                 today_score = min(5.0 + (impact_pct * 100.0), 20.0) if impact_pct > 0 else 0.0
                 new_weight = round((old_weight * 0.7) + (today_score * 0.3), 1)
-                
                 trends[word]["score"] = new_weight
                 trends[word]["avg_impact_pct"] = round(max(trends[word].get("avg_impact_pct", 0.0), impact_pct * 100), 2)
                 updated_trends = True
@@ -224,11 +220,7 @@ def background_translate_worker(ticker, en_headline, master_brain):
     except: pass
 
 def check_sec_fatal_traps(ticker):
-    headers = {
-        "User-Agent": "SniperQuantSystem_V42 AdminContact@yourdomain.com",
-        "Accept-Encoding": "gzip, deflate",
-        "Host": "www.sec.gov"
-    }
+    headers = {"User-Agent": "SniperQuantSystem_V42 AdminContact@yourdomain.com", "Accept-Encoding": "gzip, deflate", "Host": "www.sec.gov"}
     url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=&output=atom"
     try:
         time.sleep(0.5) 
@@ -241,23 +233,27 @@ def check_sec_fatal_traps(ticker):
         return False
     except: return False
 
-# 💡 核心修正區：確保排行榜嚴格遵守時間排序
 def extract_top_catalysts(master_brain):
     top_list = []
     for ticker, data in master_brain.get('details', {}).items():
         if data.get('NewsList', []): 
-            # 🛡️ 確保內部陣列嚴格依照時間排序
             data['NewsList'].sort(key=lambda x: x.get('time', '00-00 00:00'), reverse=True)
             top_list.append(data)
-    # 💡 核心修正：強制將「最新發布時間」設為第一排序權重，其次才是「評分」
     try: return sorted(top_list, key=lambda x: (x['NewsList'][0].get('time', '00-00 00:00'), x.get('CatScore', 0)), reverse=True)
     except: return top_list
 
+# ==============================================================================
+# 💡 V43.14 核心升級：雙雷達交火 (解除盤前跳空封印)
+# ==============================================================================
 def update_dynamic_watchlist():
     global DYNAMIC_WATCHLIST, STATS_MAP, MIN_GAP_PCT
     try:
         url = "https://scanner.tradingview.com/america/scan"
-        payload = {
+        new_watchlist = []
+        temp_stats = {}
+
+        # 🚀 雷達 1：早盤跳空掃描 (保留早盤強勢股)
+        payload_pre = {
             "filter": [
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, 
                 {"left": "close", "operation": "in_range", "right": [1, 50]}, 
@@ -265,33 +261,53 @@ def update_dynamic_watchlist():
             ], 
             "columns": ["name", "premarket_close", "close", "premarket_change", "premarket_volume", "market_cap_basic", "type"], 
             "sort": {"sortBy": "premarket_change", "sortOrder": "desc"}, 
-            "range": [0, 40]
+            "range": [0, 20]
         }
-        res = requests.post(url, json=payload, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-        data = res.json()
-        if data.get('data'):
-            new_watchlist = []
-            for x in data['data']:
-                sym, p, c, pct, v, mc, t = x['d'][0], x['d'][1], x['d'][2], x['d'][3], x['d'][4], x['d'][5], x['d'][6]
-                new_watchlist.append(sym)
-                
-                p_eff = p if p is not None else c
-                float_m = (mc / p_eff) / 1_000_000 if mc and p_eff else 0.0
-                prev_est = p_eff / (1 + (pct/100)) if pct and pct != -100 else p_eff
-                f_str = "N/A (ETF)" if t == 'fund' else (f"{float_m:.1f}M" if float_m > 0 else "未知")
-                if t != 'fund' and float_m > 50.0: f_str = f"⚠️{f_str}"
-                
-                float_comp = 100.0 / math.sqrt(float_m) if float_m > 0 else 0.0
-                
-                STATS_MAP[sym] = {
-                    'prev': prev_est, 'float_str': f_str, 'type': t, 
-                    'gap_pct': float(pct) if pct is not None else 0.0,
-                    'float_comp': float_comp
-                }
-            
-            with brain_lock:
-                DYNAMIC_WATCHLIST.clear()
-                DYNAMIC_WATCHLIST.extend(new_watchlist)
+
+        # 🚀 雷達 2：盤中動能爆發掃描 (💡 解除跳空封印，純抓盤中漲幅與量能)
+        payload_intra = {
+            "filter": [
+                {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, 
+                {"left": "close", "operation": "in_range", "right": [1, 50]}, 
+                {"left": "change", "operation": "egreater", "right": 4.0}, # 盤中漲幅大於 4%
+                {"left": "volume", "operation": "egreater", "right": 50000} # 確保有基本流動性
+            ], 
+            "columns": ["name", "premarket_close", "close", "premarket_change", "premarket_volume", "market_cap_basic", "type"], 
+            "sort": {"sortBy": "change", "sortOrder": "desc"}, 
+            "range": [0, 20]
+        }
+
+        # 雙雷達合併處理
+        for payload in [payload_pre, payload_intra]:
+            try:
+                res = requests.post(url, json=payload, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+                data = res.json()
+                if data.get('data'):
+                    for x in data['data']:
+                        sym, p, c, pct, v, mc, t = x['d'][0], x['d'][1], x['d'][2], x['d'][3], x['d'][4], x['d'][5], x['d'][6]
+                        
+                        if sym not in new_watchlist:
+                            new_watchlist.append(sym)
+                        
+                        p_eff = p if p is not None else c
+                        float_m = (mc / p_eff) / 1_000_000 if mc and p_eff else 0.0
+                        prev_est = p_eff / (1 + ((pct or 0)/100)) if pct and pct != -100 else p_eff
+                        f_str = "N/A (ETF)" if t == 'fund' else (f"{float_m:.1f}M" if float_m > 0 else "未知")
+                        if t != 'fund' and float_m > 50.0: f_str = f"⚠️{f_str}"
+                        
+                        float_comp = 100.0 / math.sqrt(float_m) if float_m > 0 else 0.0
+                        
+                        temp_stats[sym] = {
+                            'prev': prev_est, 'float_str': f_str, 'type': t, 
+                            'gap_pct': float(pct) if pct is not None else 0.0,
+                            'float_comp': float_comp
+                        }
+            except: pass
+        
+        with brain_lock:
+            DYNAMIC_WATCHLIST.clear()
+            DYNAMIC_WATCHLIST.extend(new_watchlist[:40]) # 合併後取前 40 檔
+            STATS_MAP.update(temp_stats)
     except: pass
 
 def auto_trend_updater():
@@ -309,22 +325,17 @@ def auto_trend_updater():
 
             with brain_lock: target_tickers = DYNAMIC_WATCHLIST.copy()
             if not target_tickers: 
-                time.sleep(10)
-                continue
+                time.sleep(10); continue
 
-            all_words = []
-            word_sources = {}
+            all_words = []; word_sources = {}
             for ticker in target_tickers:
-                pct_val = 0.0
-                price_val = 1.0
+                pct_val = 0.0; price_val = 1.0
                 if ticker in MASTER_BRAIN['details']:
                     try: 
                         pct_val = float(MASTER_BRAIN['details'][ticker].get('Pct','0').replace('%','').replace('+',''))
                         price_val = float(MASTER_BRAIN['details'][ticker].get('PriceVal', 1.0))
                     except: pass
-                
                 try:
-                    # 這裡保留微量的 RSS 僅供 NLP 分析詞頻，完全不參與雷達顯示
                     res = requests.get(f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US", headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
                     if res.status_code == 200:
                         for item in ET.fromstring(res.text).findall('./channel/item')[:3]:
@@ -347,7 +358,6 @@ def auto_trend_updater():
                         best_source = max(word_sources.get(w, []), key=lambda x: x[1]) if w in word_sources else ("UNKNOWN", 0.0, 1.0)
                         max_pct = best_source[1]
                         entry_price = best_source[2]
-                        
                         if w not in current_content:
                             impact_score = min(5 + (max_pct / 10.0), 20)
                             current_content[w] = {"score": round(impact_score), "count": 1, "avg_impact_pct": max_pct, "last_seen": datetime.now(TZ_NY).strftime("%Y-%m-%d")}
@@ -359,7 +369,6 @@ def auto_trend_updater():
                             old_data["count"] = old_data.get("count", 1) + 1
                             old_data["last_seen"] = datetime.now(TZ_NY).strftime("%Y-%m-%d")
                             old_data["avg_impact_pct"] = max(old_data.get("avg_impact_pct", 0.0), max_pct)
-                            
                             if old_data["count"] >= 3 and old_score < 15: 
                                 old_data["score"] += 1; requires_github_sync = True
                             current_content[w] = old_data
@@ -369,116 +378,122 @@ def auto_trend_updater():
                     with open(TRENDS_FILE_PATH, 'w', encoding='utf-8') as f: json.dump(current_content, f, ensure_ascii=False, indent=4)
                     global _cached_trends, _last_trends_update
                     _cached_trends = current_content; _last_trends_update = time.time()
-            
             if _discovery_buffer: 
                 flush_discovery_buffer()
-                print(f"✅ [NLP引擎] 發現市場新勢力，戰場快照已成功寫入硬碟！")
-                
-        except Exception as e: 
-            pass
+        except Exception as e: pass
         time.sleep(300)
 
-# ==============================================================================
-# 💡 V43.11 點射狙擊模式 (Precision Company-News Endpoint)
-# ==============================================================================
+def fetch_and_score_news(ticker, cell, force=False):
+    now = time.time()
+    if not force and ticker in news_cache and (now - news_cache.get(ticker, 0) < 900): return
+    news_cache[ticker] = now
+    try:
+        url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        res = requests.get(url, headers=headers, timeout=5)
+        if res.status_code == 200:
+            root = ET.fromstring(res.text)
+            articles = []; total_score = 0; has_black = False; all_elites = set()
+            now_tpe = datetime.now(TZ_TW)
+            three_days_ago_tpe = now_tpe.date() - timedelta(days=3)
+            
+            with brain_lock:
+                finnhub_titles = {n['raw_title'] for n in cell.get('NewsList', []) if n.get('source') == 'Finnhub PR'}
+            
+            for item in root.findall('./channel/item')[:5]:
+                dt_utc = parsedate_to_datetime(item.find('pubDate').text).astimezone(pytz.UTC)
+                dt_tpe = dt_utc.astimezone(TZ_TW)
+                if dt_tpe.date() < three_days_ago_tpe: continue
+                raw_t = item.find('title').text
+                
+                if raw_t in finnhub_titles: continue 
+                
+                score, is_trap, elites = calculate_hft_score(raw_t)
+                if is_trap: has_black = True
+                total_score += score 
+                all_elites.update(elites)
+                articles.append({
+                    "ticker": ticker, "title": "⏳ 翻譯中...", "raw_title": raw_t,
+                    "link": item.find('link').text, 
+                    "time": dt_tpe.strftime("%m-%d %H:%M"),
+                    "is_today": (dt_tpe.date() == now_tpe.date()), 
+                    "score": score, "elites": list(elites), "source": "Yahoo"
+                })
+            
+            with brain_lock:
+                combined = articles + [n for n in cell.get('NewsList', []) if n['raw_title'] not in {a['raw_title'] for a in articles}]
+                combined.sort(key=lambda x: x.get('time', '00-00 00:00'), reverse=True)
+                cell["NewsList"] = combined[:10]
+                
+                cell["CatScore"] = sum(n['score'] for n in cell["NewsList"])
+                cell["IsTrap"] = cell.get("IsTrap", False) or has_black 
+                cell["HasNews"] = len(cell["NewsList"]) > 0 
+                MASTER_BRAIN["top_catalysts"] = extract_top_catalysts(MASTER_BRAIN)
+                for e in all_elites:
+                    if e not in MASTER_BRAIN["elite_words"]: MASTER_BRAIN["elite_words"].append(e)
+
+            if articles:
+                for art in articles:
+                    if art['title'] == "⏳ 翻譯中...":
+                        threading.Thread(target=background_translate_worker, args=(ticker, art['raw_title'], MASTER_BRAIN), daemon=True).start()
+                        time.sleep(0.5) 
+    except: pass
+
 def finnhub_news_monitor_worker():
-    if not FINNHUB_TOKEN:
-        print("⚠️ [情報雷達] Railway 未設定環境變數 FINNHUB_TOKEN。請立即設定以啟動雷達！")
-        return
-    
-    print("📡 [情報雷達] 極致點射狙擊引擎已啟動！專注掃描自選股專屬公關稿。")
+    if not FINNHUB_TOKEN: return
     time.sleep(10)
     seen_news_urls = set()
-    
     while True:
         try:
-            with brain_lock:
-                current_watchlist = DYNAMIC_WATCHLIST.copy()
-            
-            if not current_watchlist:
-                time.sleep(10)
-                continue
-
-            # 設定時間區間 (只抓過去 3 天內的公司新聞)
+            with brain_lock: current_watchlist = DYNAMIC_WATCHLIST.copy()
+            if not current_watchlist: time.sleep(10); continue
             now_ny = datetime.now(TZ_NY)
-            end_date = now_ny.strftime('%Y-%m-%d')
-            start_date = (now_ny - timedelta(days=3)).strftime('%Y-%m-%d')
+            end_date = now_ny.strftime('%Y-%m-%d'); start_date = (now_ny - timedelta(days=3)).strftime('%Y-%m-%d')
 
-            # 💡 精準狙擊：逐一向 Finnhub 索要名單上的特定股票新聞
             for ticker in current_watchlist:
                 try:
                     url = f"https://finnhub.io/api/v1/company-news?symbol={ticker}&from={start_date}&to={end_date}&token={FINNHUB_TOKEN}"
-                    headers = {"User-Agent": "Mozilla/5.0 Sniper news engine"}
-                    res = requests.get(url, headers=headers, timeout=5)
-                    
+                    res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
                     if res.status_code == 200:
                         articles = res.json()
-                        
-                        for art in articles[:5]: # 只取每檔股票最新的前 5 則
-                            art_url = art.get('url', '')
-                            art_headline = art.get('headline', '')
-                            
-                            if not art_url or not art_headline or art_url in seen_news_urls: 
-                                continue
+                        for art in articles[:5]:
+                            art_url = art.get('url', ''); art_headline = art.get('headline', '')
+                            if not art_url or not art_headline or art_url in seen_news_urls: continue
                                 
                             score, is_trap, elites = calculate_hft_score(art_headline)
-                            
-                            # 解析並校正為台灣時間 (TPE)
-                            art_time = art.get('datetime', time.time())
-                            dt_utc = datetime.fromtimestamp(art_time, pytz.UTC)
-                            dt_tpe = dt_utc.astimezone(TZ_TW)
-                            time_str_tpe = dt_tpe.strftime("%m-%d %H:%M")
-                            is_today_tpe = (dt_tpe.date() == datetime.now(TZ_TW).date())
+                            dt_tpe = datetime.fromtimestamp(art.get('datetime', time.time()), pytz.UTC).astimezone(TZ_TW)
                             
                             new_article = {
-                                "ticker": ticker, 
-                                "title": "⏳ 翻譯中...",
-                                "raw_title": art_headline,
-                                "link": art_url,
-                                "time": time_str_tpe,
-                                "is_today": is_today_tpe,
-                                "score": score,
-                                "elites": list(elites),
-                                "source": "Finnhub PR"
+                                "ticker": ticker, "title": "⏳ 翻譯中...", "raw_title": art_headline, "link": art_url,
+                                "time": dt_tpe.strftime("%m-%d %H:%M"), "is_today": (dt_tpe.date() == datetime.now(TZ_TW).date()),
+                                "score": score, "elites": list(elites), "source": "Finnhub PR"
                             }
                             
                             with brain_lock:
                                 if ticker in MASTER_BRAIN["details"]:
                                     details = MASTER_BRAIN["details"][ticker]
                                     if 'NewsList' not in details: details['NewsList'] = []
-                                    
-                                    # 利用 URL 去重
                                     if not any(n['link'] == art_url for n in details['NewsList']):
-                                        # 💡 核心修正區：改為 append 後，立刻依據 time 進行內部降序排序
                                         details['NewsList'].append(new_article)
                                         details['NewsList'].sort(key=lambda x: x.get('time', '00-00 00:00'), reverse=True)
                                         details['NewsList'] = details['NewsList'][:10]
-                                        
                                         details["CatScore"] = sum(n['score'] for n in details["NewsList"])
                                         details["IsTrap"] = details.get("IsTrap", False) or is_trap
                                         details["HasNews"] = True
-                                        
                                         MASTER_BRAIN["top_catalysts"] = extract_top_catalysts(MASTER_BRAIN)
                                         for e in elites:
                                             if e not in MASTER_BRAIN["elite_words"]: MASTER_BRAIN["elite_words"].append(e)
-                                        
-                                        # 啟動翻譯
                                         threading.Thread(target=background_translate_worker, args=(ticker, art_headline, MASTER_BRAIN), daemon=True).start()
                                         time.sleep(0.5)
 
                             seen_news_urls.add(art_url) 
                             if len(seen_news_urls) > 1000: seen_news_urls.pop() 
-                except Exception as inner_e:
-                    pass
-                
-                # 🛡️ 閃避被砍的絕對防線：每狙擊一檔，強制休眠 1.5 秒
+                except: pass
                 time.sleep(1.5)
-
-        except Exception as e:
-            time.sleep(30) 
+        except: time.sleep(30) 
 
 def scanner_engine():
-    global _last_list_update, SPY_real_pct, _last_spy_update
+    global _last_list_update, SPY_real_pct, _last_spy_update, MIN_RELVOL_LIMIT
     tv = TvDatafeed()
     try:
         if TW_USERNAME != 'guest': tv = TvDatafeed(TW_USERNAME, TW_PASSWORD)
@@ -488,7 +503,6 @@ def scanner_engine():
     while True:
         try:
             now_ts = time.time()
-            
             if now_ts - _last_spy_update > 30:
                 try:
                     url = "https://scanner.tradingview.com/america/scan"
@@ -498,8 +512,7 @@ def scanner_engine():
                     if data.get('data'):
                         spy_data = data['data'][0]['d']
                         now_ny = datetime.now(TZ_NY)
-                        is_premarket = now_ny.time() < datetime.strptime("09:30", "%H:%M").time()
-                        pct = spy_data[1] if is_premarket and spy_data[1] is not None else spy_data[2]
+                        pct = spy_data[1] if now_ny.time() < datetime.strptime("09:30", "%H:%M").time() and spy_data[1] is not None else spy_data[2]
                         if pct is not None: SPY_real_pct = float(pct)
                     _last_spy_update = now_ts
                 except: pass
@@ -520,7 +533,7 @@ def scanner_engine():
             for ticker in current_watchlist:
                 try:
                     time.sleep(2.0)
-                    df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
+                    df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=960, extended_session=True)
                     
                     if df is None or df.empty or len(df) < 5: 
                         consecutive_errors += 1
@@ -533,29 +546,40 @@ def scanner_engine():
                         continue
                     consecutive_errors = 0 
 
+                    last_date = df.index[-1].date()
+                    today_df = df[df.index.date == last_date]
+
                     p_live = float(df['close'].iloc[-1])
                     p_prev = float(df['close'].iloc[-2]) if len(df) > 1 else p_live
                     v_live = float(df['volume'].iloc[-1])
                     v_prev = float(df['volume'].iloc[-2]) if len(df) > 1 else v_live
                     
-                    # 💡 核心修正 1：將基準均量的取樣從 10 分鐘拉長至 30 分鐘
-                    # 排除當前跳動的半成品 K 棒 (-1)，取過去 30 根已完成的 K 棒平均，使分母極度穩定
-                    lookback_vol = min(31, len(df)) 
-                    if lookback_vol > 2:
-                        avg_vol = float(df['volume'].iloc[-lookback_vol:-1].mean())
+                    time_lapsed_mins = len(today_df)
+                    if time_lapsed_mins > 2:
+                        avg_vol = float(today_df['volume'].iloc[:-1].mean())
                     else:
                         avg_vol = v_live
-                    if avg_vol == 0: avg_vol = 1.0 # 絕對防呆，防止除以零
-                        
+                    if avg_vol == 0: avg_vol = 1.0 
+                    
                     rel_vol_live = float(round(v_live / avg_vol, 2))
                     rel_vol_prev = float(round(v_prev / avg_vol, 2))
-                    
-                    # 💡 核心修正 2：保留 max 保護傘，確保爆量訊號能在面板上停留至少 1~2 分鐘供您決策
                     rel_vol_display = max(rel_vol_live, rel_vol_prev)
-                    daily_vol = int(df['volume'].sum())
+                    daily_vol = int(today_df['volume'].sum())
                     
                     vol_3m = float(df['volume'].iloc[-3:].sum()) if len(df) >= 3 else v_live
-                    is_100k = bool(vol_3m >= 100000)
+
+                    if time_lapsed_mins > 0:
+                        typical_price = (today_df['high'] + today_df['low'] + today_df['close']) / 3
+                        cumulative_vol = today_df['volume'].cumsum()
+                        cumulative_vp = (typical_price * today_df['volume']).cumsum()
+                        vwap_series = cumulative_vp / cumulative_vol
+                        current_vwap = float(vwap_series.iloc[-1])
+                        vwap_dev = float(round(((p_live - current_vwap) / current_vwap) * 100, 2)) if current_vwap > 0 else 0.0
+                    else:
+                        current_vwap = p_live
+                        vwap_dev = 0.0
+
+                    vwap_rating = "High" if vwap_dev > 15.0 else ("Mid" if vwap_dev > 5.0 else "Low") 
 
                     df['tr'] = pd.concat([(df['high'] - df['low']), (df['high'] - df['close'].shift(1)).abs(), (df['low'] - df['close'].shift(1)).abs()], axis=1).max(axis=1)
                     atr5 = float(df['tr'].rolling(5, min_periods=3).mean().iloc[-1]) if len(df) >= 5 else 0.0
@@ -587,13 +611,10 @@ def scanner_engine():
                         avg_v_60 = float(df['volume'].iloc[:-1].mean())
                         std_v_60 = float(df['volume'].iloc[:-1].std())
                         z_score = float((v_live - avg_v_60) / std_v_60) if std_v_60 > 0 else 0.0
-                        
                         vol_A = vol_3m
                         vol_B = float(df['volume'].iloc[-6:-3].sum())
                         vol_C = float(df['volume'].iloc[-9:-6].sum()) if len(df) >= 9 else 0.0
-                        
                         if vol_B >= 0: vr_acc = float(round(((vol_A - vol_B) / max(vol_B, 0.01)) * 100, 2))
-                        
                         if vol_B > 0:
                             ratio_3v3 = float(vol_A / vol_B)
                             sym_up, sym_extreme = ("↗", "🔥") if p_live >= p_prev else ("🔻", "🩸")
@@ -621,9 +642,6 @@ def scanner_engine():
 
                     a_m = ratio_3v3 if ratio_3v3 > 1.0 else ratio_3v3 * 0.5
                     sn_score = int(round(base_score * m_vsa * a_m))
-
-                    alpha_val = float(round(real_pct - SPY_real_pct, 2))
-                    alpha_rating = "High" if alpha_val > 2.0 else ("Mid" if alpha_val > 0.5 else "Low")
 
                     tracker = STATE_TRACKER.get(ticker, {'state': 'None', 'duration': 0, 'vcp_low': float('inf'), 'shakeout_high': 0.0})
                     dynamic_stop = curr_ema20 * 0.99 
@@ -662,13 +680,13 @@ def scanner_engine():
                         "Signal": current_signal if current_signal else "",
                         "PriceVal": float(p_live), "StopLoss": dynamic_stop, "Float": float_str if float_str != "未知" else "-", "Type": stat_data.get('type', 'stock'),
                         "VolAcc": vol_acc_str, 
-                        "Is100K": is_100k,
+                        "Is100K": False, 
                         "Gap": f"{gap_pct:+.2f}%",
                         "SN_Score": sn_score, 
                         "VsaState": vsa_state,
                         "VR_Acc": vr_acc,             
-                        "Alpha": alpha_val,           
-                        "Alpha_Rating": alpha_rating  
+                        "VWAP_Dev": vwap_dev,          
+                        "VWAP_Rating": vwap_rating  
                     }
                     
                     last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})
@@ -692,10 +710,15 @@ def scanner_engine():
                             cooldown_tracker[ticker] = {'time': now_ts, 'level': current_level}
                             audio_target = None
                             
-                            if is_100k and gap_pct >= MIN_GAP_PCT and not is_shakeout:
-                                audio_target = "nova"
+                            # 💡 V43.14 動態量比點火警報 (解除跳空限制)
+                            is_relvol_alert = bool(rel_vol_display >= MIN_RELVOL_LIMIT and p_live >= p_prev)
+                            
+                            if is_relvol_alert and not is_shakeout:
+                                audio_target = "spark" # 發動點火音效
                                 is_double_lock = True
-                                stats["Signal"] = f"🎯雙鎖定: {stats['Signal']}" if stats["Signal"] else "🎯雙鎖定:爆量跳空"
+                                # 💡 將跳空從「硬性篩選」降級為「視覺提示」
+                                gap_hint = f"(跳空 {gap_pct:+.1f}%)" if gap_pct >= MIN_GAP_PCT else ""
+                                stats["Signal"] = f"🎯點火{gap_hint}: {stats['Signal']}" if stats["Signal"] else f"🎯點火{gap_hint}: 量比突破 {rel_vol_display}x"
 
                             if not is_shakeout:
                                 MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": audio_target})
@@ -711,25 +734,28 @@ def scanner_engine():
                         
                         MASTER_BRAIN["leaderboard"] = sorted(active_items, key=get_pct, reverse=True)[:20]
                         
-                        alpha_items = [x for x in active_items if x.get("VR_Acc", 0) > 30.0 and x.get("Alpha", 0) > 0.0]
-                        MASTER_BRAIN["alpha_list"] = sorted(alpha_items, key=lambda x: x.get("Alpha", 0), reverse=True)
+                        vwap_items = [x for x in active_items if x.get("VR_Acc", 0) > 30.0 and x.get("VWAP_Dev", 0) > 0.0]
+                        MASTER_BRAIN["vwap_list"] = sorted(vwap_items, key=lambda x: x.get("VWAP_Dev", 0), reverse=True)
                         
                         MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
-
+                    
+                    threading.Thread(target=fetch_and_score_news, args=(ticker, cell, is_double_lock), daemon=True).start()
                 except Exception as e: continue
             time.sleep(5)
         except Exception as e: time.sleep(10)
 
 @app.route('/api/config', methods=['POST'])
 def update_config():
-    global MIN_GAP_PCT, _last_list_update
+    global MIN_GAP_PCT, MIN_RELVOL_LIMIT, _last_list_update
     data = request.json
     if 'gap_pct' in data:
-        try:
-            MIN_GAP_PCT = float(data['gap_pct'])
-            _last_list_update = 0 
+        try: MIN_GAP_PCT = float(data['gap_pct'])
         except: pass
-    return jsonify({"status": "success", "gap_pct": MIN_GAP_PCT})
+    if 'relvol_limit' in data:
+        try: MIN_RELVOL_LIMIT = float(data['relvol_limit'])
+        except: pass
+    _last_list_update = 0 
+    return jsonify({"status": "success", "gap_pct": MIN_GAP_PCT, "relvol_limit": MIN_RELVOL_LIMIT})
 
 @app.route('/')
 def index(): return render_template('index.html')
@@ -740,6 +766,7 @@ def data():
         safe_brain = copy.deepcopy(MASTER_BRAIN)
         safe_brain["live_trends"] = get_live_trends()
         safe_brain["current_gap"] = MIN_GAP_PCT 
+        safe_brain["current_relvol"] = MIN_RELVOL_LIMIT 
         try: safe_brain["trends_date"] = datetime.fromtimestamp(os.path.getmtime(TRENDS_FILE_PATH), TZ_TW).strftime("%Y-%m-%d %H:%M:%S")
         except: safe_brain["trends_date"] = "尚未生成"
     return jsonify(safe_brain)
