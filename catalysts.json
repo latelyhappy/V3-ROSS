@@ -8,6 +8,69 @@
     "否認破產": 50,
     "無增發計畫": 30
   },
+  "MEGA_CATALYSTS": {
+    "_註記": "核彈級併購與收購單字 (封頂權重)",
+    "ACQUISITION": 85,
+    "BUYOUT": 85,
+    "MERGER": 85,
+    "OFFER TO": 80,
+    "PURCHASE AGREEMENT": 75
+  },
+  "TOXIC_OFFERINGS": {
+    "_註記": "增資毒藥鎖 (直接負分)",
+    "DIRECT OFFERING": -50,
+    "PUBLIC OFFERING": -50,
+    "PRICED AT": -50,
+    "PRIVATE PLACEMENT": -50
+  },
+  "CLASS_ACTION_SPAM": {
+    "_註記": "訴訟農場垃圾桶 (強制歸零)",
+    "REMINDS INVESTORS": 0,
+    "DEADLINE APPROACHING": 0,
+    "LAW OFFICES OF": 0,
+    "CLASS ACTION": 0,
+    "SECURITIES FRAUD": 0
+  },
+  "HINDSIGHT_NOISE": {
+    "_註記": "馬後炮與大雜燴過濾 (強制歸零)",
+    "WHY": 0,
+    "SOARS": 0,
+    "JUMPS": 0,
+    "PLUMMETING": 0,
+    "SKYROCKETED": 0,
+    "IS UP TODAY": 0,
+    "TRADING HIGHER": 0,
+    "WHAT HAPPENED": 0,
+    "STOCKS MOVING": 0,
+    "STOCKS TO WATCH": 0,
+    "MOST ACTIVE": 0,
+    "MOVERS": 0,
+    "COULD DOUBLE": 0,
+    "SHOULD YOU BUY": 0,
+    "IS IT TIME": 0
+  },
+  "SYMPATHY_MEGACAPS": {
+    "_註記": "巨頭代碼過濾蹭熱度文章 (未含實質合作詞即歸零)",
+    "NVDA": 0,
+    "NVIDIA": 0,
+    "AAPL": 0,
+    "APPLE": 0,
+    "MSFT": 0,
+    "MICROSOFT": 0,
+    "TSLA": 0,
+    "TESLA": 0,
+    "AMZN": 0,
+    "AMAZON": 0,
+    "GOOG": 0,
+    "META": 0
+  },
+  "EARNINGS_PREVIEW": {
+    "_註記": "法說會預告過濾 (只預告沒數字的歸零)",
+    "TO REPORT": 0,
+    "TO ANNOUNCE": 0,
+    "CONFERENCE CALL AND WEBCAST": 0,
+    "HOST WEBINAR": 0
+  },
   "THEMATIC_TRENDS": {
     "_註記": "市場熱點單字 (疊加加分用)",
     "NVIDIA": 6,
@@ -23,9 +86,6 @@
   "RED": {
     "_註記": "核彈級利多單字 (8-10分)",
     "APPROVAL": 10,
-    "ACQUISITION": 10,
-    "MERGER": 10,
-    "BUYOUT": 10,
     "SQUEEZE": 9,
     "FUTILITY": 10,
     "MRD": 10,
@@ -38,47 +98,29 @@
     "GOV CONTRACT": 10
   },
   "ORANGE": {
-    "_註記": "強勢動能單字 (6-8分) - 涵蓋所有合約、得標、訂單同義詞",
-    "BEAT": 7,
-    "GUIDANCE": 7,
-    "DEMAND": 7,
-    "SURGE": 6,
-    "AGREEMENT": 7,
-    "CONTRACT": 7,
-    "AWARD": 7,
-    "AWARDED": 7,
-    "WINS": 7,
-    "SECURES": 7,
-    "DEAL": 7,
-    "ORDER": 6,
-    "BACKLOG": 6,
-    "MOU": 6,
-    "LOI": 6,
-    "PARTNERSHIP": 7,
-    "TRIAL": 6,
-    "DIVIDEND": 7,
-    "RESULTS": 6,
-    "PRESENTATION": 6,
-    "UPGRADE": 6
+    "_註記": "強勢動能單字 (6-7分)",
+    "PATENT": 7,
+    "EARNINGS BEAT": 7,
+    "REVENUE GROWTH": 7,
+    "UPGRADE": 6,
+    "RAISES GUIDANCE": 7,
+    "STRATEGIC": 6
   },
   "YELLOW": {
-    "_註記": "常規利多單字 (4-5分)",
-    "PATENT": 5,
-    "ORPHAN": 5,
-    "REVENUE": 4,
-    "CHIP": 5,
-    "SATELLITE": 5
+    "_註記": "一般利多單字 (3-5分)",
+    "LAUNCHES": 5,
+    "NEW PRODUCT": 5,
+    "EXPANDS": 4,
+    "JOINS": 4,
+    "PRESENTS": 3,
+    "PARTNERSHIP": 5
   },
   "BLACK": {
-    "_註記": "散戶絞肉機單字 (-15 ~ -50分) - 避免使用超短單字防誤殺",
-    "OFFERING": -30,
-    "DILUTION": -25,
-    "BANKRUPTCY": -50,
-    "DELISTING": -40,
-    "REVERSE SPLIT": -40,
-    "CLINICAL HOLD": -40,
-    "EARNINGS MISS": -15,
-    "RESIGNS": -20,
-    "FRAUD": -40
+    "_註記": "致命陷阱單字 (觸發即放棄)",
+    "CHAPTER 11": -100,
+    "DELISTING": -100,
+    "BANKRUPTCY": -100,
+    "SEC INVESTIGATION": -100,
+    "HALTED": -100
   }
 }

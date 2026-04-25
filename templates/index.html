@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V43.16 - VWAP & News Filter Active</title>
+    <title>Sniper V43.17 - VWAP & JSON Defense Active</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
@@ -77,12 +77,6 @@
         <button id="audio-btn" class="ghost-btn" style="border-color:var(--red); color:var(--red);" onclick="unlockAudio()">🔇 音效/防睡眠</button>
         <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 ETF</button>
         
-        <div style="display:flex; align-items:center; border:1px solid var(--border); border-radius:6px; padding:4px 8px; margin-right:10px; flex-shrink: 0;">
-            <span style="font-size:12px; color:var(--text-muted); margin-right:5px;">跳空門檻:</span>
-            <input type="number" id="gap-input" value="5.0" step="0.5" style="background:transparent; border:none; color:var(--neon-green); width:40px; font-weight:bold; font-size:13px; outline:none; text-align:center;" onchange="updateGap(this.value)">
-            <span style="font-size:12px; color:var(--text-muted);">%</span>
-        </div>
-
         <div style="display:flex; align-items:center; border:1px solid var(--border); border-radius:6px; padding:2px 5px; margin-right:10px; background:rgba(0,0,0,0.2); flex-shrink: 0;">
             <button style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-weight:bold; padding:0 8px; font-size:14px; outline:none;" onclick="changeZoom(-0.1)">-</button>
             <span id="zoom-label" style="font-size:12px; color:var(--text-main); min-width:40px; text-align:center; font-weight:bold; cursor:default;">100%</span>
@@ -107,10 +101,9 @@
                         <th class="status-indicator"></th><th>時間</th><th>代碼</th>
                         <th>流通股</th><th>價格</th><th>量比</th>
                         <th>加速</th>
-                        <th>跳空</th>
                         <th>成交量</th><th>漲幅 (金額)</th><th>訊號</th>
                     </tr></thead>
-                    <tbody id="surge-log-body"><tr><td colspan="11" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr></tbody>
+                    <tbody id="surge-log-body"><tr><td colspan="10" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -126,7 +119,6 @@
                         <th onclick="setSort('rank', 'Price')">價格 <span id="sort-rank-Price"></span></th>
                         <th onclick="setSort('rank', 'RelVol')">量比 <span id="sort-rank-RelVol"></span></th>
                         <th onclick="setSort('rank', 'VolAcc')">加速 <span id="sort-rank-VolAcc"></span></th>
-                        <th onclick="setSort('rank', 'Gap')">跳空 <span id="sort-rank-Gap"></span></th>
                         <th onclick="setSort('rank', 'Vol')">成交量 <span id="sort-rank-Vol"></span></th>
                         <th onclick="setSort('rank', 'Pct')">漲幅 (金額) <span id="sort-rank-Pct">▼</span></th>
                     </tr></thead>
@@ -168,7 +160,6 @@
                         <th onclick="setSort('news', 'Price')">價格 <span id="sort-news-Price"></span></th>
                         <th onclick="setSort('news', 'RelVol')">量比 <span id="sort-news-RelVol"></span></th>
                         <th onclick="setSort('news', 'VolAcc')">加速 <span id="sort-news-VolAcc"></span></th> 
-                        <th onclick="setSort('news', 'Gap')">跳空 <span id="sort-news-Gap"></span></th>
                         <th onclick="setSort('news', 'Vol')">成交量 <span id="sort-news-Vol"></span></th>
                         <th onclick="setSort('news', 'Pct')">漲幅 <span id="sort-news-Pct"></span></th>
                     </tr></thead>
@@ -233,19 +224,6 @@
             applyZoom();
         }
 
-        function updateGap(val) {
-            let gapVal = parseFloat(val);
-            if (isNaN(gapVal)) return;
-            fetch('/api/config', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ gap_pct: gapVal })
-            }).then(r => r.json()).then(d => {
-                document.getElementById('sys-status').innerText = `⚡ 跳空門檻已更新為 ${d.gap_pct}%，雷達強制重啟中...`;
-                document.getElementById('sys-status').style.color = "var(--yellow)";
-            }).catch(e => console.error(e));
-        }
-
         function toggleMode() {
             isMobileMode = !isMobileMode;
             let btn = document.getElementById('mode-btn');
@@ -276,7 +254,7 @@
                 if (str.includes('M')) return num * 1000000;
                 if (str.includes('K')) return num * 1000;
             }
-            if (col === 'VolAcc' || col === 'RelVol' || col === 'Pct' || col === 'Gap') return parseFloat(str.replace(/[^0-9.-]/g, '')) || 0;
+            if (col === 'VolAcc' || col === 'RelVol' || col === 'Pct') return parseFloat(str.replace(/[^0-9.-]/g, '')) || 0;
             return num;
         }
 
@@ -300,7 +278,7 @@
 
         function showAITrends() {
             if (!brain || !brain.live_trends) return alert("📡 系統尚未載入...");
-            let msg = `🔥 V42 戰果加權 NLP 詞庫：\n📅 更新時間：${brain.trends_date || '未知'}\n\n`;
+            let msg = `🔥 V43 戰果加權 NLP 詞庫：\n📅 更新時間：${brain.trends_date || '未知'}\n\n`;
             Object.keys(brain.live_trends).forEach(k => { 
                 let data = brain.live_trends[k];
                 let score = typeof data === 'object' ? (data.score || 5) : data;
@@ -412,10 +390,6 @@
 
         function refreshUI(d) {
             if (!d) return;
-            let gapInput = document.getElementById('gap-input');
-            if (d.current_gap !== undefined && document.activeElement !== gapInput) {
-                gapInput.value = d.current_gap;
-            }
 
             document.getElementById('sys-status').innerText = `📡 數據更新: ${d.last_update || '--:--:--'}`;
             document.getElementById('sys-status').style.color = "var(--green)";
@@ -433,7 +407,6 @@
                     <td class="status-indicator"></td><td style="color:var(--text-muted);">${r.Time||'-'}</td><td class="sym">${r.Code}${icon}</td>
                     <td>${f_float}</td><td>${r.Price||'-'}</td><td><b style="color:var(--yellow);">${r.RelVol||'-'}</b></td>
                     <td>${formatVolAcc(r.VolAcc)}</td>
-                    <td><b class="${parseFloat(r.Gap||0)>0?'up':'down'}">${r.Gap||'-'}</b></td>
                     <td>${f_vol}</td>
                     <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'} <small style="color:var(--text-muted);">(${r.Amt||'-'})</small></td><td style="font-weight:bold; color:${r.Signal.includes('🎯') ? 'var(--neon-green)' : 'inherit'};">${r.Signal||'-'}</td>
                 </tr>`;
@@ -445,13 +418,13 @@
                     if ("vibrate" in navigator) navigator.vibrate([300, 100, 300, 100, 300]); 
                 }
             });
-            document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="11" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
+            document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="10" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
 
             let h2 = "", rankData = [...(d.leaderboard || [])].filter(r => !(r?.Type === 'fund' && !showETF));
             rankData.sort((a, b) => {
                 let detA = d.details[a.Code] || {}, detB = d.details[b.Code] || {};
-                let vA = (rankCfg.col==='Float') ? (a.Float||detA.Float) : ((rankCfg.col==='RelVol') ? (detA.RelVol||a.RelVol) : ((rankCfg.col==='VolAcc') ? (detA.VolAcc||a.VolAcc) : ((rankCfg.col==='Gap') ? (detA.Gap||a.Gap) : a[rankCfg.col])));
-                let vB = (rankCfg.col==='Float') ? (b.Float||detB.Float) : ((rankCfg.col==='RelVol') ? (detB.RelVol||b.RelVol) : ((rankCfg.col==='VolAcc') ? (detB.VolAcc||b.VolAcc) : ((rankCfg.col==='Gap') ? (detB.Gap||b.Gap) : b[rankCfg.col])));
+                let vA = (rankCfg.col==='Float') ? (a.Float||detA.Float) : ((rankCfg.col==='RelVol') ? (detA.RelVol||a.RelVol) : ((rankCfg.col==='VolAcc') ? (detA.VolAcc||a.VolAcc) : a[rankCfg.col]));
+                let vB = (rankCfg.col==='Float') ? (b.Float||detB.Float) : ((rankCfg.col==='RelVol') ? (detB.RelVol||b.RelVol) : ((rankCfg.col==='VolAcc') ? (detB.VolAcc||b.VolAcc) : b[rankCfg.col]));
                 vA = parseValue(vA, rankCfg.col); vB = parseValue(vB, rankCfg.col);
                 if (vA < vB) return rankCfg.asc ? -1 : 1; if (vA > vB) return rankCfg.asc ? 1 : -1; return 0;
             });
@@ -465,13 +438,11 @@
                     <td class="status-indicator"></td><td class="sym">${r.Code}${icon}</td><td>${r.Type==='fund'?'N/A':(r.Float||det.Float||"-")}</td>
                     <td>${r.Price||'-'}</td><td><b style="color:var(--yellow);">${det.RelVol||r.RelVol||'-'}</b></td>
                     <td>${formatVolAcc(det.VolAcc||r.VolAcc)}</td>
-                    <td><b class="${parseFloat(det.Gap||r.Gap||0)>0?'up':'down'}">${det.Gap||r.Gap||'-'}</b></td>
                     <td>${f_vol}</td><td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'} <small style="color:var(--text-muted);">(${det.Amt||r.Amt||'-'})</small></td>
                 </tr>`;
             });
-            document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--text-muted);">無符合標的</td></tr>`;
+            document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="8" style="text-align:center; padding:20px; color:var(--text-muted);">無符合標的</td></tr>`;
 
-            // 💡 VWAP 清單渲染
             let h_vwap = "";
             (d.vwap_list || []).forEach(r => {
                 let det = d.details[r.Code] || {};
@@ -522,7 +493,6 @@
                     let f_Pct = n.Pct || "-";
                     let f_Price = n.Price || "-";
                     let f_Float = n.Type === 'fund' ? 'N/A' : (n.Float || "-");
-                    let f_Gap = n.Gap || "-";
                     let f_vol = n.Is100K ? `<span class="vol-100k">${n.Vol||"-"} 📦</span>` : (n.Vol||"-");
                     let rowClass = isElite ? "elite-news-row" : "tr-green";
                     let titleClass = isElite ? "elite-title" : "";
@@ -536,13 +506,12 @@
                         <td>${f_Price}</td>
                         <td><b style="color:var(--yellow);">${n.RelVol||"-"}</b></td>
                         <td>${formatVolAcc(n.VolAcc)}</td>
-                        <td><b class="${parseFloat(f_Gap)>0?'up':'down'}">${f_Gap}</b></td>
                         <td>${f_vol}</td> 
                         <td class="${parseFloat(f_Pct)>0?'up':'down'}" style="font-weight:bold;">${f_Pct}</td>
                     </tr>`;
                 });
-                document.getElementById('news-list').innerHTML = h3 || `<tr><td colspan="12" style="text-align:center; padding:20px; color:var(--text-muted);">符合條件之情報已過濾</td></tr>`;
-            } else { document.getElementById('news-list').innerHTML = `<tr><td colspan="12" style="text-align:center; padding:20px; color:var(--text-muted);">今日尚無重大情報</td></tr>`; }
+                document.getElementById('news-list').innerHTML = h3 || `<tr><td colspan="11" style="text-align:center; padding:20px; color:var(--text-muted);">符合條件之情報已過濾</td></tr>`;
+            } else { document.getElementById('news-list').innerHTML = `<tr><td colspan="11" style="text-align:center; padding:20px; color:var(--text-muted);">今日尚無重大情報</td></tr>`; }
             
             if(activeSym) loadDetail(activeSym);
         }
@@ -551,9 +520,9 @@
             activeSym = sym;
             let d = (brain.details && brain.details[sym]) ? brain.details[sym] : null; let rankData = brain.leaderboard ? brain.leaderboard.find(x => x.Code === sym) : null;
             if (!d && !rankData) return;
-            if (!d && rankData) d = { Price:rankData.Price, Pct:rankData.Pct, Vol:rankData.Vol, RelVol:"-", Float:rankData.Type==='fund'?"N/A(ETF)":(rankData.Float||"-"), StopLoss:0, CatScore:0, IsTrap:false, NewsList:[], VolAcc:"-", Is100K:false, Gap:"-", SN_Score:0, VsaState:0, VR_Acc:0, VWAP_Dev:0, VWAP_Rating:"Low" };
+            if (!d && rankData) d = { Price:rankData.Price, Pct:rankData.Pct, Vol:rankData.Vol, RelVol:"-", Float:rankData.Type==='fund'?"N/A(ETF)":(rankData.Float||"-"), StopLoss:0, CatScore:0, IsTrap:false, NewsList:[], VolAcc:"-", Is100K:false, SN_Score:0, VsaState:0, VR_Acc:0, VWAP_Dev:0, VWAP_Rating:"Low" };
             
-            let trapWarn = d.IsTrap ? `<div style="background:rgba(248,81,73,0.2); border:1px solid var(--red); color:var(--red); padding:8px; margin-bottom:10px; border-radius:6px; font-weight:bold; font-size:13px; animation:blood-pulse 1s infinite;">🩸 致命警告：偵測到 S-1/S-3 增發稀釋</div>` : "";
+            let trapWarn = d.IsTrap ? `<div style="background:rgba(248,81,73,0.2); border:1px solid var(--red); color:var(--red); padding:8px; margin-bottom:10px; border-radius:6px; font-weight:bold; font-size:13px; animation:blood-pulse 1s infinite;">🩸 致命警告：偵測到毒藥增發或退市風險</div>` : "";
             let vcpHTML = ""; if (d.Signal && d.Signal.includes("VCP")) { let m = d.Signal.match(/\((\d+)m\)/); let mins = m ? parseInt(m[1]) : 1; vcpHTML = `<div style="font-size:11px; color:var(--text-muted);">⚡ 壓縮蓄力 (${mins} mins)</div><div class="vcp-bar-container"><div class="vcp-bar" style="width:${Math.min(mins*10,100)}%; background:${mins>=10?'#fff':'#ffa500'};"></div></div>`; }
 
             let volHTML = d.Is100K ? `<b class="vol-100k" style="font-size:14px;">${d.Vol||'-'} 📦</b>` : `<b style="color:var(--text-main); font-size:14px;">${d.Vol||'-'}</b>`;
@@ -614,8 +583,7 @@
                     <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center;">量能加速<br><b style="font-size:14px;">${formatVolAcc(d.VolAcc)}</b></div>
                     <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center; box-shadow: 0 0 5px rgba(227, 179, 65, 0.2);">量比加速度<br><b style="color:var(--yellow); font-size:14px;">${d.VR_Acc||0}%</b></div>
                     
-                    <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center;">VWAP 乖離率<br><b style="color:${vwapColor}; font-size:14px; ${vwapGlow}">${d.VWAP_Dev>0?'+'+d.VWAP_Dev:d.VWAP_Dev}%</b></div>
-                    <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center;">跳空<br><b class="${parseFloat(d.Gap||0)>0?'up':'down'}" style="font-size:14px;">${d.Gap||'-'}</b></div>
+                    <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center; grid-column:span 2;">VWAP 乖離率<br><b style="color:${vwapColor}; font-size:14px; ${vwapGlow}">${d.VWAP_Dev>0?'+'+d.VWAP_Dev:d.VWAP_Dev}%</b></div>
                     <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center; grid-column:span 2;">催化評分<br><b style="color:var(--yellow); font-size:14px;">${d.CatScore||0}</b></div>
                     
                     <div style="grid-column:span 2; padding-left:4px;">籌碼: <b style="color:var(--text-main);">${d.Float||'-'}</b></div>
