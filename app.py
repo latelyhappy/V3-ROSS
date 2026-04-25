@@ -7,7 +7,8 @@ import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
 import pytz
 from tvDatafeed import TvDatafeed, Interval
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_file
+import io
 from deep_translator import GoogleTranslator
 from collections import Counter
 import logging
@@ -743,6 +744,52 @@ def scanner_engine():
                 except Exception as e: continue
             time.sleep(5)
         except Exception as e: time.sleep(10)
+
+@app.route('/api/export_news')
+def export_news():
+    rows = []
+    with brain_lock:
+        # 遍歷目前雷達上的重磅新聞，將其展平為 Excel 格式
+        for ticker_data in MASTER_BRAIN.get('top_catalysts', []):
+            ticker = ticker_data.get('Code') or ticker_data.get('ticker')
+            # 抓取該股目前的盤中數據作為參考
+            price = ticker_data.get('Price', '-')
+            pct = ticker_data.get('Pct', '-')
+            rel_vol = ticker_data.get('RelVol', '-')
+            
+            for n in ticker_data.get('NewsList', []):
+                rows.append({
+                    "發布時間": n.get('time'),
+                    "代碼": ticker,
+                    "該股總分(CatScore)": ticker_data.get('CatScore', 0),
+                    "單則評分": n.get('score'),
+                    "標題(英文)": n.get('raw_title'),
+                    "標題(中文)": n.get('title'),
+                    "當下價格": price,
+                    "當下漲幅": pct,
+                    "當下量比": rel_vol,
+                    "新聞來源": n.get('source'),
+                    "原始連結": n.get('link')
+                })
+    
+    if not rows:
+        return "目前尚無新聞數據可供匯出", 404
+        
+    # 轉換為 DataFrame 並生成 Excel (CSV) 二進制流
+    # 這裡使用 utf-8-sig 編碼的 CSV，Excel 可以完美開啟且不會有亂碼，同時免除額外安裝 openpyxl 的麻煩
+    df = pd.DataFrame(rows)
+    output = io.BytesIO()
+    df.to_csv(output, index=False, encoding='utf-8-sig')
+    output.seek(0)
+    
+    filename = f"Sniper_News_Analysis_{datetime.now(TZ_TW).strftime('%m%d_%H%M')}.csv"
+    
+    return send_file(
+        output,
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=filename
+    )
 
 @app.route('/api/config', methods=['POST'])
 def update_config():

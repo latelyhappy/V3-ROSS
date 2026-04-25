@@ -92,6 +92,7 @@
         <button class="ghost-btn" style="border-color:var(--blue); color:var(--blue);" onclick="showAITrends()">🧠 AI 戰果詞庫</button>
         <button id="mode-btn" class="ghost-btn" style="border-color:var(--yellow); color:var(--yellow);" onclick="toggleMode()">📱 切換手機版</button>
         <button class="ghost-btn" onclick="resetLayout()">🔄 重置網格</button>
+        <button class="ghost-btn" style="border-color:var(--neon-purple); color:var(--neon-purple);" onclick="exportNewsExcel()">📥 匯出新聞分析</button>
         <div style="font-size: 13px; color: var(--text-muted); font-family: monospace; margin-left:10px; flex-shrink: 0;">TPE: <span id="sys-clock" style="color: var(--text-main); font-weight: bold;">--:--:--</span></div>
         <span id="sys-status" style="margin-left:auto; font-size:11px; color: var(--text-muted); padding-left: 15px;">📡 系統初始化...</span>
     </div>
@@ -357,6 +358,19 @@
             localStorage.clear(); 
             if(savedZoom) localStorage.setItem('sniper_zoom', savedZoom);
             location.reload(); 
+        }
+
+        function exportNewsExcel() {
+            document.getElementById('sys-status').innerText = "⏳ 正在生成 Excel 分析報表...";
+            document.getElementById('sys-status').style.color = "var(--yellow)";
+            
+            // 直接導向匯出 API 觸發瀏覽器下載
+            window.location.href = '/api/export_news';
+            
+            setTimeout(() => {
+                document.getElementById('sys-status').innerText = "✅ 報表匯出指令已發送";
+                document.getElementById('sys-status').style.color = "var(--green)";
+            }, 2000);
         }
         
         function toggleETF() { showETF = !showETF; let btn = document.getElementById('etf-btn'); if (showETF) { btn.innerText = "🔘 隱藏 ETF"; btn.style.borderColor = "var(--red)"; btn.style.color = "var(--red)"; } else { btn.innerText = "🔘 ETF"; btn.style.borderColor = "var(--border)"; btn.style.color = "var(--text-main)"; } if (Object.keys(brain).length > 0) refreshUI(brain); }
