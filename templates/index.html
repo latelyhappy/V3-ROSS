@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V43.17 - VWAP & JSON Defense Active</title>
+    <title>Sniper V43.18 - Vol Comb & Lab Confirmation</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
@@ -35,7 +35,7 @@
         .status-indicator { width: 4px; padding: 0 !important; }
         tr.tr-yellow .status-indicator { background: var(--yellow); } tr.tr-purple .status-indicator { background: var(--purple); }
         tr.tr-blue .status-indicator { background: var(--blue); } tr.tr-green .status-indicator { background: var(--green); }
-        tr.tr-border .status-indicator { background: var(--text-muted); }
+        tr.tr-red .status-indicator { background: var(--red); } tr.tr-border .status-indicator { background: var(--text-muted); }
         tr.tr-vcp { background: rgba(227, 179, 65, 0.08); } 
         .trap-row { animation: blood-pulse 1.5s infinite; }
         @keyframes blood-pulse { 0% {background: transparent;} 50% {background: rgba(248, 81, 73, 0.2);} 100% {background: transparent;} }
@@ -86,7 +86,7 @@
         <button class="ghost-btn" style="border-color:var(--blue); color:var(--blue);" onclick="showAITrends()">🧠 AI 戰果詞庫</button>
         <button id="mode-btn" class="ghost-btn" style="border-color:var(--yellow); color:var(--yellow);" onclick="toggleMode()">📱 切換手機版</button>
         <button class="ghost-btn" onclick="resetLayout()">🔄 重置網格</button>
-        <button class="ghost-btn" style="border-color:var(--neon-purple); color:var(--neon-purple);" onclick="exportNewsExcel()">📥 匯出新聞分析</button>
+        <button class="ghost-btn" style="border-color:var(--neon-purple); color:var(--neon-purple);" onclick="exportNewsExcel()">📥 匯出戰果實驗報表</button>
         
         <div style="font-size: 13px; color: var(--text-muted); font-family: monospace; margin-left:10px; flex-shrink: 0;">TPE: <span id="sys-clock" style="color: var(--text-main); font-weight: bold;">--:--:--</span></div>
         <span id="sys-status" style="margin-left:auto; font-size:11px; color: var(--text-muted); padding-left: 15px;">📡 系統初始化...</span>
@@ -289,7 +289,7 @@
         }
 
         function exportNewsExcel() {
-            document.getElementById('sys-status').innerText = "⏳ 正在生成 Excel 分析報表...";
+            document.getElementById('sys-status').innerText = "⏳ 正在生成 Excel 實驗報表...";
             document.getElementById('sys-status').style.color = "var(--yellow)";
             window.location.href = '/api/export_news';
             setTimeout(() => {
@@ -590,13 +590,31 @@
                     <div style="grid-column:span 2; padding-left:4px;">當前狀態: <b style="color:${d.Signal.includes('洗盤')?'var(--text-muted)':'var(--yellow)'};">${d.Signal||'掃描中...'}</b></div>
                     ${vcpHTML ? `<div style="grid-column:1/-1;">${vcpHTML}</div>` : ''}
                 </div>
-                <h3 style="color:var(--text-muted); font-size:12px; border-bottom:1px solid var(--border); padding-bottom:4px; margin-top:12px; margin-bottom:8px; text-align:left;">🗞️ 情報分析</h3>`;
+                <h3 style="color:var(--text-muted); font-size:12px; border-bottom:1px solid var(--border); padding-bottom:4px; margin-top:12px; margin-bottom:8px; text-align:left;">🗞️ 情報物理實驗分析</h3>`;
             
             if (!d.NewsList || d.NewsList.length === 0) html += `<div style="text-align:left; color:var(--text-muted); font-size:13px;">近 3 日無新聞。</div>`;
             else d.NewsList.forEach(n => { 
                 let d_title = n.title==="⏳ 翻譯中..."?n.raw_title:n.title;
                 d_title = highlightElites(d_title, n.elites, brain.live_trends);
-                html += `<div style="margin-bottom:8px; text-align:left; padding:10px; background:rgba(255,255,255,0.02); border-radius:6px; border-left:3px solid ${n.elites && n.elites.length>0?'var(--neon-green)':(n.is_today?'#ffa500':'var(--border)')};"><div style="color:${n.is_today?'#ffa500':'var(--text-muted)'}; font-size:11px; margin-bottom:4px; font-weight:bold;">${n.time} | 權重: ${n.score}</div><a href="${n.link}" target="_blank" style="text-decoration:none; color:var(--text-main); font-size:13px;">${d_title}</a></div>`; 
+                
+                // 💡 物理突破 UI 顯示
+                let p_news = n.p_news || 0;
+                let max_p_15m = n.max_p_15m || 0;
+                let confirm_html = "";
+                if (p_news > 0) {
+                    if (max_p_15m > p_news) {
+                        confirm_html = `<span style="color:var(--neon-green); font-weight:bold; margin-left:10px;">✅ 實體突破發布高點 ($${max_p_15m.toFixed(2)})</span>`;
+                    } else {
+                        confirm_html = `<span style="color:var(--text-muted); margin-left:10px;">⏳ 尚未突破 ($${p_news.toFixed(2)})</span>`;
+                    }
+                }
+                
+                html += `<div style="margin-bottom:8px; text-align:left; padding:10px; background:rgba(255,255,255,0.02); border-radius:6px; border-left:3px solid ${n.elites && n.elites.length>0?'var(--neon-green)':(n.is_today?'#ffa500':'var(--border)')};">
+                    <div style="color:${n.is_today?'#ffa500':'var(--text-muted)'}; font-size:11px; margin-bottom:4px; font-weight:bold;">
+                        ${n.time} | 權重: ${n.score} ${confirm_html}
+                    </div>
+                    <a href="${n.link}" target="_blank" style="text-decoration:none; color:var(--text-main); font-size:13px;">${d_title}</a>
+                </div>`; 
             });
             document.getElementById('detail-list').innerHTML = html + `</div>`;
         }

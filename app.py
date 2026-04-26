@@ -135,9 +135,8 @@ def calculate_hft_score(headline, ticker=""):
     total_score = 0
     elite_hits = []
 
-    reload_armory() # 每次動態讀取以確保套用最新修改
+    reload_armory()
 
-    # 從 JSON 抓取字典
     HINDSIGHT_TRAPS = list(CATALYST_ARMORY.get("HINDSIGHT_NOISE", {}).keys())
     TOXIC_OFFERINGS = list(CATALYST_ARMORY.get("TOXIC_OFFERINGS", {}).keys())
     CLASS_ACTION_SPAM = list(CATALYST_ARMORY.get("CLASS_ACTION_SPAM", {}).keys())
@@ -145,33 +144,26 @@ def calculate_hft_score(headline, ticker=""):
     EARNINGS_PREVIEW = list(CATALYST_ARMORY.get("EARNINGS_PREVIEW", {}).keys())
     MA_WORDS = CATALYST_ARMORY.get("MEGA_CATALYSTS", {})
 
-    # 🚨 防禦鎖 4：主觀農場與馬後炮過濾
     if "?" in text or any(trap in text for trap in HINDSIGHT_TRAPS) or all(x in text for x in ["WHY", "IS"]) or all(x in text for x in ["WHY", "ARE"]):
         return 0, False, []
 
-    # 🚨 防禦鎖 1：增資毒藥鎖
     if any(trap in text for trap in TOXIC_OFFERINGS):
         return -50, True, [] 
 
-    # 🚨 防禦鎖 2：訴訟垃圾桶
     if any(trap in text for trap in CLASS_ACTION_SPAM):
         return 0, False, []
 
-    # 🚨 防禦鎖 3：主體關聯度過濾
     if any(mc in text for mc in MEGACAPS):
         partnership_words = ["PARTNERSHIP", "COLLABORATION", "CONTRACT", "AGREEMENT", "JOINS", "INTEGRATES"]
         if not any(pw in text for pw in partnership_words):
             return 0, False, [] 
 
-    # 🚨 法說會「預告」過濾器
     if any(trap in text for trap in EARNINGS_PREVIEW):
         return 0, False, []
 
-    # 🚨 併購權重絕對優先
     for kw, score in MA_WORDS.items():
         if kw in text: total_score += score
 
-    # 原有邏輯：黑名單與趨勢加權
     for kw, score in CATALYST_ARMORY.get("BLACK", {}).items():
         if kw in text: return -100, True, []
         
@@ -256,11 +248,17 @@ def fetch_and_score_news(ticker, cell, force=False):
                 
                 if is_trap: has_trap = True
                 all_elites.update(elites)
+                
+                # 💡 物理錨點鎖定：鎖定發現新聞當下的 K 線最高價
+                p_news = cell.get('HighVal', 0.0)
                 articles.append({
                     "ticker": ticker, "title": "⏳ 翻譯中...", "raw_title": raw_t,
                     "link": item.find('link').text, "time": dt_tpe.strftime("%m-%d %H:%M"),
                     "is_today": (dt_tpe.date() == now_tpe.date()), 
-                    "score": score, "elites": list(elites), "source": "Yahoo"
+                    "score": score, "elites": list(elites), "source": "Yahoo",
+                    "p_news": p_news,
+                    "max_p_15m": p_news,
+                    "fetch_time_ts": time.time()
                 })
             
             with brain_lock:
@@ -313,10 +311,14 @@ def finnhub_news_monitor_worker():
                                 else:
                                     score, is_trap, elites = calculate_hft_score(art_headline, ticker)
 
+                                p_news = cell.get('HighVal', 0.0)
                                 new_article = {
                                     "ticker": ticker, "title": "⏳ 翻譯中...", "raw_title": art_headline, "link": art_url,
                                     "time": dt_tpe.strftime("%m-%d %H:%M"), "is_today": (dt_tpe.date() == datetime.now(TZ_TW).date()),
-                                    "score": score, "elites": list(elites), "source": "Finnhub PR"
+                                    "score": score, "elites": list(elites), "source": "Finnhub PR",
+                                    "p_news": p_news,
+                                    "max_p_15m": p_news,
+                                    "fetch_time_ts": time.time()
                                 }
 
                                 if not any(n['link'] == art_url for n in cell['NewsList']):
@@ -345,12 +347,11 @@ def update_dynamic_watchlist():
         new_watchlist = []
         temp_stats = {}
 
-        # 🚀 統一雷達：純動能與成交量驅動 (完全拔除跳空限制)
         payload = {
             "filter": [
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, 
                 {"left": "close", "operation": "in_range", "right": [1, 50]}, 
-                {"left": "change", "operation": "egreater", "right": 2.0}, # 當日漲幅 > 2% 提前抓取
+                {"left": "change", "operation": "egreater", "right": 2.0}, 
                 {"left": "volume", "operation": "egreater", "right": 50000} 
             ], 
             "columns": ["name", "premarket_close", "close", "change", "premarket_volume", "market_cap_basic", "type"], 
@@ -533,6 +534,31 @@ def scanner_engine():
                     a_m = ratio_3v3 if ratio_3v3 > 1.0 else ratio_3v3 * 0.5
                     sn_score = int(round(base_score * m_vsa * a_m))
 
+                    # 💡 V43.18：量能梳子與缺牙視覺比例演算法
+                    comb_state = "None"
+                    if len(df) >= 10:
+                        last_10 = df.iloc[-10:]
+                        vols = last_10['volume'].values
+                        opens = last_10['open'].values
+                        closes = last_10['close'].values
+                        max_idx = int(np.argmax(vols))
+                        v_max = float(vols[max_idx])
+                        is_red_vmax = closes[max_idx] < opens[max_idx]
+                        post_vols = vols[max_idx+1:]
+                        
+                        if v_max > 0:
+                            avg_9 = (np.sum(vols) - v_max) / 9.0
+                            if is_red_vmax:
+                                drops = np.sum(post_vols < v_max * 0.10)
+                                if drops >= 2: comb_state = "Dumping"
+                            else:
+                                drops = np.sum(post_vols < v_max * 0.05)
+                                if drops >= 3: comb_state = "Fake"
+                            
+                            if comb_state == "None":
+                                if avg_9 > v_max * 0.25 and np.sum(vols < v_max * 0.05) == 0:
+                                    comb_state = "Comb"
+
                     tracker = STATE_TRACKER.get(ticker, {'state': 'None', 'duration': 0, 'vcp_low': float('inf'), 'shakeout_high': 0.0})
                     dynamic_stop = curr_ema20 * 0.99 
                     
@@ -561,6 +587,20 @@ def scanner_engine():
                     elif tracker['state'] == 'VCP' and tracker['duration'] >= 3: current_signal = f"⚡VCP壓縮鎖定 ({tracker['duration']}m) {vol_warn}"; current_level = 3; status_color = "vcp" 
                     elif is_grind: current_signal = f"🚜穩步推升 {vol_warn}"; current_level = 2; status_color = "blue"  
                     elif is_ride: current_signal = f"💎趨勢滑行 {vol_warn}"; current_level = 1; status_color = "purple"
+                    
+                    # 💡 聯動量能梳子與訊號
+                    if comb_state == "Dumping":
+                        vsa_state = max(vsa_state, 2)
+                        sn_score = int(sn_score * 0.5)
+                        current_signal = f"{current_signal} [🚨出貨斷層]" if current_signal else "[🚨出貨斷層]"
+                        status_color = "red"
+                    elif comb_state == "Fake":
+                        vsa_state = max(vsa_state, 1)
+                        sn_score = int(sn_score * 0.5)
+                        current_signal = f"{current_signal} [⚠️誘多缺牙]" if current_signal else "[⚠️誘多缺牙]"
+                    elif comb_state == "Comb":
+                        sn_score = int(sn_score * 1.2)
+                        current_signal = f"{current_signal} [🪮健康梳子]" if current_signal else "[🪮健康梳子]"
 
                     STATE_TRACKER[ticker] = tracker
 
@@ -568,7 +608,7 @@ def scanner_engine():
                         "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": format_vol(daily_vol),
                         "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, 
                         "Signal": current_signal if current_signal else "",
-                        "PriceVal": float(p_live), "StopLoss": dynamic_stop, "Float": float_str if float_str != "未知" else "-", "Type": stat_data.get('type', 'stock'),
+                        "PriceVal": float(p_live), "HighVal": float(df['high'].iloc[-1]), "StopLoss": dynamic_stop, "Float": float_str if float_str != "未知" else "-", "Type": stat_data.get('type', 'stock'),
                         "VolAcc": vol_acc_str, "Is100K": False, 
                         "SN_Score": sn_score, "VsaState": vsa_state, "VR_Acc": vr_acc,             
                         "VWAP_Dev": vwap_dev, "VWAP_Rating": vwap_rating  
@@ -589,6 +629,12 @@ def scanner_engine():
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "Price": "-", "Pct": "-", "Vol": "-", "RelVol": "-", "Float": "-", "Signal": "", "SN_Score": 0, "VsaState": 0})
                         cell.update(stats)
                         if is_trap: cell["IsTrap"] = True
+                        
+                        # 💡 更新新聞發布後 15 分鐘的最高價追蹤
+                        current_high_val = float(df['high'].iloc[-1])
+                        for n in cell.get('NewsList', []):
+                            if time.time() - n.get('fetch_time_ts', 0) <= 900: # 15 分鐘內
+                                n['max_p_15m'] = max(n.get('max_p_15m', 0.0), current_high_val)
                         
                         if push_signal:
                             cooldown_tracker[ticker] = {'time': now_ts, 'level': current_level}
@@ -661,6 +707,8 @@ def export_news():
                     "當下價格": price,
                     "當下漲幅": pct,
                     "當下量比": rel_vol,
+                    "新聞當刻高點": n.get('p_news', 0.0),
+                    "15分鐘內最高價": n.get('max_p_15m', 0.0),
                     "新聞來源": n.get('source'),
                     "原始連結": n.get('link')
                 })
