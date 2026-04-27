@@ -1,6 +1,4 @@
-flask
+streamlit
 pandas
-git+https://github.com/rongardF/tvdatafeed.git
-pytz
+tvDatafeed
 requests
-deep-translator
