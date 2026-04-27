@@ -1,5 +1,7 @@
 Flask
-Flask-SocketIO
 pandas
-git+https://github.com/rongardF/tvdatafeed.git
+numpy
 requests
+pytz
+deep-translator
+git+https://github.com/rongardF/tvdatafeed.git
