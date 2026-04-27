@@ -1,4 +1,6 @@
-streamlit==1.33.0
-pandas==2.2.1
-tvdatafeed==2.1.0
-requests==2.31.0
+flask
+pandas
+git+https://github.com/rongardF/tvdatafeed.git
+pytz
+requests
+deep-translator
