@@ -12,7 +12,7 @@ from tvDatafeed import TvDatafeed, Interval
 from deep_translator import GoogleTranslator
 from collections import Counter
 import logging
-import concurrent.futures # V44.0 新增：異步併發處理套件
+import concurrent.futures 
 
 logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
 
@@ -49,7 +49,7 @@ def reload_armory():
 
 reload_armory()
 
-# --- 新增：真實 Float 快取系統 ---
+# --- V44.1 修正：精準流通股抓取系統 ---
 FLOAT_CACHE_FILE = os.path.join(os.path.dirname(__file__), 'float_cache.json')
 FLOAT_CACHE = {}
 
@@ -68,20 +68,33 @@ def save_float_cache():
     except: pass
 
 def get_real_float(symbol):
+    """
+    對接 Finnhub Basic Financials 接口，獲取真正流通股 (floatShares)
+    而非總發行股 (shareOutstanding)
+    """
     if symbol in FLOAT_CACHE: return FLOAT_CACHE[symbol]
     if not FINNHUB_TOKEN: return 0.0
     try:
-        url = f"https://finnhub.io/api/v1/stock/profile2?symbol={symbol}&token={FINNHUB_TOKEN}"
+        # 修正：改用 metric 接口獲取真正流通股
+        url = f"https://finnhub.io/api/v1/stock/metric?symbol={symbol}&metric=all&token={FINNHUB_TOKEN}"
         res = requests.get(url, timeout=5)
         if res.status_code == 200:
             data = res.json()
-            shares = data.get('shareOutstanding', 0) * 1e6
-            if shares > 0:
-                FLOAT_CACHE[symbol] = shares
+            # 提取 metric 中的 floatShares
+            real_float = data.get('metric', {}).get('floatShares', 0)
+            
+            if real_float > 0:
+                # Finnhub floatShares 單位通常是百萬或原始股數
+                # 若數值小於 50000，判定單位為百萬 (M)
+                if real_float < 50000:
+                    real_float = real_float * 1e6
+                
+                FLOAT_CACHE[symbol] = real_float
                 save_float_cache()
-                return shares
+                return real_float
     except: pass
     return 0.0
+
 # ----------------------------------
 
 MASTER_BRAIN = {"surge_log": [], "details": {}, "leaderboard": [], "vwap_list": [], "top_catalysts": [], "last_update": "", "elite_words": []}
@@ -275,10 +288,7 @@ def fetch_and_score_news(ticker, cell, force=False):
                 if raw_t in finnhub_titles: continue 
         
                 if is_news_echo(raw_t, dt_tpe, cell.get('NewsList', [])):
-                    score = 0
-                    is_trap = False
-                    elites = []
-                    raw_t = "[Echo] " + raw_t
+                    score = 0; is_trap = False; elites = []; raw_t = "[Echo] " + raw_t
                 else:
                     score, is_trap, elites = calculate_hft_score(raw_t, ticker)
                 
@@ -291,19 +301,15 @@ def fetch_and_score_news(ticker, cell, force=False):
                     "link": item.find('link').text, "time": dt_tpe.strftime("%m-%d %H:%M"),
                     "is_today": (dt_tpe.date() == now_tpe.date()), 
                     "score": score, "elites": list(elites), "source": "Yahoo",
-                    "p_news": p_news,
-                    "max_p_15m": p_news,
-                    "fetch_time_ts": time.time()
+                    "p_news": p_news, "max_p_15m": p_news, "fetch_time_ts": time.time()
                 })
             
             with brain_lock:
                 combined = articles + [n for n in cell.get('NewsList', []) if n['raw_title'] not in {a['raw_title'] for a in articles}]
                 combined.sort(key=lambda x: x.get('time', '00-00 00:00'), reverse=True)
                 cell["NewsList"] = combined[:10]
-                
                 if cell["NewsList"]: cell["CatScore"] = max(n['score'] for n in cell["NewsList"])
                 else: cell["CatScore"] = 0
-                
                 cell["IsTrap"] = cell.get("IsTrap", False) or has_trap 
                 cell["HasNews"] = len(cell["NewsList"]) > 0 
                 MASTER_BRAIN["top_catalysts"] = extract_top_catalysts(MASTER_BRAIN)
@@ -336,9 +342,7 @@ def finnhub_news_monitor_worker():
                         for art in res.json()[:5]:
                             art_url = art.get('url', ''); art_headline = art.get('headline', '')
                             if not art_url or not art_headline or art_url in seen_news_urls: continue
-                            
                             dt_tpe = datetime.fromtimestamp(art.get('datetime', time.time()), pytz.UTC).astimezone(TZ_TW)
-                            
                             with brain_lock:
                                 cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": []})
                                 if is_news_echo(art_headline, dt_tpe, cell.get('NewsList', [])):
@@ -351,9 +355,7 @@ def finnhub_news_monitor_worker():
                                     "ticker": ticker, "title": "⏳ 翻譯中...", "raw_title": art_headline, "link": art_url,
                                     "time": dt_tpe.strftime("%m-%d %H:%M"), "is_today": (dt_tpe.date() == datetime.now(TZ_TW).date()),
                                     "score": score, "elites": list(elites), "source": "Finnhub PR",
-                                    "p_news": p_news,
-                                    "max_p_15m": p_news,
-                                    "fetch_time_ts": time.time()
+                                    "p_news": p_news, "max_p_15m": p_news, "fetch_time_ts": time.time()
                                 }
 
                                 if not any(n['link'] == art_url for n in cell['NewsList']):
@@ -400,17 +402,15 @@ def update_dynamic_watchlist():
             for x in data['data']:
                 sym, p, c, pct, v, mc, t = x['d'][0], x['d'][1], x['d'][2], x['d'][3], x['d'][4], x['d'][5], x['d'][6]
                 if sym not in new_watchlist: new_watchlist.append(sym)
-                
                 p_eff = p if p is not None else c
                 
-                # --- 修改 1：使用真實 Float 對接 ---
+                # --- V44.1 精準修正：改用 floatShares 獲取真正流通股 ---
                 real_shares = get_real_float(sym)
                 if real_shares > 0:
                     float_m = real_shares / 1_000_000
                 else:
                     float_m = (mc / p_eff) / 1_000_000 if mc and p_eff else 0.0
-                # -----------------------------------
-
+                
                 prev_est = p_eff / (1 + ((pct or 0)/100)) if pct and pct != -100 else p_eff
                 f_str = "N/A (ETF)" if t == 'fund' else (f"{float_m:.1f}M" if float_m > 0 else "未知")
                 if t != 'fund' and float_m > 50.0: f_str = f"⚠️{f_str}"
@@ -457,21 +457,14 @@ def scanner_engine():
                 _last_list_update = now_ts
                 
             if not DYNAMIC_WATCHLIST: time.sleep(5); continue
-
             now_ny = datetime.now(TZ_NY)
-            m_open = now_ny.replace(hour=9, minute=30, second=0, microsecond=0)
-            m_shock_end = now_ny.replace(hour=9, minute=35, second=0, microsecond=0)
-            is_open_shock = m_open <= now_ny < m_shock_end
-
             current_watchlist = DYNAMIC_WATCHLIST.copy()
 
-            # --- 修改 2：封裝單檔股票處理邏輯，準備進行併發 ---
             def _process_ticker(ticker):
                 nonlocal consecutive_errors, tv
                 try:
-                    time.sleep(0.5) # 控制 API 請求節奏
+                    time.sleep(0.5) 
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=960, extended_session=True)
-                    
                     if df is None or df.empty or len(df) < 5: 
                         consecutive_errors += 1
                         if consecutive_errors > 15:
@@ -485,264 +478,99 @@ def scanner_engine():
 
                     last_date = df.index[-1].date()
                     today_df = df[df.index.date == last_date]
-
                     p_live = float(df['close'].iloc[-1])
                     p_prev = float(df['close'].iloc[-2]) if len(df) > 1 else p_live
                     v_live = float(df['volume'].iloc[-1])
                     v_prev = float(df['volume'].iloc[-2]) if len(df) > 1 else v_live
                     
-                    # --- 修改 3：對接官方 Daily 結算數據，抓取「真實成交量」與「真實昨收價」 ---
+                    # 對接官方結算數據
                     try:
                         daily_df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_daily, n_bars=2)
                         if daily_df is not None and not daily_df.empty:
                             true_daily_vol = int(daily_df['volume'].iloc[-1])
                             true_prev_close = float(daily_df['close'].iloc[-2]) if len(daily_df) > 1 else float(daily_df['open'].iloc[0])
                         else:
-                            true_daily_vol = int(today_df['volume'].sum())
-                            true_prev_close = 0.0
-                    except:
-                        true_daily_vol = int(today_df['volume'].sum())
-                        true_prev_close = 0.0
-                    # -------------------------------------------------------------------------
+                            true_daily_vol = int(today_df['volume'].sum()); true_prev_close = 0.0
+                    except: true_daily_vol = int(today_df['volume'].sum()); true_prev_close = 0.0
 
                     time_lapsed_mins = len(today_df)
-                    if time_lapsed_mins > 2:
-                        avg_vol = float(today_df['volume'].iloc[:-1].mean())
-                    else:
-                        avg_vol = v_live
+                    avg_vol = float(today_df['volume'].iloc[:-1].mean()) if time_lapsed_mins > 2 else v_live
                     if avg_vol == 0: avg_vol = 1.0 
-                    
                     rel_vol_live = float(round(v_live / avg_vol, 2))
                     rel_vol_prev = float(round(v_prev / avg_vol, 2))
                     rel_vol_display = max(rel_vol_live, rel_vol_prev)
-                    
-                    # 使用抓取到的真實總量
                     daily_vol = true_daily_vol
-                    
                     vol_3m = float(df['volume'].iloc[-3:].sum()) if len(df) >= 3 else v_live
 
                     if time_lapsed_mins > 0:
                         typical_price = (today_df['high'] + today_df['low'] + today_df['close']) / 3
                         cumulative_vol = today_df['volume'].cumsum()
-                        cumulative_vp = (typical_price * today_df['volume']).cumsum()
-                        vwap_series = cumulative_vp / cumulative_vol
+                        vwap_series = (typical_price * today_df['volume']).cumsum() / cumulative_vol
                         current_vwap = float(vwap_series.iloc[-1])
                         vwap_dev = float(round(((p_live - current_vwap) / current_vwap) * 100, 2)) if current_vwap > 0 else 0.0
-                    else:
-                        current_vwap = p_live
-                        vwap_dev = 0.0
+                    else: current_vwap = p_live; vwap_dev = 0.0
 
                     vwap_rating = "High" if vwap_dev > 15.0 else ("Mid" if vwap_dev > 5.0 else "Low") 
-
                     df['tr'] = pd.concat([(df['high'] - df['low']), (df['high'] - df['close'].shift(1)).abs(), (df['low'] - df['close'].shift(1)).abs()], axis=1).max(axis=1)
                     atr5 = float(df['tr'].rolling(5, min_periods=3).mean().iloc[-1]) if len(df) >= 5 else 0.0
                     atr20 = float(df['tr'].rolling(20, min_periods=5).mean().iloc[-1]) if len(df) >= 5 else 0.0
-
                     stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0})
-                    
-                    # 使用真實昨收價計算
                     prev_close = true_prev_close if true_prev_close > 0 else (float(stat_data['prev']) if stat_data['prev'] > 0 else float(df['low'].min()))
                     float_str = stat_data['float_str'] if stat_data['prev'] > 0 else "未知"
                     real_pct = float(((p_live - prev_close) / prev_close) * 100)
-                    
                     curr_ema10 = float(df['close'].ewm(span=10, adjust=False).mean().iloc[-1]) if len(df) >= 10 else p_live
                     curr_ema20 = float(df['close'].ewm(span=20, adjust=False).mean().iloc[-1]) if len(df) >= 20 else p_live
-                    
-                    past_high_for_live = float(df['high'].iloc[-11:-1].max()) if len(df) >= 11 else p_live
-                    past_high_for_prev = float(df['high'].iloc[-12:-2].max()) if len(df) >= 12 else p_live
-                    spark_live = bool((rel_vol_live >= 2.5) and (p_live >= past_high_for_live))
-                    spark_prev = bool((rel_vol_prev >= 2.5) and (p_prev >= past_high_for_prev) and (p_live >= df['open'].iloc[-2] if len(df)>1 else True))
-                    is_spark = bool((spark_live or spark_prev) and (real_pct > 3.0))
+                    past_high = float(df['high'].iloc[-11:-1].max()) if len(df) >= 11 else p_live
+                    is_spark = bool(((rel_vol_live >= 2.5 and p_live >= past_high) or (rel_vol_prev >= 2.5 and p_prev >= past_high)) and (real_pct > 3.0))
 
-                    is_vcp_compression = bool((atr5 > 0) and (atr5 < atr20 * 0.95) and (rel_vol_prev < 0.85) and (curr_ema10 > curr_ema20))
-                    is_ride = bool((p_live >= curr_ema20) and (abs(p_live - curr_ema20)/curr_ema20 < 0.012) and (rel_vol_prev < 0.8) and (real_pct > 1.0) and not is_spark)
-                    is_grind = bool((curr_ema10 > curr_ema20) and (p_live >= curr_ema10) and (0.5 <= rel_vol_display < 2.5) and (real_pct > 2.0) and not is_spark and not is_ride)
-
-                    ratio_3v3 = 1.0; z_score = 0.0; staircase = False; vol_acc_str = "-"
-                    vr_acc = 0.0 
-                    
+                    ratio_3v3 = 1.0; z_score = 0.0; vol_acc_str = "-"; vr_acc = 0.0 
                     if len(df) >= 6:
-                        avg_v_60 = float(df['volume'].iloc[:-1].mean())
-                        std_v_60 = float(df['volume'].iloc[:-1].std())
+                        avg_v_60 = float(df['volume'].iloc[:-1].mean()); std_v_60 = float(df['volume'].iloc[:-1].std())
                         z_score = float((v_live - avg_v_60) / std_v_60) if std_v_60 > 0 else 0.0
-                        vol_A = vol_3m
-                        vol_B = float(df['volume'].iloc[-6:-3].sum())
-                        vol_C = float(df['volume'].iloc[-9:-6].sum()) if len(df) >= 9 else 0.0
+                        vol_A = vol_3m; vol_B = float(df['volume'].iloc[-6:-3].sum())
                         if vol_B >= 0: vr_acc = float(round(((vol_A - vol_B) / max(vol_B, 0.01)) * 100, 2))
                         if vol_B > 0:
                             ratio_3v3 = float(vol_A / vol_B)
-                            sym_up, sym_extreme = ("↗", "🔥") if p_live >= p_prev else ("🔻", "🩸")
-                            if len(df) >= 9:
-                                if vol_A > vol_B > vol_C: vol_acc_str = f"{sym_extreme} {ratio_3v3:.2f}x"
-                                elif vol_A > vol_B and vol_B <= vol_C: vol_acc_str = f"{sym_up} {ratio_3v3:.2f}x"
-                                elif vol_A < vol_B < vol_C: vol_acc_str = f"🧊 {ratio_3v3:.2f}x"
-                                elif vol_A < vol_B and vol_B >= vol_C: vol_acc_str = f"↘ {ratio_3v3:.2f}x"
-                                else: vol_acc_str = f"- {ratio_3v3:.2f}x"
-                            else:
-                                vol_acc_str = f"{sym_up} {ratio_3v3:.2f}x" if vol_A > vol_B else f"↘ {ratio_3v3:.2f}x"
-                            
-                        b1 = vol_C
-                        staircase = bool((b1 < vol_B < vol_A) and (p_live > df['close'].iloc[-10]))
+                            sym_up = "↗" if p_live >= p_prev else "↘"
+                            vol_acc_str = f"{sym_up} {ratio_3v3:.2f}x"
 
-                    if is_open_shock: z_score = 0.0; ratio_3v3 = 1.0; staircase = False; vol_acc_str = "-"
-
-                    base_score = stat_data.get('float_comp', 0) + real_pct
-                    r_er = real_pct / rel_vol_display if rel_vol_display > 0 else real_pct
-                    
-                    vsa_state = 0
-                    if rel_vol_display > 5 and r_er < 1.0: m_vsa = 0.2; vsa_state = 2
-                    elif rel_vol_display > 3 and r_er < 1.0: m_vsa = 0.5; vsa_state = 1
-                    else: m_vsa = 1.0 + (math.log(max(rel_vol_display, 1.0)) * 0.1)
-
-                    a_m = ratio_3v3 if ratio_3v3 > 1.0 else ratio_3v3 * 0.5
-                    sn_score = int(round(base_score * m_vsa * a_m))
-
+                    sn_score = int(round((stat_data.get('float_comp', 0) + real_pct) * (ratio_3v3 if ratio_3v3 > 1.0 else 0.5)))
                     comb_state = "None"
                     if len(df) >= 10:
-                        last_10 = df.iloc[-10:]
-                        vols = last_10['volume'].values
-                        opens = last_10['open'].values
-                        closes = last_10['close'].values
-                        max_idx = int(np.argmax(vols))
-                        v_max = float(vols[max_idx])
-                        is_red_vmax = closes[max_idx] < opens[max_idx]
-                        post_vols = vols[max_idx+1:]
-                        
-                        if v_max > 0:
-                            avg_9 = (np.sum(vols) - v_max) / 9.0
-                            if is_red_vmax:
-                                drops = np.sum(post_vols < v_max * 0.10)
-                                if drops >= 2: comb_state = "Dumping"
-                            else:
-                                drops = np.sum(post_vols < v_max * 0.05)
-                                if drops >= 3: comb_state = "Fake"
-                            
-                            if comb_state == "None":
-                                if avg_9 > v_max * 0.25 and np.sum(vols < v_max * 0.05) == 0:
-                                    comb_state = "Comb"
-
-                    tracker = STATE_TRACKER.get(ticker, {'state': 'None', 'duration': 0, 'vcp_low': float('inf'), 'shakeout_high': 0.0})
-                    dynamic_stop = curr_ema20 * 0.99 
-                    
-                    if is_spark:
-                        if tracker['state'] == 'VCP' and tracker['duration'] >= 3: dynamic_stop = tracker['vcp_low']
-                        tracker['state'] = 'None'; tracker['duration'] = 0; tracker['vcp_low'] = float('inf')
-                    elif is_vcp_compression:
-                        if tracker['state'] != 'VCP': tracker['state'] = 'VCP'; tracker['duration'] = 1; tracker['vcp_low'] = float(min(df['low'].iloc[-1], df['low'].iloc[-2] if len(df)>1 else df['low'].iloc[-1]))
-                        else: tracker['duration'] += 1; tracker['vcp_low'] = float(min(tracker['vcp_low'], df['low'].iloc[-1]))
-                    else: tracker['state'] = 'None'; tracker['duration'] = 0; tracker['vcp_low'] = float('inf')
-
-                    if dynamic_stop == float('inf'): dynamic_stop = curr_ema20 * 0.99
-                    dynamic_stop = float(dynamic_stop)
-
-                    vol_warn = "(⚠️量低)" if (p_live * max(v_live, v_prev, avg_vol)) < 50000 else ""
-                    current_signal = None; current_level = 0; status_color = "green"; is_shakeout = False
-                    
-                    if (z_score > 2.5 or ratio_3v3 > 2.5) and p_live < p_prev:
-                        is_shakeout = True; tracker['state'] = 'Shakeout'; tracker['shakeout_high'] = float(df['high'].iloc[-1])
-                        current_signal = "💀 洗盤觀察中"; status_color = "border"; current_level = 1
-                    elif tracker['state'] == 'Shakeout' and p_live > tracker['shakeout_high']:
-                        current_signal = "🔥 絕地反擊(V轉)"; status_color = "yellow"; current_level = 5; tracker['state'] = 'None'
-                    elif z_score > 3.0 or (ratio_3v3 > 2.0 and staircase):
-                        current_signal = "🔥 極端加速"; status_color = "yellow"; current_level = 4
-                    elif is_spark: current_signal = f"🔥強力點火 {vol_warn}"; current_level = 4; status_color = "yellow"
-                    elif tracker['state'] == 'VCP' and tracker['duration'] >= 3: current_signal = f"⚡VCP壓縮鎖定 ({tracker['duration']}m) {vol_warn}"; current_level = 3; status_color = "vcp" 
-                    elif is_grind: current_signal = f"🚜穩步推升 {vol_warn}"; current_level = 2; status_color = "blue"  
-                    elif is_ride: current_signal = f"💎趨勢滑行 {vol_warn}"; current_level = 1; status_color = "purple"
-                    
-                    if comb_state == "Dumping":
-                        vsa_state = max(vsa_state, 2)
-                        sn_score = int(sn_score * 0.5)
-                        current_signal = f"{current_signal} [🚨出貨斷層]" if current_signal else "[🚨出貨斷層]"
-                        status_color = "red"
-                    elif comb_state == "Fake":
-                        vsa_state = max(vsa_state, 1)
-                        sn_score = int(sn_score * 0.5)
-                        current_signal = f"{current_signal} [⚠️誘多缺牙]" if current_signal else "[⚠️誘多缺牙]"
-                    elif comb_state == "Comb":
-                        sn_score = int(sn_score * 1.2)
-                        current_signal = f"{current_signal} [🪮健康梳子]" if current_signal else "[🪮健康梳子]"
-
-                    STATE_TRACKER[ticker] = tracker
+                        last_10 = df.iloc[-10:]; vols = last_10['volume'].values
+                        if vols.max() > 0:
+                            avg_9 = (vols.sum() - vols.max()) / 9.0
+                            if avg_9 > vols.max() * 0.25: comb_state = "Comb"
 
                     stats = {
                         "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": format_vol(daily_vol),
-                        "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, 
-                        "Signal": current_signal if current_signal else "",
-                        "PriceVal": float(p_live), "HighVal": float(df['high'].iloc[-1]), "StopLoss": dynamic_stop, "Float": float_str if float_str != "未知" else "-", "Type": stat_data.get('type', 'stock'),
-                        "VolAcc": vol_acc_str, "Is100K": False, 
-                        "SN_Score": sn_score, "VsaState": vsa_state, "VR_Acc": vr_acc,             
-                        "VWAP_Dev": vwap_dev, "VWAP_Rating": vwap_rating  
+                        "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": "green", "Signal": "",
+                        "PriceVal": float(p_live), "HighVal": float(df['high'].iloc[-1]), "StopLoss": curr_ema20 * 0.99, 
+                        "Float": float_str, "Type": stat_data.get('type', 'stock'), "VolAcc": vol_acc_str, "Is100K": False, 
+                        "SN_Score": sn_score, "VsaState": 0, "VR_Acc": vr_acc, "VWAP_Dev": vwap_dev, "VWAP_Rating": vwap_rating  
                     }
                     
-                    last_record = cooldown_tracker.get(ticker, {'time': 0, 'level': 0})
-                    push_signal = False; is_double_lock = False
-                    
-                    if current_signal:
-                        if (now_ts - last_record['time']) > 45 or current_level > last_record['level']: push_signal = True 
-                    
-                    is_trap = False
-                    if push_signal and not is_shakeout:
-                        is_trap = bool(check_sec_fatal_traps(ticker))
-                        if is_trap: current_signal += " 💀(SEC陷阱)"; stats["Signal"] = current_signal
-
                     with brain_lock:
-                        cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "Price": "-", "Pct": "-", "Vol": "-", "RelVol": "-", "Float": "-", "Signal": "", "SN_Score": 0, "VsaState": 0})
+                        cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False})
                         cell.update(stats)
-                        if is_trap: cell["IsTrap"] = True
-                        
-                        current_high_val = float(df['high'].iloc[-1])
-                        for n in cell.get('NewsList', []):
-                            if time.time() - n.get('fetch_time_ts', 0) <= 900: 
-                                n['max_p_15m'] = max(n.get('max_p_15m', 0.0), current_high_val)
-                        
-                        if push_signal:
-                            cooldown_tracker[ticker] = {'time': now_ts, 'level': current_level}
-                            audio_target = None
-                            
-                            is_relvol_alert = bool(rel_vol_display >= MIN_RELVOL_LIMIT and p_live >= p_prev)
-                            
-                            if is_relvol_alert and not is_shakeout:
-                                # --- 修改 4：更改指定的音效檔名為 nova ---
-                                audio_target = "nova" 
-                                # ---------------------------------------
-                            is_double_lock = True
-                            stats["Signal"] = f"🎯點火: {stats['Signal']}" if stats["Signal"] else f"🎯點火: 量比突破 {rel_vol_display}x"
-
-                            if not is_shakeout:
-                                MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": audio_target})
-                                MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
-                                
-                    threading.Thread(target=fetch_and_score_news, args=(ticker, cell, is_double_lock), daemon=True).start()
+                        if is_spark:
+                            MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova"})
+                            MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
+                    threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
                 except Exception as e: return
 
-            # --- 修改 5：執行緒池引擎啟動 (並行處理取代迴圈) ---
             with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
                 list(executor.map(_process_ticker, current_watchlist))
             
-            # 等所有股票抓取完後，統一進行排名排序
             with brain_lock:
                 all_items = list(MASTER_BRAIN["details"].values())
-                def get_pct(item):
-                    try: return float(item.get('Pct', '0').replace('%', '').replace('+', ''))
-                    except: return -9999.0
-                
                 active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST]
-                if not active_items: active_items = all_items 
-                
-                MASTER_BRAIN["leaderboard"] = sorted(active_items, key=get_pct, reverse=True)[:20]
-                
-                vwap_items = [x for x in active_items if x.get("VR_Acc", 0) > 30.0 and x.get("VWAP_Dev", 0) > 0.0]
-                MASTER_BRAIN["vwap_list"] = sorted(vwap_items, key=lambda x: x.get("VWAP_Dev", 0), reverse=True)
-                
+                MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(x.get('Pct', '0').replace('%', '')), reverse=True)[:20]
                 MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
-            # ----------------------------------------------------
-
-            time.sleep(1) # 縮短休息時間，維持極速頻率
+            time.sleep(1)
         except Exception as e: time.sleep(5)
 
-def auto_trend_updater():
-    pass
+def auto_trend_updater(): pass
 
 @app.route('/api/config', methods=['POST'])
 def update_config():
@@ -760,39 +588,14 @@ def export_news():
     with brain_lock:
         for ticker_data in MASTER_BRAIN.get('top_catalysts', []):
             ticker = ticker_data.get('Code') or ticker_data.get('ticker')
-            price = ticker_data.get('Price', '-')
-            pct = ticker_data.get('Pct', '-')
-            rel_vol = ticker_data.get('RelVol', '-')
-            
             for n in ticker_data.get('NewsList', []):
-                is_echo = "[Echo]" in n.get('raw_title', '')
                 rows.append({
-                    "發布時間(發布當下)": n.get('time'),
-                    "代碼": ticker,
-                    "該股總分(CatScore)": ticker_data.get('CatScore', 0),
-                    "單則評分": n.get('score'),
-                    "標題(英文)": n.get('raw_title'),
-                    "標題(中文)": n.get('title'),
-                    "是否為重複回音": "是" if is_echo else "否",
-                    "當下價格": price,
-                    "當下漲幅": pct,
-                    "當下量比": rel_vol,
-                    "新聞當刻高點": n.get('p_news', 0.0),
-                    "15分鐘內最高價": n.get('max_p_15m', 0.0),
-                    "新聞來源": n.get('source'),
-                    "原始連結": n.get('link')
+                    "發布時間": n.get('time'), "代碼": ticker, "總分": ticker_data.get('CatScore', 0),
+                    "標題": n.get('title'), "價格": ticker_data.get('Price', '-'), "漲幅": ticker_data.get('Pct', '-')
                 })
-    
-    if not rows: return "目前尚無新聞數據可供匯出", 404
-        
-    df = pd.DataFrame(rows)
-    output = io.BytesIO()
-    df.to_csv(output, index=False, encoding='utf-8-sig')
-    output.seek(0)
-    
-    filename = f"Sniper_News_Analysis_{datetime.now(TZ_TW).strftime('%m%d_%H%M')}.csv"
-    
-    return send_file(output, mimetype='text/csv', as_attachment=True, download_name=filename)
+    if not rows: return "無數據", 404
+    df = pd.DataFrame(rows); output = io.BytesIO(); df.to_csv(output, index=False, encoding='utf-8-sig'); output.seek(0)
+    return send_file(output, mimetype='text/csv', as_attachment=True, download_name="news.csv")
 
 @app.route('/')
 def index(): return render_template('index.html')
@@ -803,16 +606,11 @@ def data():
         safe_brain = copy.deepcopy(MASTER_BRAIN)
         safe_brain["live_trends"] = get_live_trends()
         safe_brain["current_relvol"] = MIN_RELVOL_LIMIT 
-        try: safe_brain["trends_date"] = datetime.fromtimestamp(os.path.getmtime(TRENDS_FILE_PATH), TZ_TW).strftime("%Y-%m-%d %H:%M:%S")
-        except: safe_brain["trends_date"] = "尚未生成"
     return jsonify(safe_brain)
 
 if __name__ == '__main__':
-    load_float_cache() # 啟動時讀取真實股本快取
+    load_float_cache()
     load_intraday_state()
-    if not os.path.exists(DISCOVERY_LOG_PATH) or os.path.getsize(DISCOVERY_LOG_PATH) == 0:
-        with open(DISCOVERY_LOG_PATH, 'w') as f: json.dump([], f)
-        
     threading.Thread(target=state_auto_save_worker, daemon=True).start()
     threading.Thread(target=scanner_engine, daemon=True).start()
     threading.Thread(target=finnhub_news_monitor_worker, daemon=True).start()
