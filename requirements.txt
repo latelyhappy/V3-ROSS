@@ -1,6 +1,5 @@
-flask
+Flask
+Flask-SocketIO
 pandas
-git+https://github.com/rongardF/tvdatafeed.git
-pytz
+tvdatafeed
 requests
-deep-translator
