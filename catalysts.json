@@ -9,7 +9,8 @@
     "無增發計畫": 30
   },
   "MEGA_CATALYSTS": {
-    "_註記": "核彈級併購與收購單字 (封頂權重)",
+    "_註記": "核彈級併購與正式協議 (V43.19 強化版)",
+    "DEFINITIVE AGREEMENT": 95,
     "ACQUISITION": 85,
     "BUYOUT": 85,
     "MERGER": 85,
@@ -32,7 +33,16 @@
     "SECURITIES FRAUD": 0
   },
   "HINDSIGHT_NOISE": {
-    "_註記": "馬後炮與大雜燴過濾 (強制歸零)",
+    "_註記": "V43.19 新增：傳聞與馬後炮過濾 (強制歸零)",
+    "REPORTS": 0,
+    "TALKS": 0,
+    "RUMORS": 0,
+    "CHANGE ITS NAME": 0,
+    "VALUATION AFTER": 0,
+    "REASSESS": 0,
+    "SOARS AS": 0,
+    "SURGES OVER": 0,
+    "HITS NEW HIGH": 0,
     "WHY": 0,
     "SOARS": 0,
     "JUMPS": 0,
@@ -50,7 +60,7 @@
     "IS IT TIME": 0
   },
   "SYMPATHY_MEGACAPS": {
-    "_註記": "巨頭代碼過濾蹭熱度文章 (未含實質合作詞即歸零)",
+    "_註記": "巨頭代碼過濾蹭熱度文章",
     "NVDA": 0,
     "NVIDIA": 0,
     "AAPL": 0,
@@ -73,6 +83,7 @@
   },
   "THEMATIC_TRENDS": {
     "_註記": "市場熱點單字 (疊加加分用)",
+    "GOVERNMENT-BACKED": 15,
     "NVIDIA": 6,
     "NVDA": 6,
     "LIQUID": 5,
