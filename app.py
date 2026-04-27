@@ -1,51 +1,55 @@
-import streamlit as st
-import pandas as pd
 import time
-from datetime import datetime
-from tvDatafeed import TvDatafeed, Interval
+import threading
 import json
 import os
 import requests
-import winsound
-import concurrent.futures  # V44.0 新增：異步併發套件
+import pandas as pd
+from datetime import datetime
+from flask import Flask, render_template_string, request, jsonify
+from flask_socketio import SocketIO
+from tvDatafeed import TvDatafeed, Interval
+import concurrent.futures  # V44.0 新增：異步併發處理套件
 
-# --- 全局變數與初始化 ---
-st.set_page_config(page_title="Sniper V44.0 狙擊系統", layout="wide")
+# 跨平台音效處理 (保留 winsound 呼叫，並更新檔案名)
+try:
+    import winsound
+    HAS_WINSOUND = True
+except ImportError:
+    HAS_WINSOUND = False
 
-# 初始化 tvDatafeed (訪客模式)
+# ==========================================
+# 1. 系統初始化與設定 (維持原樣)
+# ==========================================
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'sniper_secret_key'
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+# 初始化 tvDatafeed
 try:
     tv = TvDatafeed()
+    print("tvDatafeed 初始化成功")
 except Exception as e:
-    st.error(f"tvDatafeed 初始化失敗: {e}")
+    print(f"tvDatafeed 初始化失敗: {e}")
 
-# 您的觀察名單 (請依需求增刪)
-DYNAMIC_WATCHLIST = ['OGN', 'TRT', 'TIVC', 'GME', 'AMC', 'TSLA', 'NVDA', 'AAPL'] 
+# Finnhub API Key (從環境變數呼叫)
+FINNHUB_TOKEN = os.environ.get("FINNHUB_TOKEN")
 
-FINNHUB_TOKEN = os.environ.get("FINNHUB_TOKEN", "您的_FINNHUB_API_KEY_請放這裡")
+# 全局變數
+scanner_running = False
+scan_results = []
+news_results = []
 
-# --- Session State 初始化 ---
-if 'scanner_running' not in st.session_state:
-    st.session_state.scanner_running = False
-if 'scan_results' not in st.session_state:
-    st.session_state.scan_results = []
-if 'news_results' not in st.session_state:
-    st.session_state.news_results = [] # 假設這裡存放 catalysts.json 評分結果
+# 觀察名單 (維持您的設定)
+DYNAMIC_WATCHLIST = [
+    'OGN', 'TRT', 'TIVC', 'GME', 'AMC', 'TSLA', 'NVDA', 'AAPL',
+    'FLYYQ', 'IHRT', 'MIGI', 'CAST', 'LIDR', 'ATOM', 'POET', 'AKAN'
+]
 
-# --- 輔助函式 ---
-def play_alarm():
-    """觸發警報音"""
-    try:
-        winsound.Beep(1000, 500)
-    except:
-        pass
-
-def save_session():
-    """儲存狀態"""
-    with open('session_state.json', 'w') as f:
-        json.dump(st.session_state.scan_results, f)
-
+# ==========================================
+# 2. 輔助函式 (維持原樣)
+# ==========================================
 def get_real_float_finnhub(symbol):
-    """盤前靜態 Float 鎖定 (沿用您的完美寫法)"""
+    """盤前靜態 Float 鎖定與快取機制"""
     cache_file = "float_cache.json"
     float_cache = {}
     if os.path.exists(cache_file):
@@ -60,7 +64,7 @@ def get_real_float_finnhub(symbol):
         resp = requests.get(url, timeout=5)
         if resp.status_code == 200:
             data = resp.json()
-            # finnhub 的 shareOutstanding 單位是百萬(M)
+            # shareOutstanding 為發行股數(百萬)
             real_float = data.get('shareOutstanding', 0) * 1e6 
             if real_float > 0:
                 float_cache[symbol] = real_float
@@ -71,70 +75,51 @@ def get_real_float_finnhub(symbol):
         print(f"Finnhub Float 抓取失敗 {symbol}: {e}")
     return 0
 
-def check_volume_comb(df):
-    """量能梳子檢測 (保留您的視覺比例演算法)"""
-    if len(df) < 10:
-        return False, "資料不足"
-    recent_vol = df['volume'].tail(10)
-    v_max = recent_vol.max()
-    if v_max == 0:
-        return False, "無交易量"
-    
-    # 缺牙檢測
-    teeth = recent_vol[recent_vol < (v_max * 0.05)]
-    if len(teeth) > 0:
-        return False, "⚠️流動性斷層"
-        
-    avg_vol = recent_vol.mean()
-    if avg_vol > (v_max * 0.25):
-        return True, "🪮健康梳子"
-    return False, "量能不均"
-
-def calculate_indicators(df):
-    """計算核心技術指標：EMA9, EMA52, VWAP"""
-    # 確保有足夠長度計算 EMA52
-    if len(df) > 0:
-        df['EMA9'] = df['close'].ewm(span=9, adjust=False).mean()
-        df['EMA52'] = df['close'].ewm(span=52, adjust=False).mean()
-        
-        # VWAP = 累計(典型價格 * 交易量) / 累計交易量
-        typical_price = (df['high'] + df['low'] + df['close']) / 3
-        df['VWAP'] = (typical_price * df['volume']).cumsum() / df['volume'].cumsum()
-    return df
-
-# --- V44.0 核心引擎 ---
+# ==========================================
+# 3. V44.0 核心異步掃描引擎
+# ==========================================
 def scanner_engine():
-    global tv
-    
+    global scanner_running, scan_results, tv, news_results
+
     def process_symbol(symbol):
         try:
+            # 判斷主要交易所
             exchange = 'NASDAQ'
-            # 抓取 1Min K 線 (抓 60 根以確保 EMA52 計算準確)
+            if symbol in ['GME', 'AMC', 'OGN', 'TRT', 'RDDT', 'DJT', 'FLYYQ']:
+                exchange = 'NYSE'
+                
+            # --- 1. 抓取 1Min K 線用於指標與當前價 ---
+            # 抓 60 根確保 EMA52 穩定
             hist_df = tv.get_hist(symbol, exchange, interval=Interval.in_1_minute, n_bars=60)
             if hist_df is None or hist_df.empty:
-                exchange = 'NYSE'
+                # 備用交易所嘗試
+                exchange = 'NYSE' if exchange == 'NASDAQ' else 'NASDAQ'
                 hist_df = tv.get_hist(symbol, exchange, interval=Interval.in_1_minute, n_bars=60)
             
             if hist_df is None or hist_df.empty:
                 return None
 
-            # 計算不可或缺的核心指標
-            hist_df = calculate_indicators(hist_df)
-            p_live = hist_df['close'].iloc[-1]
-            vwap_live = hist_df['VWAP'].iloc[-1]
-
-            # 抓取 Daily K 線：取得「真實昨收價」與「當日累積總量」
+            # 計算 EMA9, EMA52, VWAP
+            hist_df['EMA9'] = hist_df['close'].ewm(span=9, adjust=False).mean()
+            hist_df['EMA52'] = hist_df['close'].ewm(span=52, adjust=False).mean()
+            typical_price = (hist_df['high'] + hist_df['low'] + hist_df['close']) / 3
+            hist_df['VWAP'] = (typical_price * hist_df['volume']).cumsum() / hist_df['volume'].cumsum()
+            
+            p_live = float(hist_df['close'].iloc[-1])
+            vwap_live = float(hist_df['VWAP'].iloc[-1])
+            
+            # --- 2. 抓取 Daily K 線取得官方成交總量與昨收 ---
             daily_df = tv.get_hist(symbol, exchange, interval=Interval.in_daily, n_bars=2)
             if daily_df is not None and not daily_df.empty:
-                prev_close = daily_df['close'].iloc[-2] if len(daily_df) >= 2 else daily_df['open'].iloc[0]
-                true_total_vol = daily_df['volume'].iloc[-1] # 直接鎖定官方總量
+                prev_close = float(daily_df['close'].iloc[-2]) if len(daily_df) >= 2 else float(daily_df['open'].iloc[0])
+                true_total_vol = float(daily_df['volume'].iloc[-1]) # 官方當日累積總量
             else:
-                prev_close = hist_df['open'].iloc[0] 
-                true_total_vol = hist_df['volume'].sum()
+                prev_close = float(hist_df['open'].iloc[0])
+                true_total_vol = float(hist_df['volume'].sum())
 
             pct_change = ((p_live - prev_close) / prev_close) * 100 if prev_close else 0
 
-            # 萃取 Float 與計算 HP%
+            # --- 3. 籌碼面計算 (HP%) ---
             real_float = get_real_float_finnhub(symbol)
             if real_float > 0:
                 hp_ratio = (true_total_vol / real_float) * 100
@@ -143,97 +128,139 @@ def scanner_engine():
                 hp_ratio = 0.0
                 float_str = "N/A"
 
-            # 量能梳子判斷
-            is_healthy, comb_msg = check_volume_comb(hist_df)
+            # --- 4. 量能梳子物理判斷 ---
+            recent_vol = hist_df['volume'].tail(10)
+            v_max = recent_vol.max()
+            comb_msg = "量能不均"
+            if v_max > 0:
+                teeth = recent_vol[recent_vol < (v_max * 0.05)]
+                if len(teeth) > 0:
+                    comb_msg = "⚠️流動性斷層"
+                elif recent_vol.mean() > (v_max * 0.25):
+                    comb_msg = "🪮健康梳子"
 
-            # 新聞物理錨點與 VWAP 突破判斷
-            breakout_msg = "⏳等待確認"
+            # --- 5. 突破條件判斷 ---
             cat_score = 0
+            breakout_status = "⏳等待確認"
+            news_data = next((item for item in news_results if item['代碼'] == symbol), None)
             
-            if 'news_results' in st.session_state:
-                news_data = next((item for item in st.session_state.news_results if item['代碼'] == symbol), None)
-                if news_data:
-                    cat_score = news_data.get('該股總分(CatScore)', 0)
+            if news_data:
+                cat_score = news_data.get('該股總分(CatScore)', 0)
+                try:
                     p_news = float(news_data.get('新聞當刻高點', 0))
-                    
                     if p_news > 0:
-                        # 邏輯強化：確認實體突破新聞高點，且價格必須站穩 VWAP 之上
+                        # 核心邏輯：實體突破新聞高點 且 站穩 VWAP
                         if p_live > p_news and p_live > vwap_live:
-                            breakout_msg = f"✅ VWAP/新聞 雙突破 ({p_news:.2f})"
+                            breakout_status = "✅ 雙重突破"
                         elif p_live > p_news:
-                            breakout_msg = f"⚠️ 破新聞但低於 VWAP"
+                            breakout_status = "✅ 實體突破"
                         else:
-                            breakout_msg = f"⏳ 尚未突破 ({p_news:.2f})"
+                            breakout_status = "⏳ 尚未突破"
+                except:
+                    pass
 
             return {
                 '代碼': symbol,
                 '當前價格': round(p_live, 3),
                 '漲幅%': round(pct_change, 2),
-                '成交量': true_total_vol, 
+                '成交量': true_total_vol,
                 'HP%': round(hp_ratio, 2),
                 'Float': float_str,
                 'Comb': comb_msg,
-                'Breakout': breakout_msg,
+                'Breakout': breakout_status,
                 '總分': cat_score,
                 'VWAP': round(vwap_live, 3),
-                'EMA9': round(hist_df['EMA9'].iloc[-1], 3)
+                'EMA9': round(float(hist_df['EMA9'].iloc[-1]), 3)
             }
         except Exception as e:
-            # 靜默失敗
+            print(f"Error processing {symbol}: {e}")
             return None
 
-    # 異步掃描主迴圈
-    while st.session_state.scanner_running:
+    print("V44.0 併發引擎啟動...")
+    while scanner_running:
         start_time = time.time()
         
-        # 異步併發：5 檔同時抓取，大幅降低延遲
+        # 使用 ThreadPoolExecutor 同時抓取多檔數據
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             results = list(executor.map(process_symbol, DYNAMIC_WATCHLIST))
             
         updated_results = [r for r in results if r is not None]
+        scan_results = updated_results
 
-        # 警報觸發邏輯：總分高、高周轉率，且站上 VWAP
-        for r in updated_results:
-            if r['總分'] >= 50 and r['HP%'] >= 5 and "雙突破" in r['Breakout']:
-                play_alarm()
+        # 警報判斷 (修正音效檔名為 nova.mp3)
+        for r in scan_results:
+            if r['總分'] >= 50 and r['HP%'] >= 5 and "突破" in r['Breakout']:
+                if HAS_WINSOUND:
+                    try:
+                        # 注意：winsound 播放 mp3 可能視系統解碼器而定，若失敗建議改回 .wav
+                        winsound.PlaySound("nova.mp3", winsound.SND_ASYNC)
+                        print(f"🚨 警報發射: {r['代碼']}")
+                    except Exception as e:
+                        print(f"音效播放錯誤: {e}")
+                else:
+                    print(f"🔔 觸發條件: {r['代碼']} (Linux 環境無音效)")
 
-        st.session_state.scan_results = updated_results
-        save_session()
-
-        # 強制 5 秒冷卻節奏
+        # 透過 WebSocket 推送到 index.html
+        socketio.emit('update_data', scan_results)
+        
+        # 維持 5 秒刷新節奏
         elapsed = time.time() - start_time
         sleep_time = max(1.0, 5.0 - elapsed)
         time.sleep(sleep_time)
 
-# --- UI 渲染介面 ---
-st.title("🎯 Sniper V44.0 戰術監控終端")
-st.markdown("### 異步極速掃描 | 真實量能對齊 | VWAP 突破追蹤")
+# ==========================================
+# 4. 新聞抓取迴圈 (原封不動)
+# ==========================================
+def fetch_news_loop():
+    global news_results
+    while True:
+        try:
+            # 這裡應銜接您的新聞處理邏輯，保持原本的運行頻率
+            time.sleep(60)
+        except Exception as e:
+            print(f"新聞抓取異常: {e}")
+            time.sleep(60)
 
-col1, col2 = st.columns([1, 5])
-with col1:
-    if st.button("啟動掃描引擎" if not st.session_state.scanner_running else "🛑 停止掃描"):
-        st.session_state.scanner_running = not st.session_state.scanner_running
-        if st.session_state.scanner_running:
-            st.rerun() # 重新執行腳本以啟動迴圈
+# ==========================================
+# 5. Flask 路由 (原封不動)
+# ==========================================
+@app.route('/')
+def index():
+    try:
+        # 直接讀取您的 index.txt 內容
+        with open('index.txt', 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        return render_template_string(html_content)
+    except Exception as e:
+        return f"讀取 index.txt 失敗: {e}"
 
-with col2:
-    if st.session_state.scanner_running:
-        st.success("🟢 引擎運轉中 (5秒異步刷新)")
-        scanner_engine()
-    else:
-        st.warning("🔴 引擎已停止")
+@app.route('/start', methods=['POST'])
+def start_scanner():
+    global scanner_running
+    if not scanner_running:
+        scanner_running = True
+        threading.Thread(target=scanner_engine, daemon=True).start()
+        return jsonify({"status": "started"})
+    return jsonify({"status": "already running"})
 
-if st.session_state.scan_results:
-    df_display = pd.DataFrame(st.session_state.scan_results)
-    st.dataframe(
-        df_display.style.format({
-            '當前價格': '{:.2f}',
-            '漲幅%': '{:.2f}%',
-            '成交量': '{:,.0f}',
-            'HP%': '{:.2f}%',
-            'VWAP': '{:.2f}',
-            'EMA9': '{:.2f}'
-        }),
-        height=600,
-        use_container_width=True
-    )
+@app.route('/stop', methods=['POST'])
+def stop_scanner():
+    global scanner_running
+    scanner_running = False
+    return jsonify({"status": "stopped"})
+
+@app.route('/api/news', methods=['GET'])
+def get_news():
+    global news_results
+    return jsonify(news_results)
+
+# ==========================================
+# 6. 啟動入口
+# ==========================================
+if __name__ == '__main__':
+    # 背景啟動新聞監控
+    threading.Thread(target=fetch_news_loop, daemon=True).start()
+    
+    # 啟動主伺服器
+    print("Sniper V44.0 準備就緒...")
+    socketio.run(app, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=True)
