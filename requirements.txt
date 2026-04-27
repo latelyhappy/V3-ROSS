@@ -1,5 +1,5 @@
 Flask
 Flask-SocketIO
 pandas
-tvdatafeed
+git+https://github.com/rongardF/tvdatafeed.git
 requests
