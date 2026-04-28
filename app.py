@@ -13,12 +13,13 @@ from deep_translator import GoogleTranslator
 from collections import Counter
 import logging
 import concurrent.futures 
-import yfinance as yf  # V44.2 新增：精準流通股抓取套件
+import yfinance as yf  
 
 logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
 
 brain_lock = threading.RLock() 
 TRENDS_FILE_PATH = os.path.join(os.path.dirname(__file__), 'trends.json')
+TRENDS_DRAFT_PATH = os.path.join(os.path.dirname(__file__), 'trends_draft.json') # AI草稿庫
 DISCOVERY_LOG_PATH = os.path.join(os.path.dirname(__file__), 'discovery_log.json') 
 SESSION_BACKUP_PATH = os.path.join(os.path.dirname(__file__), 'session_state.json')
 
@@ -50,7 +51,7 @@ def reload_armory():
 
 reload_armory()
 
-# --- V44.2 修正：雙引擎流通股抓取 ---
+# --- 流通股抓取引擎 ---
 FLOAT_CACHE_FILE = os.path.join(os.path.dirname(__file__), 'float_cache.json')
 FLOAT_CACHE = {}
 
@@ -69,7 +70,6 @@ def save_float_cache():
     except: pass
 
 def get_real_float(symbol):
-    """優先使用 Yahoo Finance 獲取真實流通股，失敗則備用 Finnhub"""
     if symbol in FLOAT_CACHE: return FLOAT_CACHE[symbol]
     
     real_float = 0.0
@@ -96,13 +96,12 @@ def get_real_float(symbol):
         save_float_cache()
         return real_float
     return 0.0
-# ----------------------------------
 
 MASTER_BRAIN = {"surge_log": [], "details": {}, "leaderboard": [], "vwap_list": [], "top_catalysts": [], "last_update": "", "elite_words": []}
 DYNAMIC_WATCHLIST = []
 STATS_MAP = {} 
 news_cache = {} 
-cooldown_tracker = {} # 確保紀錄冷卻時間
+cooldown_tracker = {}
 STATE_TRACKER = {}
 app = Flask(__name__)
 
@@ -197,19 +196,14 @@ def calculate_hft_score(headline, ticker=""):
     if "?" in text or any(trap in text for trap in HINDSIGHT_TRAPS) or all(x in text for x in ["WHY", "IS"]) or all(x in text for x in ["WHY", "ARE"]):
         return 0, False, []
 
-    if any(trap in text for trap in TOXIC_OFFERINGS):
-        return -50, True, [] 
-
-    if any(trap in text for trap in CLASS_ACTION_SPAM):
-        return 0, False, []
+    if any(trap in text for trap in TOXIC_OFFERINGS): return -50, True, [] 
+    if any(trap in text for trap in CLASS_ACTION_SPAM): return 0, False, []
 
     if any(mc in text for mc in MEGACAPS):
         partnership_words = ["PARTNERSHIP", "COLLABORATION", "CONTRACT", "AGREEMENT", "JOINS", "INTEGRATES"]
-        if not any(pw in text for pw in partnership_words):
-            return 0, False, [] 
+        if not any(pw in text for pw in partnership_words): return 0, False, [] 
 
-    if any(trap in text for trap in EARNINGS_PREVIEW):
-        return 0, False, []
+    if any(trap in text for trap in EARNINGS_PREVIEW): return 0, False, []
 
     for kw, score in MA_WORDS.items():
         if kw in text: total_score += score
@@ -249,11 +243,10 @@ def background_translate_worker(ticker, en_headline, master_brain):
                 if t in master_brain['details']:
                     for article in master_brain['details'][t].get('NewsList', []):
                         if article.get('raw_title') == en_headline and article['title'] == "⏳ 翻譯中...": article['title'] = zh_text; found = True
-            if found: pass
     except: pass
 
 def check_sec_fatal_traps(ticker):
-    headers = {"User-Agent": "SniperQuantSystem_V43 AdminContact@yourdomain.com", "Accept-Encoding": "gzip, deflate", "Host": "www.sec.gov"}
+    headers = {"User-Agent": "SniperQuantSystem_V44 AdminContact@yourdomain.com", "Accept-Encoding": "gzip, deflate", "Host": "www.sec.gov"}
     url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=&output=atom"
     try:
         time.sleep(0.5) 
@@ -457,7 +450,6 @@ def scanner_engine():
                 _last_list_update = now_ts
                 
             if not DYNAMIC_WATCHLIST: time.sleep(5); continue
-            now_ny = datetime.now(TZ_NY)
             current_watchlist = DYNAMIC_WATCHLIST.copy()
 
             def _process_ticker(ticker):
@@ -511,23 +503,18 @@ def scanner_engine():
 
                     vwap_rating = "High" if vwap_dev > 15.0 else ("Mid" if vwap_dev > 5.0 else "Low") 
                     df['tr'] = pd.concat([(df['high'] - df['low']), (df['high'] - df['close'].shift(1)).abs(), (df['low'] - df['close'].shift(1)).abs()], axis=1).max(axis=1)
-                    atr5 = float(df['tr'].rolling(5, min_periods=3).mean().iloc[-1]) if len(df) >= 5 else 0.0
-                    atr20 = float(df['tr'].rolling(20, min_periods=5).mean().iloc[-1]) if len(df) >= 5 else 0.0
                     stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0})
                     prev_close = true_prev_close if true_prev_close > 0 else (float(stat_data['prev']) if stat_data['prev'] > 0 else float(df['low'].min()))
                     float_str = stat_data['float_str'] if stat_data['prev'] > 0 else "未知"
                     real_pct = float(((p_live - prev_close) / prev_close) * 100)
-                    curr_ema10 = float(df['close'].ewm(span=10, adjust=False).mean().iloc[-1]) if len(df) >= 10 else p_live
                     curr_ema20 = float(df['close'].ewm(span=20, adjust=False).mean().iloc[-1]) if len(df) >= 20 else p_live
                     past_high = float(df['high'].iloc[-11:-1].max()) if len(df) >= 11 else p_live
                     
-                    # 是否滿足主力點火條件
+                    # 💡 【核心點火邏輯】
                     is_spark = bool(((rel_vol_live >= 2.5 and p_live >= past_high) or (rel_vol_prev >= 2.5 and p_prev >= past_high)) and (real_pct > 3.0))
 
-                    ratio_3v3 = 1.0; z_score = 0.0; vol_acc_str = "-"; vr_acc = 0.0 
+                    ratio_3v3 = 1.0; vol_acc_str = "-"; vr_acc = 0.0 
                     if len(df) >= 6:
-                        avg_v_60 = float(df['volume'].iloc[:-1].mean()); std_v_60 = float(df['volume'].iloc[:-1].std())
-                        z_score = float((v_live - avg_v_60) / std_v_60) if std_v_60 > 0 else 0.0
                         vol_A = vol_3m; vol_B = float(df['volume'].iloc[-6:-3].sum())
                         if vol_B >= 0: vr_acc = float(round(((vol_A - vol_B) / max(vol_B, 0.01)) * 100, 2))
                         if vol_B > 0:
@@ -537,7 +524,7 @@ def scanner_engine():
 
                     sn_score = int(round((stat_data.get('float_comp', 0) + real_pct) * (ratio_3v3 if ratio_3v3 > 1.0 else 0.5)))
                     
-                    # 判斷梳子狀態
+                    # 💡 【梳子狀態只做附加標記，拔除攔截枷鎖】
                     comb_state = "None"
                     if len(df) >= 10:
                         last_10 = df.iloc[-10:]; vols = last_10['volume'].values
@@ -545,14 +532,12 @@ def scanner_engine():
                             avg_9 = (vols.sum() - vols.max()) / 9.0
                             if avg_9 > vols.max() * 0.25: comb_state = "Comb"
 
-                    # 💡 【洗版修復核心】：建立獨立信號字串，將梳子視為附加狀態，不再單獨觸發警報
-                    signal_parts = []
+                    current_signal = ""
                     if is_spark:
-                        signal_parts.append("🔥強力點火")
+                        current_signal = "🔥強力點火"
+                        
                     if comb_state == "Comb":
-                        signal_parts.append("[🪮健康梳子]")
-                    
-                    current_signal = " ".join(signal_parts)
+                        current_signal = f"{current_signal} [🪮健康梳子]" if current_signal else "[🪮健康梳子]"
 
                     stats = {
                         "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": format_vol(daily_vol),
@@ -566,13 +551,13 @@ def scanner_engine():
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False})
                         cell.update(stats)
                         
-                        # 💡 【洗版修復核心】：加入 60 秒冷卻鎖
+                        # 💡 【點火直通機制】：只要是 is_spark，且過了 60 秒，就推送到日誌！
                         if is_spark:
                             last_trigger_time = cooldown_tracker.get(ticker, 0)
                             if now_ts - last_trigger_time > 60:
                                 MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova"})
                                 MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
-                                cooldown_tracker[ticker] = now_ts # 更新冷卻時間
+                                cooldown_tracker[ticker] = now_ts 
                                 
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
                 except Exception as e: return
@@ -588,7 +573,65 @@ def scanner_engine():
             time.sleep(1)
         except Exception as e: time.sleep(5)
 
-def auto_trend_updater(): pass
+# --- AI 自動學習引擎 (取代原本的 pass) ---
+def auto_trend_updater():
+    global MASTER_BRAIN
+    while True:
+        time.sleep(3600) 
+        now_ny = datetime.now(TZ_NY)
+        
+        # 美東 16:30 執行盤後分析
+        if now_ny.hour == 16 and 30 <= now_ny.minute <= 59:
+            try:
+                word_stats = {}
+                stop_words = {'WITH', 'THAT', 'THIS', 'FROM', 'THEIR', 'WILL', 'HAVE', 'BEEN', 'WERE', 'AFTER', 'OVER', 'MORE', 'THAN', 'ABOUT', 'INC.', 'CORP', 'LTD', 'ANNOUNCES', 'REPORTS', 'TODAY', 'UPDATE', 'QUARTERLY', 'RESULTS', 'SHARES', 'STOCK', 'COMPANY', 'EARNINGS', 'THIRD', 'FOURTH', 'FIRST', 'SECOND', 'QUARTER', 'FINANCIAL', 'OPERATIONAL', 'BUSINESS'}
+                hindsight = set(CATALYST_ARMORY.get("HINDSIGHT_NOISE", {}).keys())
+                toxic = set(CATALYST_ARMORY.get("TOXIC_OFFERINGS", {}).keys())
+                
+                with brain_lock:
+                    for ticker, data in MASTER_BRAIN.get('details', {}).items():
+                        try: pct = float(str(data.get('Pct', '0')).replace('%', '').replace('+', ''))
+                        except: pct = 0.0
+                            
+                        float_str = str(data.get('Float', ''))
+                        try: float_val = float(float_str.replace('M', '')) if 'M' in float_str else 999.0
+                        except: float_val = 999.0
+                            
+                        if pct >= 15.0 and float_val <= 50.0:
+                            for news in data.get('NewsList', []):
+                                if news.get('is_today'):
+                                    title = news.get('raw_title', '').upper()
+                                    words = set(re.findall(r'\b[A-Z]{4,}\b', title))
+                                    words = words - stop_words
+                                    words = {w for w in words if not any(trap in w for trap in hindsight) and not any(trap in w for trap in toxic)}
+                                    
+                                    for w in words:
+                                        if w not in word_stats: word_stats[w] = {'pcts': [], 'tickers': set()}
+                                        word_stats[w]['pcts'].append(pct)
+                                        word_stats[w]['tickers'].add(ticker)
+                                        
+                new_drafts = {}
+                for w, stats in word_stats.items():
+                    if len(stats['tickers']) >= 2:
+                        avg_pct = sum(stats['pcts']) / len(stats['pcts'])
+                        if avg_pct >= 20.0:
+                            new_drafts[w] = {
+                                "score": 10,
+                                "count": len(stats['tickers']),
+                                "avg_impact_pct": round(avg_pct, 1),
+                                "note": f"🤖 AI 自動學習: 今日在 {len(stats['tickers'])} 檔暴漲股 ({','.join(list(stats['tickers'])[:3])}) 中同時出現"
+                            }
+                            
+                if new_drafts:
+                    if os.path.exists(TRENDS_DRAFT_PATH):
+                        with open(TRENDS_DRAFT_PATH, 'r', encoding='utf-8') as f:
+                            try: existing = json.load(f); existing.update(new_drafts); new_drafts = existing
+                            except: pass
+                    with open(TRENDS_DRAFT_PATH, 'w', encoding='utf-8') as f:
+                        json.dump(new_drafts, f, ensure_ascii=False, indent=4)
+                        
+            except Exception as e: print(f"學習引擎錯誤: {e}")
+            time.sleep(43200) 
 
 @app.route('/api/config', methods=['POST'])
 def update_config():
@@ -615,6 +658,39 @@ def export_news():
     df = pd.DataFrame(rows); output = io.BytesIO(); df.to_csv(output, index=False, encoding='utf-8-sig'); output.seek(0)
     return send_file(output, mimetype='text/csv', as_attachment=True, download_name="news.csv")
 
+# --- AI草稿庫前端接口 ---
+@app.route('/api/drafts', methods=['GET'])
+def get_drafts():
+    if os.path.exists(TRENDS_DRAFT_PATH):
+        with open(TRENDS_DRAFT_PATH, 'r', encoding='utf-8') as f:
+            try: return jsonify(json.load(f))
+            except: return jsonify({})
+    return jsonify({})
+
+@app.route('/api/approve_draft', methods=['POST'])
+def approve_draft():
+    data = request.json
+    word = data.get('word'); action = data.get('action')
+    if not os.path.exists(TRENDS_DRAFT_PATH): return jsonify({"status": "error"})
+    
+    with open(TRENDS_DRAFT_PATH, 'r', encoding='utf-8') as f: drafts = json.load(f)
+    if word in drafts:
+        if action == 'approve':
+            trends = {}
+            if os.path.exists(TRENDS_FILE_PATH):
+                with open(TRENDS_FILE_PATH, 'r', encoding='utf-8') as f:
+                    try: trends = json.load(f)
+                    except: pass
+            trends[word] = drafts[word]
+            with open(TRENDS_FILE_PATH, 'w', encoding='utf-8') as f:
+                json.dump(trends, f, ensure_ascii=False, indent=4)
+                
+        del drafts[word]
+        with open(TRENDS_DRAFT_PATH, 'w', encoding='utf-8') as f:
+            json.dump(drafts, f, ensure_ascii=False, indent=4)
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error"})
+
 @app.route('/')
 def index(): return render_template('index.html')
 
@@ -632,4 +708,6 @@ if __name__ == '__main__':
     threading.Thread(target=state_auto_save_worker, daemon=True).start()
     threading.Thread(target=scanner_engine, daemon=True).start()
     threading.Thread(target=finnhub_news_monitor_worker, daemon=True).start()
+    # 啟動 AI 每日自我學習線程
+    threading.Thread(target=auto_trend_updater, daemon=True).start()
     app.run(host='0.0.0.0', port=PORT)
