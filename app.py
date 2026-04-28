@@ -67,32 +67,47 @@ def save_float_cache():
             json.dump(FLOAT_CACHE, f)
     except: pass
 
+import yfinance as yf  # 記得在 app.py 最上面加入這行 import
+
 def get_real_float(symbol):
     """
-    對接 Finnhub Basic Financials 接口，獲取真正流通股 (floatShares)
-    而非總發行股 (shareOutstanding)
+    V44.2 終極流通股抓取引擎：優先使用 yfinance，失敗才用 Finnhub 備用。
     """
     if symbol in FLOAT_CACHE: return FLOAT_CACHE[symbol]
-    if not FINNHUB_TOKEN: return 0.0
+    
+    real_float = 0.0
+    
+    # --- 引擎 1：Yahoo Finance (精準度最高) ---
     try:
-        # 修正：改用 metric 接口獲取真正流通股
-        url = f"https://finnhub.io/api/v1/stock/metric?symbol={symbol}&metric=all&token={FINNHUB_TOKEN}"
-        res = requests.get(url, timeout=5)
-        if res.status_code == 200:
-            data = res.json()
-            # 提取 metric 中的 floatShares
-            real_float = data.get('metric', {}).get('floatShares', 0)
-            
-            if real_float > 0:
-                # Finnhub floatShares 單位通常是百萬或原始股數
-                # 若數值小於 50000，判定單位為百萬 (M)
-                if real_float < 50000:
-                    real_float = real_float * 1e6
-                
-                FLOAT_CACHE[symbol] = real_float
-                save_float_cache()
-                return real_float
-    except: pass
+        # 修正特殊代碼格式 (如 FLYYQ)
+        yf_symbol = symbol.replace('-', '.')
+        ticker = yf.Ticker(yf_symbol)
+        yf_float = ticker.info.get('floatShares')
+        
+        if yf_float and yf_float > 0:
+            real_float = yf_float
+    except:
+        pass
+
+    # --- 引擎 2：Finnhub 備用 (如果 Yahoo 抓不到) ---
+    if real_float == 0.0 and FINNHUB_TOKEN:
+        try:
+            url = f"https://finnhub.io/api/v1/stock/metric?symbol={symbol}&metric=all&token={FINNHUB_TOKEN}"
+            res = requests.get(url, timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                fh_float = data.get('metric', {}).get('floatShares', 0)
+                if fh_float > 0:
+                    real_float = fh_float * 1e6 if fh_float < 50000 else fh_float
+        except:
+            pass
+
+    # --- 儲存並回傳 ---
+    if real_float > 0:
+        FLOAT_CACHE[symbol] = real_float
+        save_float_cache()
+        return real_float
+        
     return 0.0
 
 # ----------------------------------

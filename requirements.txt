@@ -5,3 +5,4 @@ requests
 pytz
 deep-translator
 git+https://github.com/rongardF/tvdatafeed.git
+yfinance
