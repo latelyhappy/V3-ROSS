@@ -585,7 +585,123 @@ def scanner_engine():
             time.sleep(1)
         except Exception as e: time.sleep(5)
 
-def auto_trend_updater(): pass
+# --- 這裡替換掉原本的 def auto_trend_updater(): pass ---
+
+TRENDS_DRAFT_PATH = os.path.join(os.path.dirname(__file__), 'trends_draft.json')
+
+def auto_trend_updater():
+    global MASTER_BRAIN
+    while True:
+        time.sleep(3600) # 每小時喚醒檢查一次時間
+        now_ny = datetime.now(TZ_NY)
+        
+        # 戰術設定：美東時間 16:30 (收盤後半小時) 執行盤後統整與反思
+        if now_ny.hour == 16 and 30 <= now_ny.minute <= 59:
+            try:
+                word_stats = {}
+                # 停用詞黑名單 (過濾財經新聞常出現的無意義廢話)
+                stop_words = {'WITH', 'THAT', 'THIS', 'FROM', 'THEIR', 'WILL', 'HAVE', 'BEEN', 'WERE', 'AFTER', 'OVER', 'MORE', 'THAN', 'ABOUT', 'INC.', 'CORP', 'LTD', 'ANNOUNCES', 'REPORTS', 'TODAY', 'UPDATE', 'QUARTERLY', 'RESULTS', 'SHARES', 'STOCK', 'COMPANY', 'EARNINGS', 'THIRD', 'FOURTH', 'FIRST', 'SECOND', 'QUARTER', 'FINANCIAL', 'OPERATIONAL', 'BUSINESS'}
+                
+                # 載入現有 catalysts 的黑名單/雜訊，避免把已知垃圾新聞當寶
+                hindsight = set(CATALYST_ARMORY.get("HINDSIGHT_NOISE", {}).keys())
+                toxic = set(CATALYST_ARMORY.get("TOXIC_OFFERINGS", {}).keys())
+                
+                with brain_lock:
+                    for ticker, data in MASTER_BRAIN.get('details', {}).items():
+                        try: pct = float(str(data.get('Pct', '0')).replace('%', '').replace('+', ''))
+                        except: pct = 0.0
+                            
+                        float_str = str(data.get('Float', ''))
+                        try: float_val = float(float_str.replace('M', '')) if 'M' in float_str else 999.0
+                        except: float_val = 999.0
+                            
+                        # 核心學習條件：今天漲幅 > 15%，且流通股 <= 50M 的妖股
+                        if pct >= 15.0 and float_val <= 50.0:
+                            for news in data.get('NewsList', []):
+                                if news.get('is_today'):
+                                    title = news.get('raw_title', '').upper()
+                                    
+                                    # 簡單 NLP：萃取 4 個字母以上的英文單字
+                                    words = set(re.findall(r'\b[A-Z]{4,}\b', title))
+                                    words = words - stop_words
+                                    
+                                    # 過濾掉已經定義在雜訊庫裡的詞
+                                    words = {w for w in words if not any(trap in w for trap in hindsight) and not any(trap in w for trap in toxic)}
+                                    
+                                    for w in words:
+                                        if w not in word_stats: word_stats[w] = {'pcts': [], 'tickers': set()}
+                                        word_stats[w]['pcts'].append(pct)
+                                        word_stats[w]['tickers'].add(ticker)
+                                        
+                # 統整並生成草稿
+                new_drafts = {}
+                for w, stats in word_stats.items():
+                    # 💡 交叉驗證：該單字今天必須在「至少 2 檔不同的暴漲股」新聞中出現過！
+                    if len(stats['tickers']) >= 2:
+                        avg_pct = sum(stats['pcts']) / len(stats['pcts'])
+                        if avg_pct >= 20.0:
+                            new_drafts[w] = {
+                                "score": 10,
+                                "count": len(stats['tickers']),
+                                "avg_impact_pct": round(avg_pct, 1),
+                                "note": f"🤖 AI 自動學習: 今日在 {len(stats['tickers'])} 檔暴漲股 ({','.join(list(stats['tickers'])[:3])}) 中同時出現"
+                            }
+                            
+                # 寫入草稿庫等待指揮官審核
+                if new_drafts:
+                    if os.path.exists(TRENDS_DRAFT_PATH):
+                        with open(TRENDS_DRAFT_PATH, 'r', encoding='utf-8') as f:
+                            try: existing = json.load(f); existing.update(new_drafts); new_drafts = existing
+                            except: pass
+                    with open(TRENDS_DRAFT_PATH, 'w', encoding='utf-8') as f:
+                        json.dump(new_drafts, f, ensure_ascii=False, indent=4)
+                        
+            except Exception as e: print(f"自我學習引擎發生錯誤: {e}")
+                
+            time.sleep(43200) # 執行完畢後強制休息 12 小時，避免重複運算
+
+# --- 以下兩個 API 路由請加在 @app.route('/api/config') 附近 ---
+
+@app.route('/api/drafts', methods=['GET'])
+def get_drafts():
+    draft_path = TRENDS_DRAFT_PATH
+    if os.path.exists(draft_path):
+        with open(draft_path, 'r', encoding='utf-8') as f:
+            try: return jsonify(json.load(f))
+            except: return jsonify({})
+    return jsonify({})
+
+@app.route('/api/approve_draft', methods=['POST'])
+def approve_draft():
+    data = request.json
+    word = data.get('word')
+    action = data.get('action')
+    
+    draft_path = TRENDS_DRAFT_PATH
+    trends_path = TRENDS_FILE_PATH
+    
+    if not os.path.exists(draft_path): return jsonify({"status": "error"})
+    
+    with open(draft_path, 'r', encoding='utf-8') as f: drafts = json.load(f)
+        
+    if word in drafts:
+        if action == 'approve':
+            trends = {}
+            if os.path.exists(trends_path):
+                with open(trends_path, 'r', encoding='utf-8') as f:
+                    try: trends = json.load(f)
+                    except: pass
+            trends[word] = drafts[word]
+            with open(trends_path, 'w', encoding='utf-8') as f:
+                json.dump(trends, f, ensure_ascii=False, indent=4)
+                
+        # 處理完後從草稿庫中刪除
+        del drafts[word]
+        with open(draft_path, 'w', encoding='utf-8') as f:
+            json.dump(drafts, f, ensure_ascii=False, indent=4)
+            
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "msg": "單字不存在"})
 
 @app.route('/api/config', methods=['POST'])
 def update_config():

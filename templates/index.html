@@ -76,6 +76,7 @@
     <div id="tactical-bar">
         <button id="audio-btn" class="ghost-btn" style="border-color:var(--red); color:var(--red);" onclick="unlockAudio()">🔇 音效/防睡眠</button>
         <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 ETF</button>
+        <button class="ghost-btn" style="border-color:var(--neon-green); color:var(--neon-green);" onclick="checkDrafts()">📝 審核 AI 草稿</button>
         
         <div style="display:flex; align-items:center; border:1px solid var(--border); border-radius:6px; padding:2px 5px; margin-right:10px; background:rgba(0,0,0,0.2); flex-shrink: 0;">
             <button style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-weight:bold; padding:0 8px; font-size:14px; outline:none;" onclick="changeZoom(-0.1)">-</button>
@@ -192,6 +193,41 @@
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
         
+function checkDrafts() {
+    fetch('/api/drafts')
+    .then(r => r.json())
+    .then(data => {
+        let words = Object.keys(data);
+        if (words.length === 0) {
+            alert("🤖 目前沒有新的 AI 學習草稿。\n系統會在每日美東時間 16:30 自動分析當日暴漲股並生成。");
+            return;
+        }
+        
+        let w = words[0];
+        let info = data[w];
+        let msg = `🤖 AI 自動學習系統發現高勝率單字！\n\n📌 關鍵字: ${w}\n📊 歷史最高平均漲幅: +${info.avg_impact_pct}%\n🔍 觸發次數: ${info.count} 次\n📝 備註: ${info.note}\n\n您要將此單字加入您的正式實戰詞庫 (trends.json) 並啟用加分嗎？`;
+        
+        if (confirm(msg)) {
+            processDraft(w, 'approve');
+        } else {
+            if(confirm("要將此單字從草稿中刪除 (拒絕) 嗎？")) {
+                processDraft(w, 'reject');
+            }
+        }
+    });
+}
+
+function processDraft(word, action) {
+    fetch('/api/approve_draft', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({word: word, action: action})
+    }).then(() => {
+        // 處理完畢後，自動遞迴檢查下一個草稿單字
+        checkDrafts(); 
+    });
+}
+
         let wakeLock = null;
         async function requestWakeLock() {
             try {

@@ -1,406 +1,56 @@
 {
-    "ETFS": {
-        "score": 15,
-        "count": 37,
-        "avg_pct": 0.0,
-        "last_seen": "2026-04-21",
-        "avg_impact_pct": 29.02
-    },
-    "INC": {
-        "score": 15,
-        "count": 85,
-        "avg_pct": 0.0,
-        "last_seen": "2026-04-21",
-        "avg_impact_pct": 192.34
-    },
-    "DEFIANCE": {
-        "score": 5,
-        "count": 1,
-        "avg_pct": 0.0,
-        "avg_impact_pct": 0.0
-    },
-    "BILLION": {
-        "score": 5,
-        "count": 1,
-        "avg_pct": 0.0,
-        "avg_impact_pct": 0.0
-    },
-    "THERAPEUTICS": {
-        "score": 5,
-        "count": 1,
-        "avg_pct": 0.0,
-        "avg_impact_pct": 0.0
-    },
-    "ANNOUNCES": {
-        "score": 15,
-        "count": 101,
-        "avg_pct": 0.0,
-        "last_seen": "2026-04-20",
-        "avg_impact_pct": 192.34
-    },
-    "LEVERAGED": {
-        "score": 15,
-        "count": 13,
-        "avg_pct": 0.0,
-        "avg_impact_pct": 9.56,
-        "last_seen": "2026-04-20"
-    },
-    "ETF": {
-        "score": 5,
-        "count": 1,
-        "avg_pct": 0.0,
-        "avg_impact_pct": 0.0
-    },
-    "STOCK": {
-        "score": 15,
-        "count": 95,
-        "avg_pct": 0.0,
-        "last_seen": "2026-04-21",
-        "avg_impact_pct": 67.09
-    },
-    "EXPANDS": {
-        "score": 5,
-        "count": 1,
-        "avg_pct": 0.0,
-        "avg_impact_pct": 0.0
-    },
-    "FULL": {
-        "score": 15,
-        "count": 23,
-        "avg_pct": 0.0,
-        "last_seen": "2026-04-17",
-        "avg_impact_pct": 0.0
-    },
-    "STRATEGIC": {
-        "score": 15,
-        "count": 14,
-        "avg_pct": 0.0,
-        "last_seen": "2026-04-19",
-        "avg_impact_pct": 192.34
-    },
-    "MARKET": {
-        "score": 5,
-        "count": 1,
-        "avg_pct": 0.0,
-        "avg_impact_pct": 0.0
-    },
-    "SURPASS": {
-        "score": 5,
-        "count": 1,
-        "avg_pct": 0.0,
-        "avg_impact_pct": 0.0
-    },
-    "ASSETS": {
-        "score": 5,
-        "count": 1,
-        "avg_pct": 0.0,
-        "avg_impact_pct": 0.0
-    },
-    "QUANTUM": {
-        "score": 5,
-        "count": 1,
-        "avg_pct": 0.0,
-        "avg_impact_pct": 0.0
-    },
-    "YEAR": {
-        "score": 15,
-        "count": 101,
-        "avg_pct": 0.0,
-        "last_seen": "2026-04-20",
-        "avg_impact_pct": 192.34
-    },
-    "RESULTS": {
-        "score": 15,
-        "count": 91,
-        "avg_pct": 0.0,
-        "last_seen": "2026-04-20",
-        "avg_impact_pct": 13.32
-    },
-    "REPORTS": {
-        "score": 15,
-        "count": 33,
-        "avg_pct": 0.0,
-        "last_seen": "2026-04-17",
-        "avg_impact_pct": 0.0
-    },
-    "EARNINGS": {
-        "score": 15,
-        "count": 111,
-        "avg_pct": 0.0,
-        "last_seen": "2026-04-21",
-        "avg_impact_pct": 192.34
-    },
-    "HIGHLIGHTS": {
-        "score": 15,
-        "count": 107,
-        "avg_pct": 0.0,
-        "last_seen": "2026-04-21",
-        "avg_impact_pct": 67.09
-    },
-    "DATA": {
-        "score": 15,
-        "count": 35,
-        "avg_pct": 0.0,
-        "last_seen": "2026-04-17",
-        "avg_impact_pct": 0.0
-    },
-    "FINANCIAL": {
-        "score": 15,
-        "count": 19,
-        "avg_pct": 0.0,
-        "last_seen": "2026-04-17",
-        "avg_impact_pct": 0.0
-    },
-    "QUARTER": {
-        "score": 15,
-        "count": 73,
-        "avg_pct": 0.0,
-        "last_seen": "2026-04-17",
-        "avg_impact_pct": 0.0
-    },
-    "STOCKS": {
-        "score": 15,
-        "count": 48,
-        "avg_pct": 0.0,
-        "last_seen": "2026-04-21",
-        "avg_impact_pct": 103.29
-    },
-    "REVENUE": {
-        "score": 15,
-        "count": 53,
-        "avg_pct": 0.0,
-        "last_seen": "2026-04-17",
-        "avg_impact_pct": 0.0
-    },
-    "CALL": {
-        "score": 15,
-        "count": 93,
-        "avg_pct": 0.0,
-        "last_seen": "2026-04-20",
-        "avg_impact_pct": 67.09
-    },
-    "UNDER": {
-        "score": 15,
-        "count": 13,
-        "avg_pct": 0.0,
-        "avg_impact_pct": 16.96,
-        "last_seen": "2026-04-20"
-    },
-    "ENERGY": {
-        "score": 15,
-        "count": 25,
-        "avg_pct": 0.0,
-        "last_seen": "2026-04-21",
-        "avg_impact_pct": 192.34
-    },
-    "BEST": {
-        "score": 15,
-        "count": 13,
-        "avg_pct": 0.0,
-        "avg_impact_pct": 11.5,
-        "last_seen": "2026-04-20"
-    },
-    "NVIDIA": {
-        "score": 5,
-        "count": 1,
-        "avg_pct": 0.0,
-        "avg_impact_pct": 0.0
-    },
-    "MANAGEMENT": {
-        "score": 5,
-        "count": 2,
-        "avg_pct": 0.0,
-        "avg_impact_pct": 9.82,
-        "last_seen": "2026-04-20"
-    },
-    "LAUNCHES": {
-        "score": 5,
-        "count": 1,
-        "avg_pct": 0.0,
-        "avg_impact_pct": 0.0
-    },
-    "FIRST": {
-        "score": 15,
-        "count": 88,
-        "avg_pct_at_birth": 10.79,
-        "last_seen": "2026-04-19",
-        "avg_impact_pct": 47.98
-    },
-    "POWER": {
-        "score": 15,
-        "count": 24,
-        "avg_pct_at_birth": 10.79,
-        "last_seen": "2026-04-17",
-        "avg_impact_pct": 0.0
-    },
-    "MEDICAL": {
-        "score": 10,
-        "count": 1,
-        "avg_pct_at_birth": 10.79,
-        "last_seen": "2026-04-17",
-        "avg_impact_pct": 0.0
-    },
-    "FOURTH": {
-        "score": 11,
-        "count": 3,
-        "avg_pct_at_birth": 11.01,
-        "last_seen": "2026-04-17",
-        "avg_impact_pct": 0.0
-    },
-    "MILLION": {
-        "score": 15,
-        "count": 67,
-        "avg_pct_at_birth": 10.08,
-        "last_seen": "2026-04-17",
-        "avg_impact_pct": 0.0
-    },
-    "GLOBAL": {
-        "score": 15,
-        "count": 46,
-        "avg_pct_at_birth": 10.02,
-        "last_seen": "2026-04-17",
-        "avg_impact_pct": 0.0
-    },
-    "LTD": {
-        "score": 15,
-        "count": 8,
-        "avg_pct_at_birth": 10.02,
-        "last_seen": "2026-04-17",
-        "avg_impact_pct": 0.0
-    },
-    "LIMITED": {
-        "score": 15,
-        "count": 36,
-        "avg_pct_at_birth": 9.89,
-        "last_seen": "2026-04-19",
-        "avg_impact_pct": 21.74
-    },
-    "ADVANCED": {
-        "score": 11,
-        "count": 3,
-        "avg_pct_at_birth": 9.76,
-        "last_seen": "2026-04-17",
-        "avg_impact_pct": 0.0
-    },
-    "INFRASTRUCTURE": {
-        "score": 15,
-        "count": 42,
-        "avg_pct_at_birth": 10.41,
-        "last_seen": "2026-04-17",
-        "avg_impact_pct": 0.0
-    },
-    "GROUP": {
-        "score": 15,
-        "count": 10,
-        "avg_pct_at_birth": 12.55,
-        "last_seen": "2026-04-17",
-        "avg_impact_pct": 0.0
-    },
-    "NASDAQ": {
-        "score": 15,
-        "count": 11,
-        "avg_pct_at_birth": 12.79,
-        "last_seen": "2026-04-20",
-        "avg_impact_pct": 16.96
-    },
-    "PLATFORM": {
-        "score": 10,
-        "count": 2,
-        "avg_pct_at_birth": 13.18,
-        "last_seen": "2026-04-17",
-        "avg_impact_pct": 0.0
-    },
-    "GROWTH": {
-        "score": 10,
-        "count": 1,
-        "avg_pct_at_birth": 12.61,
-        "last_seen": "2026-04-17",
-        "avg_impact_pct": 0.0
-    },
-    "TOP": {
-        "score": 15,
-        "count": 11,
-        "avg_pct_at_birth": 34.37,
-        "last_seen": "2026-04-17",
-        "avg_impact_pct": 0.0
-    },
-    "FOCUS": {
-        "score": 15,
-        "count": 13,
-        "avg_pct_at_birth": 34.37,
-        "last_seen": "2026-04-19",
-        "avg_impact_pct": 192.34
-    },
-    "NAVIGATING": {
-        "score": 12,
-        "count": 1,
-        "avg_impact_pct": 67.09,
-        "last_seen": "2026-04-18"
-    },
-    "AFTER": {
-        "score": 15,
-        "count": 12,
-        "avg_impact_pct": 67.09,
-        "last_seen": "2026-04-21"
-    },
-    "PERFORMING": {
-        "score": 15,
-        "count": 12,
-        "avg_impact_pct": 11.5,
-        "last_seen": "2026-04-20"
-    },
-    "TRUMP": {
-        "score": 15,
-        "count": 23,
-        "avg_impact_pct": 103.29,
-        "last_seen": "2026-04-21"
-    },
-    "PSYCHEDELIC": {
-        "score": 15,
-        "count": 23,
-        "avg_impact_pct": 103.29,
-        "last_seen": "2026-04-21"
-    },
-    "PRESIDENT": {
-        "score": 15,
-        "count": 4,
-        "avg_impact_pct": 96.71,
-        "last_seen": "2026-04-20"
-    },
-    "ORDER": {
-        "score": 15,
-        "count": 14,
-        "avg_impact_pct": 96.71,
-        "last_seen": "2026-04-21"
-    },
-    "HOLDING": {
-        "score": 8,
-        "count": 3,
-        "avg_impact_pct": 15.75,
-        "last_seen": "2026-04-20"
-    },
-    "OIL": {
-        "score": 15,
-        "count": 11,
-        "avg_impact_pct": 12.86,
-        "last_seen": "2026-04-21"
-    },
-    "ACTIVE": {
-        "score": 15,
-        "count": 11,
-        "avg_impact_pct": 40.36,
-        "last_seen": "2026-04-21"
-    },
-    "BUY": {
-        "score": 15,
-        "count": 11,
-        "avg_impact_pct": 35.29,
-        "last_seen": "2026-04-21"
-    },
-    "MOST": {
-        "score": 15,
-        "count": 11,
-        "avg_impact_pct": 40.36,
-        "last_seen": "2026-04-21"
-    }
+  "EXCLUSIVE": {
+    "score": 12,
+    "count": 5,
+    "avg_impact_pct": 42.5,
+    "note": "實戰驗證：獨家協議，過去5次出現平均最高噴發 42.5%"
+  },
+  "FDA CLEARANCE": {
+    "score": 10,
+    "count": 3,
+    "avg_impact_pct": 28.0,
+    "note": "實戰驗證：FDA通關，搭配低流通股勝率極高"
+  },
+  "GOVERNMENT CONTRACT": {
+    "score": 15,
+    "count": 8,
+    "avg_impact_pct": 65.0,
+    "note": "實戰驗證：政府合約，無腦做多訊號"
+  },
+    "STRATEGIC ACQUISITION": {
+    "score": 15,
+    "count": 3,
+    "avg_impact_pct": 81.7,
+    "note": "實戰驗證：戰略收購 (如 YAAS 翻倍案)，破壞力極強"
+  },
+  "ACQUIRE": {
+    "score": 12,
+    "count": 5,
+    "avg_impact_pct": 21.4,
+    "note": "實戰驗證：一般收購案 (如 CRML, AETUF)，穩健雙位數漲幅"
+  },
+  "PARTNERSHIP AGREEMENT": {
+    "score": 10,
+    "count": 2,
+    "avg_impact_pct": 27.4,
+    "note": "實戰驗證：正式合作夥伴協議 (如 SPAIF)，比單純的 Joins 更有力"
+  },
+  "LICENSE": {
+    "score": 10,
+    "count": 2,
+    "avg_impact_pct": 48.0,
+    "note": "實戰驗證：專利或技術授權 (如 VRSSF)，對科技/生技微盤股是巨大利多"
+  },
+  "PRICE TARGET": {
+    "score": 8,
+    "count": 4,
+    "avg_impact_pct": 31.9,
+    "note": "實戰驗證：機構給予明確目標價 (如 CAST)，極易吸引散戶跟風"
+  },
+  "BUY RATING": {
+    "score": 8,
+    "count": 3,
+    "avg_impact_pct": 31.9,
+    "note": "實戰驗證：券商買入評級，通常與目標價伴隨出現"
+  }
 }
