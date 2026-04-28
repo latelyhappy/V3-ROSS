@@ -549,7 +549,6 @@ def scanner_engine():
                     curr_ema52 = float(df['close'].ewm(span=52, adjust=False).mean().iloc[-1]) if len(df) >= 52 else p_live
                     past_high = float(df['high'].iloc[-11:-1].max()) if len(df) >= 11 else p_live
                     
-                    # 💡 信號判定
                     is_spark = bool(((rel_vol_live >= 2.5 and p_live >= past_high) or (rel_vol_prev >= 2.5 and p_prev >= past_high)) and (real_pct > 3.0))
                     is_ross_match = bool(real_pct >= 4.0 and float_m <= 50.0 and rel_vol_display >= 2.0)
                     is_dead_bounce = bool((p_live < current_vwap) and (curr_ema9 < curr_ema20) and (real_pct > 0))
@@ -558,7 +557,6 @@ def scanner_engine():
                     is_massive_inflow = False
                     if len(df) >= 10:
                         recent_vol_max = float(df['volume'].iloc[-11:-1].max()) if len(df) >= 11 else v_live
-                        # 當前 K 線成交量突破近10分鐘最大量，且為均量的 3 倍以上，且價格收紅 (買盤)
                         if v_live > recent_vol_max and v_live >= avg_vol * 3.0 and p_live >= df['open'].iloc[-1]:
                             is_massive_inflow = True
 
@@ -608,10 +606,16 @@ def scanner_engine():
                             current_signal += " [📦爆量箱子]"
                         else:
                             current_signal = f"📦爆量箱子(大量進場){vol_warn}"
-                        status_color = "purple" # 聯動前端 UI 顯示微亮紫色
+                        status_color = "purple"
+
+                    # 💡 【動態文字變色】：爆量時將交易量欄位的文字改為紫色
+                    final_vol_text = format_vol(daily_vol)
+                    if is_massive_inflow:
+                        # 嵌入 HTML span 使文字變色 (螢光紫)
+                        final_vol_text = f'<span style="color: #d942f5; font-weight: 900; text-shadow: 0 0 6px rgba(217, 66, 245, 0.5);">📦 {final_vol_text}</span>'
 
                     stats = {
-                        "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": format_vol(daily_vol),
+                        "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": final_vol_text,
                         "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, "Signal": current_signal,
                         "PriceVal": float(p_live), "HighVal": float(df['high'].iloc[-1]), "StopLoss": curr_ema20 * 0.99, 
                         "Float": float_str, "Type": stat_data.get('type', 'stock'), "VolAcc": vol_acc_str, "Is100K": False, 
