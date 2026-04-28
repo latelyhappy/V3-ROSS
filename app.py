@@ -493,7 +493,7 @@ def scanner_engine():
                     v_live = float(df['volume'].iloc[-1])
                     v_prev = float(df['volume'].iloc[-2]) if len(df) > 1 else v_live
                     
-                    # 💡 【絕對真實成交量】：拔除所有補償，純粹加總今日所有 K 線
+                    # 絕對真實成交量：拔除補償，純粹加總今日所有 K 線
                     daily_vol = int(today_df['volume'].sum()) if not today_df.empty else int(v_live)
 
                     try:
@@ -623,6 +623,11 @@ def scanner_engine():
                 all_items = list(MASTER_BRAIN["details"].values())
                 active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST]
                 MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(x.get('Pct', '0').replace('%', '')), reverse=True)[:20]
+                
+                # 💡 【修復核心】：恢復 VWAP 乖離排行邏輯 (量能累積>30 且 乖離>0)
+                vwap_items = [x for x in active_items if x.get("VR_Acc", 0) > 30.0 and x.get("VWAP_Dev", 0) > 0.0]
+                MASTER_BRAIN["vwap_list"] = sorted(vwap_items, key=lambda x: x.get("VWAP_Dev", 0), reverse=True)
+                
                 MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
             time.sleep(1)
         except Exception as e: time.sleep(5)
