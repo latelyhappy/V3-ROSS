@@ -378,15 +378,24 @@ def update_dynamic_watchlist():
         new_watchlist = []
         temp_stats = {}
 
+        # 💡 【核心修正】：判斷現在是不是「美東盤前時間」
+        now_ny = datetime.now(TZ_NY)
+        is_premarket = now_ny.time() < datetime.strptime("09:30", "%H:%M").time()
+
+        # 動態切換過濾欄位：盤前用盤前數據，開盤後用常規數據
+        chg_col = "premarket_change" if is_premarket else "change"
+        vol_col = "premarket_volume" if is_premarket else "volume"
+
         payload = {
             "filter": [
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, 
                 {"left": "close", "operation": "in_range", "right": [1, 50]}, 
-                {"left": "change", "operation": "egreater", "right": 2.0}, 
-                {"left": "volume", "operation": "egreater", "right": 50000} 
+                {"left": chg_col, "operation": "egreater", "right": 2.0}, # 動態漲幅 > 2%
+                {"left": vol_col, "operation": "egreater", "right": 10000} # 盤前量較少，將初篩門檻降至 10k
             ], 
-            "columns": ["name", "premarket_close", "close", "change", "premarket_volume", "market_cap_basic", "type"], 
-            "sort": {"sortBy": "change", "sortOrder": "desc"}, 
+            # 撈取所有需要的欄位
+            "columns": ["name", "close", "change", "volume", "premarket_close", "premarket_change", "premarket_volume", "market_cap_basic", "type"], 
+            "sort": {"sortBy": chg_col, "sortOrder": "desc"}, 
             "range": [0, 40]
         }
 
@@ -394,19 +403,25 @@ def update_dynamic_watchlist():
         data = res.json()
         if data.get('data'):
             for x in data['data']:
-                sym, p, c, pct, v, mc, t = x['d'][0], x['d'][1], x['d'][2], x['d'][3], x['d'][4], x['d'][5], x['d'][6]
-                if sym not in new_watchlist: new_watchlist.append(sym)
-                p_eff = p if p is not None else c
+                # 對應 columns 的順序解析資料
+                sym, c, pct, v, pm_c, pm_pct, pm_v, mc, t = x['d'][0], x['d'][1], x['d'][2], x['d'][3], x['d'][4], x['d'][5], x['d'][6], x['d'][7], x['d'][8]
                 
+                if sym not in new_watchlist: new_watchlist.append(sym)
+                
+                # 決定基準價格與漲幅 (盤前優先用盤前數據，若無則退回常規)
+                p_eff = pm_c if is_premarket and pm_c is not None else c
+                actual_pct = pm_pct if is_premarket and pm_pct is not None else pct
+                if p_eff is None: p_eff = c
+                if actual_pct is None: actual_pct = 0.0
+
                 real_shares = get_real_float(sym)
                 if real_shares > 0:
                     float_m = real_shares / 1_000_000
                 else:
                     float_m = (mc / p_eff) / 1_000_000 if mc and p_eff else 0.0
                 
-                prev_est = p_eff / (1 + ((pct or 0)/100)) if pct and pct != -100 else p_eff
+                prev_est = p_eff / (1 + (actual_pct/100)) if actual_pct != -100 else p_eff
                 
-                # 保留表層的 ETF 判定
                 f_str = "N/A (ETF)" if t == 'fund' else (f"{float_m:.1f}M" if float_m > 0 else "未知")
                 if t != 'fund' and float_m > 50.0: f_str = f"⚠️{f_str}"
                 
