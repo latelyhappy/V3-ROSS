@@ -13,6 +13,7 @@ from deep_translator import GoogleTranslator
 from collections import Counter
 import logging
 import concurrent.futures 
+import yfinance as yf  # V44.2 新增：精準流通股抓取套件
 
 logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
 
@@ -49,7 +50,7 @@ def reload_armory():
 
 reload_armory()
 
-# --- V44.1 修正：精準流通股抓取系統 ---
+# --- V44.2 修正：雙引擎流通股抓取 ---
 FLOAT_CACHE_FILE = os.path.join(os.path.dirname(__file__), 'float_cache.json')
 FLOAT_CACHE = {}
 
@@ -67,56 +68,41 @@ def save_float_cache():
             json.dump(FLOAT_CACHE, f)
     except: pass
 
-import yfinance as yf  # 記得在 app.py 最上面加入這行 import
-
 def get_real_float(symbol):
-    """
-    V44.2 終極流通股抓取引擎：優先使用 yfinance，失敗才用 Finnhub 備用。
-    """
+    """優先使用 Yahoo Finance 獲取真實流通股，失敗則備用 Finnhub"""
     if symbol in FLOAT_CACHE: return FLOAT_CACHE[symbol]
     
     real_float = 0.0
-    
-    # --- 引擎 1：Yahoo Finance (精準度最高) ---
     try:
-        # 修正特殊代碼格式 (如 FLYYQ)
         yf_symbol = symbol.replace('-', '.')
         ticker = yf.Ticker(yf_symbol)
         yf_float = ticker.info.get('floatShares')
-        
         if yf_float and yf_float > 0:
             real_float = yf_float
-    except:
-        pass
+    except: pass
 
-    # --- 引擎 2：Finnhub 備用 (如果 Yahoo 抓不到) ---
     if real_float == 0.0 and FINNHUB_TOKEN:
         try:
             url = f"https://finnhub.io/api/v1/stock/metric?symbol={symbol}&metric=all&token={FINNHUB_TOKEN}"
             res = requests.get(url, timeout=5)
             if res.status_code == 200:
-                data = res.json()
-                fh_float = data.get('metric', {}).get('floatShares', 0)
+                fh_float = res.json().get('metric', {}).get('floatShares', 0)
                 if fh_float > 0:
                     real_float = fh_float * 1e6 if fh_float < 50000 else fh_float
-        except:
-            pass
+        except: pass
 
-    # --- 儲存並回傳 ---
     if real_float > 0:
         FLOAT_CACHE[symbol] = real_float
         save_float_cache()
         return real_float
-        
     return 0.0
-
 # ----------------------------------
 
 MASTER_BRAIN = {"surge_log": [], "details": {}, "leaderboard": [], "vwap_list": [], "top_catalysts": [], "last_update": "", "elite_words": []}
 DYNAMIC_WATCHLIST = []
 STATS_MAP = {} 
 news_cache = {} 
-cooldown_tracker = {}
+cooldown_tracker = {} # 確保紀錄冷卻時間
 STATE_TRACKER = {}
 app = Flask(__name__)
 
@@ -419,7 +405,6 @@ def update_dynamic_watchlist():
                 if sym not in new_watchlist: new_watchlist.append(sym)
                 p_eff = p if p is not None else c
                 
-                # --- V44.1 精準修正：改用 floatShares 獲取真正流通股 ---
                 real_shares = get_real_float(sym)
                 if real_shares > 0:
                     float_m = real_shares / 1_000_000
@@ -498,7 +483,6 @@ def scanner_engine():
                     v_live = float(df['volume'].iloc[-1])
                     v_prev = float(df['volume'].iloc[-2]) if len(df) > 1 else v_live
                     
-                    # 對接官方結算數據
                     try:
                         daily_df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_daily, n_bars=2)
                         if daily_df is not None and not daily_df.empty:
@@ -536,6 +520,8 @@ def scanner_engine():
                     curr_ema10 = float(df['close'].ewm(span=10, adjust=False).mean().iloc[-1]) if len(df) >= 10 else p_live
                     curr_ema20 = float(df['close'].ewm(span=20, adjust=False).mean().iloc[-1]) if len(df) >= 20 else p_live
                     past_high = float(df['high'].iloc[-11:-1].max()) if len(df) >= 11 else p_live
+                    
+                    # 是否滿足主力點火條件
                     is_spark = bool(((rel_vol_live >= 2.5 and p_live >= past_high) or (rel_vol_prev >= 2.5 and p_prev >= past_high)) and (real_pct > 3.0))
 
                     ratio_3v3 = 1.0; z_score = 0.0; vol_acc_str = "-"; vr_acc = 0.0 
@@ -550,6 +536,8 @@ def scanner_engine():
                             vol_acc_str = f"{sym_up} {ratio_3v3:.2f}x"
 
                     sn_score = int(round((stat_data.get('float_comp', 0) + real_pct) * (ratio_3v3 if ratio_3v3 > 1.0 else 0.5)))
+                    
+                    # 判斷梳子狀態
                     comb_state = "None"
                     if len(df) >= 10:
                         last_10 = df.iloc[-10:]; vols = last_10['volume'].values
@@ -557,9 +545,18 @@ def scanner_engine():
                             avg_9 = (vols.sum() - vols.max()) / 9.0
                             if avg_9 > vols.max() * 0.25: comb_state = "Comb"
 
+                    # 💡 【洗版修復核心】：建立獨立信號字串，將梳子視為附加狀態，不再單獨觸發警報
+                    signal_parts = []
+                    if is_spark:
+                        signal_parts.append("🔥強力點火")
+                    if comb_state == "Comb":
+                        signal_parts.append("[🪮健康梳子]")
+                    
+                    current_signal = " ".join(signal_parts)
+
                     stats = {
                         "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": format_vol(daily_vol),
-                        "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": "green", "Signal": "",
+                        "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": "green", "Signal": current_signal,
                         "PriceVal": float(p_live), "HighVal": float(df['high'].iloc[-1]), "StopLoss": curr_ema20 * 0.99, 
                         "Float": float_str, "Type": stat_data.get('type', 'stock'), "VolAcc": vol_acc_str, "Is100K": False, 
                         "SN_Score": sn_score, "VsaState": 0, "VR_Acc": vr_acc, "VWAP_Dev": vwap_dev, "VWAP_Rating": vwap_rating  
@@ -568,9 +565,15 @@ def scanner_engine():
                     with brain_lock:
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False})
                         cell.update(stats)
+                        
+                        # 💡 【洗版修復核心】：加入 60 秒冷卻鎖
                         if is_spark:
-                            MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova"})
-                            MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
+                            last_trigger_time = cooldown_tracker.get(ticker, 0)
+                            if now_ts - last_trigger_time > 60:
+                                MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova"})
+                                MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
+                                cooldown_tracker[ticker] = now_ts # 更新冷卻時間
+                                
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
                 except Exception as e: return
 
@@ -585,123 +588,7 @@ def scanner_engine():
             time.sleep(1)
         except Exception as e: time.sleep(5)
 
-# --- 這裡替換掉原本的 def auto_trend_updater(): pass ---
-
-TRENDS_DRAFT_PATH = os.path.join(os.path.dirname(__file__), 'trends_draft.json')
-
-def auto_trend_updater():
-    global MASTER_BRAIN
-    while True:
-        time.sleep(3600) # 每小時喚醒檢查一次時間
-        now_ny = datetime.now(TZ_NY)
-        
-        # 戰術設定：美東時間 16:30 (收盤後半小時) 執行盤後統整與反思
-        if now_ny.hour == 16 and 30 <= now_ny.minute <= 59:
-            try:
-                word_stats = {}
-                # 停用詞黑名單 (過濾財經新聞常出現的無意義廢話)
-                stop_words = {'WITH', 'THAT', 'THIS', 'FROM', 'THEIR', 'WILL', 'HAVE', 'BEEN', 'WERE', 'AFTER', 'OVER', 'MORE', 'THAN', 'ABOUT', 'INC.', 'CORP', 'LTD', 'ANNOUNCES', 'REPORTS', 'TODAY', 'UPDATE', 'QUARTERLY', 'RESULTS', 'SHARES', 'STOCK', 'COMPANY', 'EARNINGS', 'THIRD', 'FOURTH', 'FIRST', 'SECOND', 'QUARTER', 'FINANCIAL', 'OPERATIONAL', 'BUSINESS'}
-                
-                # 載入現有 catalysts 的黑名單/雜訊，避免把已知垃圾新聞當寶
-                hindsight = set(CATALYST_ARMORY.get("HINDSIGHT_NOISE", {}).keys())
-                toxic = set(CATALYST_ARMORY.get("TOXIC_OFFERINGS", {}).keys())
-                
-                with brain_lock:
-                    for ticker, data in MASTER_BRAIN.get('details', {}).items():
-                        try: pct = float(str(data.get('Pct', '0')).replace('%', '').replace('+', ''))
-                        except: pct = 0.0
-                            
-                        float_str = str(data.get('Float', ''))
-                        try: float_val = float(float_str.replace('M', '')) if 'M' in float_str else 999.0
-                        except: float_val = 999.0
-                            
-                        # 核心學習條件：今天漲幅 > 15%，且流通股 <= 50M 的妖股
-                        if pct >= 15.0 and float_val <= 50.0:
-                            for news in data.get('NewsList', []):
-                                if news.get('is_today'):
-                                    title = news.get('raw_title', '').upper()
-                                    
-                                    # 簡單 NLP：萃取 4 個字母以上的英文單字
-                                    words = set(re.findall(r'\b[A-Z]{4,}\b', title))
-                                    words = words - stop_words
-                                    
-                                    # 過濾掉已經定義在雜訊庫裡的詞
-                                    words = {w for w in words if not any(trap in w for trap in hindsight) and not any(trap in w for trap in toxic)}
-                                    
-                                    for w in words:
-                                        if w not in word_stats: word_stats[w] = {'pcts': [], 'tickers': set()}
-                                        word_stats[w]['pcts'].append(pct)
-                                        word_stats[w]['tickers'].add(ticker)
-                                        
-                # 統整並生成草稿
-                new_drafts = {}
-                for w, stats in word_stats.items():
-                    # 💡 交叉驗證：該單字今天必須在「至少 2 檔不同的暴漲股」新聞中出現過！
-                    if len(stats['tickers']) >= 2:
-                        avg_pct = sum(stats['pcts']) / len(stats['pcts'])
-                        if avg_pct >= 20.0:
-                            new_drafts[w] = {
-                                "score": 10,
-                                "count": len(stats['tickers']),
-                                "avg_impact_pct": round(avg_pct, 1),
-                                "note": f"🤖 AI 自動學習: 今日在 {len(stats['tickers'])} 檔暴漲股 ({','.join(list(stats['tickers'])[:3])}) 中同時出現"
-                            }
-                            
-                # 寫入草稿庫等待指揮官審核
-                if new_drafts:
-                    if os.path.exists(TRENDS_DRAFT_PATH):
-                        with open(TRENDS_DRAFT_PATH, 'r', encoding='utf-8') as f:
-                            try: existing = json.load(f); existing.update(new_drafts); new_drafts = existing
-                            except: pass
-                    with open(TRENDS_DRAFT_PATH, 'w', encoding='utf-8') as f:
-                        json.dump(new_drafts, f, ensure_ascii=False, indent=4)
-                        
-            except Exception as e: print(f"自我學習引擎發生錯誤: {e}")
-                
-            time.sleep(43200) # 執行完畢後強制休息 12 小時，避免重複運算
-
-# --- 以下兩個 API 路由請加在 @app.route('/api/config') 附近 ---
-
-@app.route('/api/drafts', methods=['GET'])
-def get_drafts():
-    draft_path = TRENDS_DRAFT_PATH
-    if os.path.exists(draft_path):
-        with open(draft_path, 'r', encoding='utf-8') as f:
-            try: return jsonify(json.load(f))
-            except: return jsonify({})
-    return jsonify({})
-
-@app.route('/api/approve_draft', methods=['POST'])
-def approve_draft():
-    data = request.json
-    word = data.get('word')
-    action = data.get('action')
-    
-    draft_path = TRENDS_DRAFT_PATH
-    trends_path = TRENDS_FILE_PATH
-    
-    if not os.path.exists(draft_path): return jsonify({"status": "error"})
-    
-    with open(draft_path, 'r', encoding='utf-8') as f: drafts = json.load(f)
-        
-    if word in drafts:
-        if action == 'approve':
-            trends = {}
-            if os.path.exists(trends_path):
-                with open(trends_path, 'r', encoding='utf-8') as f:
-                    try: trends = json.load(f)
-                    except: pass
-            trends[word] = drafts[word]
-            with open(trends_path, 'w', encoding='utf-8') as f:
-                json.dump(trends, f, ensure_ascii=False, indent=4)
-                
-        # 處理完後從草稿庫中刪除
-        del drafts[word]
-        with open(draft_path, 'w', encoding='utf-8') as f:
-            json.dump(drafts, f, ensure_ascii=False, indent=4)
-            
-        return jsonify({"status": "success"})
-    return jsonify({"status": "error", "msg": "單字不存在"})
+def auto_trend_updater(): pass
 
 @app.route('/api/config', methods=['POST'])
 def update_config():
