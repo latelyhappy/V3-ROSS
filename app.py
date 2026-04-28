@@ -51,6 +51,7 @@ def reload_armory():
 
 reload_armory()
 
+# --- 流通股抓取引擎 ---
 FLOAT_CACHE_FILE = os.path.join(os.path.dirname(__file__), 'float_cache.json')
 FLOAT_CACHE = {}
 
@@ -493,7 +494,6 @@ def scanner_engine():
                     v_live = float(df['volume'].iloc[-1])
                     v_prev = float(df['volume'].iloc[-2]) if len(df) > 1 else v_live
                     
-                    # 絕對真實成交量：拔除補償，純粹加總今日所有 K 線
                     daily_vol = int(today_df['volume'].sum()) if not today_df.empty else int(v_live)
 
                     try:
@@ -513,6 +513,12 @@ def scanner_engine():
                     rel_vol_prev = float(round(v_prev / avg_vol, 2))
                     rel_vol_display = max(rel_vol_live, rel_vol_prev)
                     vol_3m = float(df['volume'].iloc[-3:].sum()) if len(df) >= 3 else v_live
+
+                    zero_vol_mins = 0
+                    if time_lapsed_mins >= 15:
+                        last_15_vols = today_df['volume'].iloc[-15:].values
+                        zero_vol_mins = (last_15_vols == 0).sum()
+                    is_continuous = (zero_vol_mins <= 3) 
 
                     if time_lapsed_mins > 0:
                         typical_price = (today_df['high'] + today_df['low'] + today_df['close']) / 3
@@ -543,8 +549,18 @@ def scanner_engine():
                     curr_ema52 = float(df['close'].ewm(span=52, adjust=False).mean().iloc[-1]) if len(df) >= 52 else p_live
                     past_high = float(df['high'].iloc[-11:-1].max()) if len(df) >= 11 else p_live
                     
+                    # 💡 信號判定
                     is_spark = bool(((rel_vol_live >= 2.5 and p_live >= past_high) or (rel_vol_prev >= 2.5 and p_prev >= past_high)) and (real_pct > 3.0))
                     is_ross_match = bool(real_pct >= 4.0 and float_m <= 50.0 and rel_vol_display >= 2.0)
+                    is_dead_bounce = bool((p_live < current_vwap) and (curr_ema9 < curr_ema20) and (real_pct > 0))
+
+                    # 💡 【全新：爆量箱子 (大量進場) 判定】取代舊有梳子邏輯
+                    is_massive_inflow = False
+                    if len(df) >= 10:
+                        recent_vol_max = float(df['volume'].iloc[-11:-1].max()) if len(df) >= 11 else v_live
+                        # 當前 K 線成交量突破近10分鐘最大量，且為均量的 3 倍以上，且價格收紅 (買盤)
+                        if v_live > recent_vol_max and v_live >= avg_vol * 3.0 and p_live >= df['open'].iloc[-1]:
+                            is_massive_inflow = True
 
                     ratio_3v3 = 1.0; vol_acc_str = "-"; vr_acc = 0.0 
                     
@@ -569,27 +585,34 @@ def scanner_engine():
 
                     sn_score = int(round((stat_data.get('float_comp', 0) + real_pct) * (ratio_3v3 if ratio_3v3 > 1.0 else 0.5)))
                     
-                    comb_state = "None"
-                    if len(df) >= 10:
-                        last_10 = df.iloc[-10:]; vols = last_10['volume'].values
-                        if vols.max() > 0:
-                            avg_9 = (vols.sum() - vols.max()) / 9.0
-                            if avg_9 > vols.max() * 0.25: comb_state = "Comb"
-
                     vol_warn = " (⚠️量低)" if (p_live * max(v_live, v_prev, avg_vol)) < 50000 else ""
+                    if not is_continuous:
+                        vol_warn += " (❄️斷層停滯)"
 
+                    status_color = "green"
                     current_signal = ""
-                    if is_ross_match:
+                    
+                    if is_dead_bounce and is_ross_match:
+                        current_signal = f"🚨水下反彈警報{vol_warn}"
+                        status_color = "red"
+                    elif is_ross_match:
                         current_signal = f"🚀Ross勢頭確立{vol_warn}"
+                        status_color = "yellow"
                     elif is_spark:
                         current_signal = f"🔥強力點火{vol_warn}"
+                        status_color = "yellow"
                         
-                    if comb_state == "Comb" and current_signal:
-                        current_signal = f"{current_signal} [🪮健康梳子]"
+                    # 💡 【爆量箱子進場：觸發微亮紫色背景】
+                    if is_massive_inflow:
+                        if current_signal:
+                            current_signal += " [📦爆量箱子]"
+                        else:
+                            current_signal = f"📦爆量箱子(大量進場){vol_warn}"
+                        status_color = "purple" # 聯動前端 UI 顯示微亮紫色
 
                     stats = {
                         "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": format_vol(daily_vol),
-                        "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": "green", "Signal": current_signal,
+                        "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, "Signal": current_signal,
                         "PriceVal": float(p_live), "HighVal": float(df['high'].iloc[-1]), "StopLoss": curr_ema20 * 0.99, 
                         "Float": float_str, "Type": stat_data.get('type', 'stock'), "VolAcc": vol_acc_str, "Is100K": False, 
                         "SN_Score": sn_score, "VsaState": 0, "VR_Acc": vr_acc, "VWAP_Dev": vwap_dev, "VWAP_Rating": vwap_rating,
@@ -600,7 +623,7 @@ def scanner_engine():
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False})
                         cell.update(stats)
                         
-                        if is_ross_match or is_spark:
+                        if is_ross_match or is_spark or is_dead_bounce or is_massive_inflow:
                             last_trigger_time = cooldown_tracker.get(ticker, 0)
                             if now_ts - last_trigger_time > 60:
                                 
@@ -624,7 +647,6 @@ def scanner_engine():
                 active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST]
                 MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(x.get('Pct', '0').replace('%', '')), reverse=True)[:20]
                 
-                # 💡 【修復核心】：恢復 VWAP 乖離排行邏輯 (量能累積>30 且 乖離>0)
                 vwap_items = [x for x in active_items if x.get("VR_Acc", 0) > 30.0 and x.get("VWAP_Dev", 0) > 0.0]
                 MASTER_BRAIN["vwap_list"] = sorted(vwap_items, key=lambda x: x.get("VWAP_Dev", 0), reverse=True)
                 
