@@ -19,7 +19,7 @@ logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
 
 brain_lock = threading.RLock() 
 TRENDS_FILE_PATH = os.path.join(os.path.dirname(__file__), 'trends.json')
-TRENDS_DRAFT_PATH = os.path.join(os.path.dirname(__file__), 'trends_draft.json') # AI草稿庫
+TRENDS_DRAFT_PATH = os.path.join(os.path.dirname(__file__), 'trends_draft.json') 
 DISCOVERY_LOG_PATH = os.path.join(os.path.dirname(__file__), 'discovery_log.json') 
 SESSION_BACKUP_PATH = os.path.join(os.path.dirname(__file__), 'session_state.json')
 
@@ -468,21 +468,31 @@ def scanner_engine():
                         return
                     consecutive_errors = 0 
 
-                    last_date = df.index[-1].date()
-                    today_df = df[df.index.date == last_date]
+                    # 💡 【物理性成交量歸零】：找出大於 4 小時的斷層，精準定位「今日盤前」的起點
+                    time_diff = df.index.to_series().diff()
+                    new_sessions = time_diff[time_diff > pd.Timedelta(hours=4)]
+                    if not new_sessions.empty:
+                        session_start = new_sessions.index[-1]
+                        today_df = df.loc[session_start:]
+                    else:
+                        last_date = df.index[-1].date()
+                        today_df = df[df.index.date == last_date]
+
                     p_live = float(df['close'].iloc[-1])
                     p_prev = float(df['close'].iloc[-2]) if len(df) > 1 else p_live
                     v_live = float(df['volume'].iloc[-1])
                     v_prev = float(df['volume'].iloc[-2]) if len(df) > 1 else v_live
                     
+                    # 取出精準的「今日總量 (撇除昨日殘影)」
+                    true_daily_vol = int(today_df['volume'].sum()) if not today_df.empty else int(v_live)
+
                     try:
                         daily_df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_daily, n_bars=2)
                         if daily_df is not None and not daily_df.empty:
-                            true_daily_vol = int(daily_df['volume'].iloc[-1])
                             true_prev_close = float(daily_df['close'].iloc[-2]) if len(daily_df) > 1 else float(daily_df['open'].iloc[0])
                         else:
-                            true_daily_vol = int(today_df['volume'].sum()); true_prev_close = 0.0
-                    except: true_daily_vol = int(today_df['volume'].sum()); true_prev_close = 0.0
+                            true_prev_close = 0.0
+                    except: true_prev_close = 0.0
 
                     time_lapsed_mins = len(today_df)
                     avg_vol = float(today_df['volume'].iloc[:-1].mean()) if time_lapsed_mins > 2 else v_live
@@ -505,13 +515,22 @@ def scanner_engine():
                     df['tr'] = pd.concat([(df['high'] - df['low']), (df['high'] - df['close'].shift(1)).abs(), (df['low'] - df['close'].shift(1)).abs()], axis=1).max(axis=1)
                     stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0})
                     prev_close = true_prev_close if true_prev_close > 0 else (float(stat_data['prev']) if stat_data['prev'] > 0 else float(df['low'].min()))
-                    float_str = stat_data['float_str'] if stat_data['prev'] > 0 else "未知"
-                    real_pct = float(((p_live - prev_close) / prev_close) * 100)
+                    
+                    real_pct = float(((p_live - prev_close) / prev_close) * 100) if prev_close > 0 else 0.0
+                    
+                    real_float = get_real_float(ticker)
+                    float_m = real_float / 1_000_000 if real_float > 0 else 999.0
+                    float_str = f"{float_m:.1f}M" if real_float > 0 else "未知"
+
                     curr_ema20 = float(df['close'].ewm(span=20, adjust=False).mean().iloc[-1]) if len(df) >= 20 else p_live
                     past_high = float(df['high'].iloc[-11:-1].max()) if len(df) >= 11 else p_live
                     
-                    # 💡 【核心點火邏輯】
+                    # 💡 【雙重信號判定系統】
+                    # 1. 傳統點火 (高量比 + 突破前高)
                     is_spark = bool(((rel_vol_live >= 2.5 and p_live >= past_high) or (rel_vol_prev >= 2.5 and p_prev >= past_high)) and (real_pct > 3.0))
+                    
+                    # 2. 🚀 Ross Cameron 策略無條件判定 (高漲幅 + 低流通 + 高量比)
+                    is_ross_match = bool(real_pct >= 4.0 and float_m <= 50.0 and rel_vol_display >= 2.0)
 
                     ratio_3v3 = 1.0; vol_acc_str = "-"; vr_acc = 0.0 
                     if len(df) >= 6:
@@ -524,7 +543,7 @@ def scanner_engine():
 
                     sn_score = int(round((stat_data.get('float_comp', 0) + real_pct) * (ratio_3v3 if ratio_3v3 > 1.0 else 0.5)))
                     
-                    # 💡 【梳子狀態只做附加標記，拔除攔截枷鎖】
+                    # 梳子狀態僅為附加標記
                     comb_state = "None"
                     if len(df) >= 10:
                         last_10 = df.iloc[-10:]; vols = last_10['volume'].values
@@ -533,11 +552,13 @@ def scanner_engine():
                             if avg_9 > vols.max() * 0.25: comb_state = "Comb"
 
                     current_signal = ""
-                    if is_spark:
+                    if is_ross_match:
+                        current_signal = "🚀Ross勢頭確立"
+                    elif is_spark:
                         current_signal = "🔥強力點火"
                         
-                    if comb_state == "Comb":
-                        current_signal = f"{current_signal} [🪮健康梳子]" if current_signal else "[🪮健康梳子]"
+                    if comb_state == "Comb" and current_signal:
+                        current_signal = f"{current_signal} [🪮健康梳子]"
 
                     stats = {
                         "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": format_vol(daily_vol),
@@ -551,8 +572,8 @@ def scanner_engine():
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False})
                         cell.update(stats)
                         
-                        # 💡 【點火直通機制】：只要是 is_spark，且過了 60 秒，就推送到日誌！
-                        if is_spark:
+                        # 💡 【即時推播防線】：只要命中 Ross 策略或爆發點火，且冷卻 60 秒完畢，無條件推送到日誌！
+                        if is_ross_match or is_spark:
                             last_trigger_time = cooldown_tracker.get(ticker, 0)
                             if now_ts - last_trigger_time > 60:
                                 MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova"})
@@ -573,14 +594,11 @@ def scanner_engine():
             time.sleep(1)
         except Exception as e: time.sleep(5)
 
-# --- AI 自動學習引擎 (取代原本的 pass) ---
 def auto_trend_updater():
     global MASTER_BRAIN
     while True:
         time.sleep(3600) 
         now_ny = datetime.now(TZ_NY)
-        
-        # 美東 16:30 執行盤後分析
         if now_ny.hour == 16 and 30 <= now_ny.minute <= 59:
             try:
                 word_stats = {}
@@ -592,7 +610,6 @@ def auto_trend_updater():
                     for ticker, data in MASTER_BRAIN.get('details', {}).items():
                         try: pct = float(str(data.get('Pct', '0')).replace('%', '').replace('+', ''))
                         except: pct = 0.0
-                            
                         float_str = str(data.get('Float', ''))
                         try: float_val = float(float_str.replace('M', '')) if 'M' in float_str else 999.0
                         except: float_val = 999.0
@@ -604,7 +621,6 @@ def auto_trend_updater():
                                     words = set(re.findall(r'\b[A-Z]{4,}\b', title))
                                     words = words - stop_words
                                     words = {w for w in words if not any(trap in w for trap in hindsight) and not any(trap in w for trap in toxic)}
-                                    
                                     for w in words:
                                         if w not in word_stats: word_stats[w] = {'pcts': [], 'tickers': set()}
                                         word_stats[w]['pcts'].append(pct)
@@ -616,12 +632,10 @@ def auto_trend_updater():
                         avg_pct = sum(stats['pcts']) / len(stats['pcts'])
                         if avg_pct >= 20.0:
                             new_drafts[w] = {
-                                "score": 10,
-                                "count": len(stats['tickers']),
+                                "score": 10, "count": len(stats['tickers']),
                                 "avg_impact_pct": round(avg_pct, 1),
                                 "note": f"🤖 AI 自動學習: 今日在 {len(stats['tickers'])} 檔暴漲股 ({','.join(list(stats['tickers'])[:3])}) 中同時出現"
                             }
-                            
                 if new_drafts:
                     if os.path.exists(TRENDS_DRAFT_PATH):
                         with open(TRENDS_DRAFT_PATH, 'r', encoding='utf-8') as f:
@@ -629,7 +643,6 @@ def auto_trend_updater():
                             except: pass
                     with open(TRENDS_DRAFT_PATH, 'w', encoding='utf-8') as f:
                         json.dump(new_drafts, f, ensure_ascii=False, indent=4)
-                        
             except Exception as e: print(f"學習引擎錯誤: {e}")
             time.sleep(43200) 
 
@@ -658,7 +671,6 @@ def export_news():
     df = pd.DataFrame(rows); output = io.BytesIO(); df.to_csv(output, index=False, encoding='utf-8-sig'); output.seek(0)
     return send_file(output, mimetype='text/csv', as_attachment=True, download_name="news.csv")
 
-# --- AI草稿庫前端接口 ---
 @app.route('/api/drafts', methods=['GET'])
 def get_drafts():
     if os.path.exists(TRENDS_DRAFT_PATH):
@@ -708,6 +720,5 @@ if __name__ == '__main__':
     threading.Thread(target=state_auto_save_worker, daemon=True).start()
     threading.Thread(target=scanner_engine, daemon=True).start()
     threading.Thread(target=finnhub_news_monitor_worker, daemon=True).start()
-    # 啟動 AI 每日自我學習線程
     threading.Thread(target=auto_trend_updater, daemon=True).start()
     app.run(host='0.0.0.0', port=PORT)
