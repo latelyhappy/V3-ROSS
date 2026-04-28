@@ -405,8 +405,11 @@ def update_dynamic_watchlist():
                     float_m = (mc / p_eff) / 1_000_000 if mc and p_eff else 0.0
                 
                 prev_est = p_eff / (1 + ((pct or 0)/100)) if pct and pct != -100 else p_eff
+                
+                # 保留表層的 ETF 判定
                 f_str = "N/A (ETF)" if t == 'fund' else (f"{float_m:.1f}M" if float_m > 0 else "未知")
                 if t != 'fund' and float_m > 50.0: f_str = f"⚠️{f_str}"
+                
                 float_comp = 100.0 / math.sqrt(float_m) if float_m > 0 else 0.0
                 
                 temp_stats[sym] = {
@@ -468,7 +471,6 @@ def scanner_engine():
                         return
                     consecutive_errors = 0 
 
-                    # 💡 【物理性成交量歸零】：找出大於 4 小時的斷層，精準定位「今日盤前」的起點
                     time_diff = df.index.to_series().diff()
                     new_sessions = time_diff[time_diff > pd.Timedelta(hours=4)]
                     if not new_sessions.empty:
@@ -483,7 +485,6 @@ def scanner_engine():
                     v_live = float(df['volume'].iloc[-1])
                     v_prev = float(df['volume'].iloc[-2]) if len(df) > 1 else v_live
                     
-                    # 取出精準的「今日總量 (撇除昨日殘影)」
                     true_daily_vol = int(today_df['volume'].sum()) if not today_df.empty else int(v_live)
 
                     try:
@@ -520,30 +521,45 @@ def scanner_engine():
                     
                     real_float = get_real_float(ticker)
                     float_m = real_float / 1_000_000 if real_float > 0 else 999.0
-                    float_str = f"{float_m:.1f}M" if real_float > 0 else "未知"
+                    
+                    # 💡 【圖示修復】：恢復 ⚠️ 警告標記 (大於 50M)
+                    if stat_data.get('type') == 'fund':
+                        float_str = "N/A (ETF)"
+                    elif real_float > 0:
+                        float_str = f"⚠️{float_m:.1f}M" if float_m > 50.0 else f"{float_m:.1f}M"
+                    else:
+                        float_str = "未知"
 
                     curr_ema20 = float(df['close'].ewm(span=20, adjust=False).mean().iloc[-1]) if len(df) >= 20 else p_live
                     past_high = float(df['high'].iloc[-11:-1].max()) if len(df) >= 11 else p_live
                     
-                    # 💡 【雙重信號判定系統】
-                    # 1. 傳統點火 (高量比 + 突破前高)
                     is_spark = bool(((rel_vol_live >= 2.5 and p_live >= past_high) or (rel_vol_prev >= 2.5 and p_prev >= past_high)) and (real_pct > 3.0))
-                    
-                    # 2. 🚀 Ross Cameron 策略無條件判定 (高漲幅 + 低流通 + 高量比)
                     is_ross_match = bool(real_pct >= 4.0 and float_m <= 50.0 and rel_vol_display >= 2.0)
 
                     ratio_3v3 = 1.0; vol_acc_str = "-"; vr_acc = 0.0 
+                    
+                    # 💡 【圖示修復】：恢復 🔥, 🩸, 🧊 量能加速圖示
                     if len(df) >= 6:
-                        vol_A = vol_3m; vol_B = float(df['volume'].iloc[-6:-3].sum())
+                        vol_A = vol_3m
+                        vol_B = float(df['volume'].iloc[-6:-3].sum())
+                        vol_C = float(df['volume'].iloc[-9:-6].sum()) if len(df) >= 9 else 0.0
+                        
                         if vol_B >= 0: vr_acc = float(round(((vol_A - vol_B) / max(vol_B, 0.01)) * 100, 2))
                         if vol_B > 0:
                             ratio_3v3 = float(vol_A / vol_B)
-                            sym_up = "↗" if p_live >= p_prev else "↘"
-                            vol_acc_str = f"{sym_up} {ratio_3v3:.2f}x"
+                            sym_up, sym_extreme = ("↗", "🔥") if p_live >= p_prev else ("🔻", "🩸")
+                            
+                            if len(df) >= 9:
+                                if vol_A > vol_B > vol_C: vol_acc_str = f"{sym_extreme} {ratio_3v3:.2f}x"
+                                elif vol_A > vol_B and vol_B <= vol_C: vol_acc_str = f"{sym_up} {ratio_3v3:.2f}x"
+                                elif vol_A < vol_B < vol_C: vol_acc_str = f"🧊 {ratio_3v3:.2f}x"
+                                elif vol_A < vol_B and vol_B >= vol_C: vol_acc_str = f"↘ {ratio_3v3:.2f}x"
+                                else: vol_acc_str = f"- {ratio_3v3:.2f}x"
+                            else:
+                                vol_acc_str = f"{sym_up} {ratio_3v3:.2f}x" if vol_A > vol_B else f"↘ {ratio_3v3:.2f}x"
 
                     sn_score = int(round((stat_data.get('float_comp', 0) + real_pct) * (ratio_3v3 if ratio_3v3 > 1.0 else 0.5)))
                     
-                    # 梳子狀態僅為附加標記
                     comb_state = "None"
                     if len(df) >= 10:
                         last_10 = df.iloc[-10:]; vols = last_10['volume'].values
@@ -551,11 +567,14 @@ def scanner_engine():
                             avg_9 = (vols.sum() - vols.max()) / 9.0
                             if avg_9 > vols.max() * 0.25: comb_state = "Comb"
 
+                    # 💡 【圖示修復】：恢復 ⚠️量低 警告標記
+                    vol_warn = " (⚠️量低)" if (p_live * max(v_live, v_prev, avg_vol)) < 50000 else ""
+
                     current_signal = ""
                     if is_ross_match:
-                        current_signal = "🚀Ross勢頭確立"
+                        current_signal = f"🚀Ross勢頭確立{vol_warn}"
                     elif is_spark:
-                        current_signal = "🔥強力點火"
+                        current_signal = f"🔥強力點火{vol_warn}"
                         
                     if comb_state == "Comb" and current_signal:
                         current_signal = f"{current_signal} [🪮健康梳子]"
@@ -572,10 +591,16 @@ def scanner_engine():
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False})
                         cell.update(stats)
                         
-                        # 💡 【即時推播防線】：只要命中 Ross 策略或爆發點火，且冷卻 60 秒完畢，無條件推送到日誌！
                         if is_ross_match or is_spark:
                             last_trigger_time = cooldown_tracker.get(ticker, 0)
                             if now_ts - last_trigger_time > 60:
+                                
+                                # 💡 【圖示修復】：發送警報前，恢復 SEC 💀 死亡陷阱掃描
+                                is_sec_trap = check_sec_fatal_traps(ticker)
+                                if is_sec_trap:
+                                    stats["Signal"] += " 💀(SEC陷阱)"
+                                    cell["IsTrap"] = True
+                                    
                                 MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova"})
                                 MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
                                 cooldown_tracker[ticker] = now_ts 
