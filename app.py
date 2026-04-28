@@ -403,16 +403,18 @@ def update_dynamic_watchlist():
         data = res.json()
         if data.get('data'):
             for x in data['data']:
-                # 對應 columns 的順序解析資料
                 sym, c, pct, v, pm_c, pm_pct, pm_v, mc, t = x['d'][0], x['d'][1], x['d'][2], x['d'][3], x['d'][4], x['d'][5], x['d'][6], x['d'][7], x['d'][8]
                 
                 if sym not in new_watchlist: new_watchlist.append(sym)
                 
-                # 決定基準價格與漲幅 (盤前優先用盤前數據，若無則退回常規)
                 p_eff = pm_c if is_premarket and pm_c is not None else c
                 actual_pct = pm_pct if is_premarket and pm_pct is not None else pct
                 if p_eff is None: p_eff = c
                 if actual_pct is None: actual_pct = 0.0
+
+                # 💡 【修正核心 1】：抓取官方篩選器提供的精準成交量
+                actual_vol = pm_v if is_premarket and pm_v is not None else v
+                if actual_vol is None: actual_vol = 0
 
                 real_shares = get_real_float(sym)
                 if real_shares > 0:
@@ -427,9 +429,11 @@ def update_dynamic_watchlist():
                 
                 float_comp = 100.0 / math.sqrt(float_m) if float_m > 0 else 0.0
                 
+                # 💡 【修正核心 2】：將官方成交量存入記憶體中
                 temp_stats[sym] = {
                     'prev': prev_est, 'float_str': f_str, 'type': t, 
-                    'float_comp': float_comp
+                    'float_comp': float_comp,
+                    'official_vol': actual_vol
                 }
         
         with brain_lock:
@@ -486,6 +490,7 @@ def scanner_engine():
                         return
                     consecutive_errors = 0 
 
+                    # ... 前面計算 K 線時間斷層的程式碼保持不變 ...
                     time_diff = df.index.to_series().diff()
                     new_sessions = time_diff[time_diff > pd.Timedelta(hours=4)]
                     if not new_sessions.empty:
@@ -500,7 +505,17 @@ def scanner_engine():
                     v_live = float(df['volume'].iloc[-1])
                     v_prev = float(df['volume'].iloc[-2]) if len(df) > 1 else v_live
                     
-                    true_daily_vol = int(today_df['volume'].sum()) if not today_df.empty else int(v_live)
+                    # 這是實時 K 線加總出來的量
+                    kline_vol = int(today_df['volume'].sum()) if not today_df.empty else int(v_live)
+
+                    # 💡 【修正核心 3】：提取官方總量，並取最大值！
+                    stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0, 'official_vol': 0})
+                    screener_vol = int(stat_data.get('official_vol', 0))
+                    
+                    # 終極融合：官方總量能補足暗盤，K線總量能維持秒級實時跳動
+                    daily_vol = max(screener_vol, kline_vol)
+
+                    # ... 後續程式碼保持不變 ...
 
                     try:
                         daily_df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_daily, n_bars=2)
