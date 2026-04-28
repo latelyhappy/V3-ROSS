@@ -193,10 +193,10 @@
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
         
-function checkDrafts() {
-    fetch('/api/drafts')
-    .then(r => r.json())
-    .then(data => {
+        function checkDrafts() {
+        fetch('/api/drafts')
+        .then(r => r.json())
+        .then(data => {
         let words = Object.keys(data);
         if (words.length === 0) {
             alert("🤖 目前沒有新的 AI 學習草稿。\n系統會在每日美東時間 16:30 自動分析當日暴漲股並生成。");
