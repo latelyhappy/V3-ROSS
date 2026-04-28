@@ -378,11 +378,10 @@ def update_dynamic_watchlist():
         new_watchlist = []
         temp_stats = {}
 
-        # 💡 【核心修正】：判斷現在是不是「美東盤前時間」
+        # 💡 【核心修正 1】：判斷美東盤前時間，動態切換索敵條件 (StockAnalysis同步)
         now_ny = datetime.now(TZ_NY)
         is_premarket = now_ny.time() < datetime.strptime("09:30", "%H:%M").time()
 
-        # 動態切換過濾欄位：盤前用盤前數據，開盤後用常規數據
         chg_col = "premarket_change" if is_premarket else "change"
         vol_col = "premarket_volume" if is_premarket else "volume"
 
@@ -390,10 +389,9 @@ def update_dynamic_watchlist():
             "filter": [
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, 
                 {"left": "close", "operation": "in_range", "right": [1, 50]}, 
-                {"left": chg_col, "operation": "egreater", "right": 2.0}, # 動態漲幅 > 2%
-                {"left": vol_col, "operation": "egreater", "right": 10000} # 盤前量較少，將初篩門檻降至 10k
+                {"left": chg_col, "operation": "egreater", "right": 2.0}, 
+                {"left": vol_col, "operation": "egreater", "right": 10000} 
             ], 
-            # 撈取所有需要的欄位
             "columns": ["name", "close", "change", "volume", "premarket_close", "premarket_change", "premarket_volume", "market_cap_basic", "type"], 
             "sort": {"sortBy": chg_col, "sortOrder": "desc"}, 
             "range": [0, 40]
@@ -404,7 +402,6 @@ def update_dynamic_watchlist():
         if data.get('data'):
             for x in data['data']:
                 sym, c, pct, v, pm_c, pm_pct, pm_v, mc, t = x['d'][0], x['d'][1], x['d'][2], x['d'][3], x['d'][4], x['d'][5], x['d'][6], x['d'][7], x['d'][8]
-                
                 if sym not in new_watchlist: new_watchlist.append(sym)
                 
                 p_eff = pm_c if is_premarket and pm_c is not None else c
@@ -412,7 +409,7 @@ def update_dynamic_watchlist():
                 if p_eff is None: p_eff = c
                 if actual_pct is None: actual_pct = 0.0
 
-                # 💡 【修正核心 1】：抓取官方篩選器提供的精準成交量
+                # 💡 【核心修正 2】：抓取官方篩選器提供的精準成交量 (暗盤修補)
                 actual_vol = pm_v if is_premarket and pm_v is not None else v
                 if actual_vol is None: actual_vol = 0
 
@@ -424,12 +421,12 @@ def update_dynamic_watchlist():
                 
                 prev_est = p_eff / (1 + (actual_pct/100)) if actual_pct != -100 else p_eff
                 
+                # ⚠️ 【圖示修復】：恢復 >50M 的警告標籤
                 f_str = "N/A (ETF)" if t == 'fund' else (f"{float_m:.1f}M" if float_m > 0 else "未知")
                 if t != 'fund' and float_m > 50.0: f_str = f"⚠️{f_str}"
                 
                 float_comp = 100.0 / math.sqrt(float_m) if float_m > 0 else 0.0
                 
-                # 💡 【修正核心 2】：將官方成交量存入記憶體中
                 temp_stats[sym] = {
                     'prev': prev_est, 'float_str': f_str, 'type': t, 
                     'float_comp': float_comp,
@@ -490,7 +487,7 @@ def scanner_engine():
                         return
                     consecutive_errors = 0 
 
-                    # ... 前面計算 K 線時間斷層的程式碼保持不變 ...
+                    # 💡 物理性成交量歸零 (過濾昨日盤後)
                     time_diff = df.index.to_series().diff()
                     new_sessions = time_diff[time_diff > pd.Timedelta(hours=4)]
                     if not new_sessions.empty:
@@ -505,17 +502,7 @@ def scanner_engine():
                     v_live = float(df['volume'].iloc[-1])
                     v_prev = float(df['volume'].iloc[-2]) if len(df) > 1 else v_live
                     
-                    # 這是實時 K 線加總出來的量
                     kline_vol = int(today_df['volume'].sum()) if not today_df.empty else int(v_live)
-
-                    # 💡 【修正核心 3】：提取官方總量，並取最大值！
-                    stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0, 'official_vol': 0})
-                    screener_vol = int(stat_data.get('official_vol', 0))
-                    
-                    # 終極融合：官方總量能補足暗盤，K線總量能維持秒級實時跳動
-                    daily_vol = max(screener_vol, kline_vol)
-
-                    # ... 後續程式碼保持不變 ...
 
                     try:
                         daily_df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_daily, n_bars=2)
@@ -525,15 +512,21 @@ def scanner_engine():
                             true_prev_close = 0.0
                     except: true_prev_close = 0.0
 
+                    stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0, 'official_vol': 0})
+                    
+                    # 💡 【核心修正 3】：將官方篩選器總量與 K 線總量取最大值 (融合暗盤)
+                    screener_vol = int(stat_data.get('official_vol', 0))
+                    daily_vol = max(screener_vol, kline_vol)
+
                     time_lapsed_mins = len(today_df)
                     avg_vol = float(today_df['volume'].iloc[:-1].mean()) if time_lapsed_mins > 2 else v_live
                     if avg_vol == 0: avg_vol = 1.0 
                     rel_vol_live = float(round(v_live / avg_vol, 2))
                     rel_vol_prev = float(round(v_prev / avg_vol, 2))
                     rel_vol_display = max(rel_vol_live, rel_vol_prev)
-                    daily_vol = true_daily_vol
                     vol_3m = float(df['volume'].iloc[-3:].sum()) if len(df) >= 3 else v_live
 
+                    # 💡 指標強制保留區：確保 VWAP 計算無誤
                     if time_lapsed_mins > 0:
                         typical_price = (today_df['high'] + today_df['low'] + today_df['close']) / 3
                         cumulative_vol = today_df['volume'].cumsum()
@@ -544,15 +537,14 @@ def scanner_engine():
 
                     vwap_rating = "High" if vwap_dev > 15.0 else ("Mid" if vwap_dev > 5.0 else "Low") 
                     df['tr'] = pd.concat([(df['high'] - df['low']), (df['high'] - df['close'].shift(1)).abs(), (df['low'] - df['close'].shift(1)).abs()], axis=1).max(axis=1)
-                    stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0})
-                    prev_close = true_prev_close if true_prev_close > 0 else (float(stat_data['prev']) if stat_data['prev'] > 0 else float(df['low'].min()))
                     
+                    prev_close = true_prev_close if true_prev_close > 0 else (float(stat_data['prev']) if stat_data['prev'] > 0 else float(df['low'].min()))
                     real_pct = float(((p_live - prev_close) / prev_close) * 100) if prev_close > 0 else 0.0
                     
                     real_float = get_real_float(ticker)
                     float_m = real_float / 1_000_000 if real_float > 0 else 999.0
                     
-                    # 💡 【圖示修復】：恢復 ⚠️ 警告標記 (大於 50M)
+                    # 💡 【圖示修復】：二次確保警告標記正確寫入面板
                     if stat_data.get('type') == 'fund':
                         float_str = "N/A (ETF)"
                     elif real_float > 0:
@@ -560,7 +552,10 @@ def scanner_engine():
                     else:
                         float_str = "未知"
 
+                    # 💡 指標強制保留區：釘死 EMA9, EMA20, EMA52 以供戰術參考
+                    curr_ema9 = float(df['close'].ewm(span=9, adjust=False).mean().iloc[-1]) if len(df) >= 9 else p_live
                     curr_ema20 = float(df['close'].ewm(span=20, adjust=False).mean().iloc[-1]) if len(df) >= 20 else p_live
+                    curr_ema52 = float(df['close'].ewm(span=52, adjust=False).mean().iloc[-1]) if len(df) >= 52 else p_live
                     past_high = float(df['high'].iloc[-11:-1].max()) if len(df) >= 11 else p_live
                     
                     is_spark = bool(((rel_vol_live >= 2.5 and p_live >= past_high) or (rel_vol_prev >= 2.5 and p_prev >= past_high)) and (real_pct > 3.0))
@@ -614,7 +609,8 @@ def scanner_engine():
                         "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": "green", "Signal": current_signal,
                         "PriceVal": float(p_live), "HighVal": float(df['high'].iloc[-1]), "StopLoss": curr_ema20 * 0.99, 
                         "Float": float_str, "Type": stat_data.get('type', 'stock'), "VolAcc": vol_acc_str, "Is100K": False, 
-                        "SN_Score": sn_score, "VsaState": 0, "VR_Acc": vr_acc, "VWAP_Dev": vwap_dev, "VWAP_Rating": vwap_rating  
+                        "SN_Score": sn_score, "VsaState": 0, "VR_Acc": vr_acc, "VWAP_Dev": vwap_dev, "VWAP_Rating": vwap_rating,
+                        "EMA9": curr_ema9, "EMA52": curr_ema52 # 強制輸出指標
                     }
                     
                     with brain_lock:
