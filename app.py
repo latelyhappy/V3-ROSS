@@ -549,11 +549,19 @@ def scanner_engine():
                     curr_ema52 = float(df['close'].ewm(span=52, adjust=False).mean().iloc[-1]) if len(df) >= 52 else p_live
                     past_high = float(df['high'].iloc[-11:-1].max()) if len(df) >= 11 else p_live
                     
+                    # 💡 【進階戰術警報系統】
                     is_spark = bool(((rel_vol_live >= 2.5 and p_live >= past_high) or (rel_vol_prev >= 2.5 and p_prev >= past_high)) and (real_pct > 3.0))
-                    is_ross_match = bool(real_pct >= 4.0 and float_m <= 50.0 and rel_vol_display >= 2.0)
+                    
+                    # 🚀 Ross 量比下修至 1.8x，大幅提早預警
+                    is_ross_match = bool(real_pct >= 4.0 and float_m <= 50.0 and rel_vol_display >= 1.8)
+                    
+                    # ⚔️ VWAP 黃金帶量突破
+                    is_vwap_breakout = bool(p_prev < current_vwap and p_live > current_vwap and rel_vol_display >= 1.5 and float_m <= 50.0)
+                    
+                    # 🚨 水下死貓防護網
                     is_dead_bounce = bool((p_live < current_vwap) and (curr_ema9 < curr_ema20) and (real_pct > 0))
 
-                    # 💡 【全新：爆量箱子 (大量進場) 判定】取代舊有梳子邏輯
+                    # 📦 爆量箱子(大量進場)
                     is_massive_inflow = False
                     if len(df) >= 10:
                         recent_vol_max = float(df['volume'].iloc[-11:-1].max()) if len(df) >= 11 else v_live
@@ -593,6 +601,9 @@ def scanner_engine():
                     if is_dead_bounce and is_ross_match:
                         current_signal = f"🚨水下反彈警報{vol_warn}"
                         status_color = "red"
+                    elif is_vwap_breakout:
+                        current_signal = f"⚔️VWAP帶量突破{vol_warn}"
+                        status_color = "yellow"
                     elif is_ross_match:
                         current_signal = f"🚀Ross勢頭確立{vol_warn}"
                         status_color = "yellow"
@@ -600,7 +611,6 @@ def scanner_engine():
                         current_signal = f"🔥強力點火{vol_warn}"
                         status_color = "yellow"
                         
-                    # 💡 【爆量箱子進場：觸發微亮紫色背景】
                     if is_massive_inflow:
                         if current_signal:
                             current_signal += " [📦爆量箱子]"
@@ -608,26 +618,36 @@ def scanner_engine():
                             current_signal = f"📦爆量箱子(大量進場){vol_warn}"
                         status_color = "purple"
 
-                    # 💡 【動態文字變色】：爆量時將交易量欄位的文字改為紫色
+                    # 💡 【動態文字變色】：當下爆量時，交易量文字瞬間變紫色
                     final_vol_text = format_vol(daily_vol)
                     if is_massive_inflow:
-                        # 嵌入 HTML span 使文字變色 (螢光紫)
                         final_vol_text = f'<span style="color: #d942f5; font-weight: 900; text-shadow: 0 0 6px rgba(217, 66, 245, 0.5);">📦 {final_vol_text}</span>'
 
-                    stats = {
-                        "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": final_vol_text,
-                        "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, "Signal": current_signal,
-                        "PriceVal": float(p_live), "HighVal": float(df['high'].iloc[-1]), "StopLoss": curr_ema20 * 0.99, 
-                        "Float": float_str, "Type": stat_data.get('type', 'stock'), "VolAcc": vol_acc_str, "Is100K": False, 
-                        "SN_Score": sn_score, "VsaState": 0, "VR_Acc": vr_acc, "VWAP_Dev": vwap_dev, "VWAP_Rating": vwap_rating,
-                        "EMA9": curr_ema9, "EMA52": curr_ema52 
-                    }
-                    
                     with brain_lock:
-                        cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False})
+                        cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "StickySignal": "", "StickyColor": "green", "StickyTime": 0})
+                        
+                        # 💡 【跨表持久標示 (15分鐘餘溫)】：確保警報發生後，在排行榜與情報雷達上能黏住 15 分鐘
+                        if current_signal:
+                            cell["StickySignal"] = current_signal
+                            cell["StickyColor"] = status_color
+                            cell["StickyTime"] = now_ts
+                        else:
+                            if now_ts - cell.get("StickyTime", 0) < 900: # 900秒 = 15分鐘
+                                current_signal = cell.get("StickySignal", "")
+                                status_color = cell.get("StickyColor", "green")
+
+                        stats = {
+                            "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": final_vol_text,
+                            "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, "Signal": current_signal,
+                            "PriceVal": float(p_live), "HighVal": float(df['high'].iloc[-1]), "StopLoss": curr_ema20 * 0.99, 
+                            "Float": float_str, "Type": stat_data.get('type', 'stock'), "VolAcc": vol_acc_str, "Is100K": False, 
+                            "SN_Score": sn_score, "VsaState": 0, "VR_Acc": vr_acc, "VWAP_Dev": vwap_dev, "VWAP_Rating": vwap_rating,
+                            "EMA9": curr_ema9, "EMA52": curr_ema52 
+                        }
+                        
                         cell.update(stats)
                         
-                        if is_ross_match or is_spark or is_dead_bounce or is_massive_inflow:
+                        if is_ross_match or is_spark or is_dead_bounce or is_massive_inflow or is_vwap_breakout:
                             last_trigger_time = cooldown_tracker.get(ticker, 0)
                             if now_ts - last_trigger_time > 60:
                                 
