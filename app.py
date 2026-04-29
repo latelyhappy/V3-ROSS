@@ -1,20 +1,20 @@
 import os
-# 💡 核彈級消音器：直接從作業系統環境變數封殺所有 Python 警告！
+# 💡 作業系統級消音器：從根源封殺所有 Python 警告！
 os.environ["PYTHONWARNINGS"] = "ignore"
 
 import warnings
 warnings.filterwarnings("ignore")
 
 import logging
+# 💡 封殺第三方套件的底層連線日誌，保持終端機極度乾淨
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
 logging.getLogger('urllib3').setLevel(logging.CRITICAL)
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
 from flask import Flask, jsonify, render_template, request, send_file
-
 import io
-import time, threading, os, json, re, base64, copy, math
+import time, threading, json, re, base64, copy, math
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
@@ -31,13 +31,12 @@ import yfinance as yf
 # 匯入 Alpaca 混合引擎
 from alpaca_worker import init_alpaca
 
-logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
-
 brain_lock = threading.RLock() 
 TRENDS_FILE_PATH = os.path.join(os.path.dirname(__file__), 'trends.json')
 TRENDS_DRAFT_PATH = os.path.join(os.path.dirname(__file__), 'trends_draft.json') 
 DISCOVERY_LOG_PATH = os.path.join(os.path.dirname(__file__), 'discovery_log.json') 
 SESSION_BACKUP_PATH = os.path.join(os.path.dirname(__file__), 'session_state.json')
+FLOAT_CACHE_FILE = os.path.join(os.path.dirname(__file__), 'float_cache.json')
 
 FINNHUB_TOKEN = os.getenv('FINNHUB_TOKEN')
 _cached_trends = {}
@@ -53,8 +52,8 @@ TW_PASSWORD = os.getenv('TW_PASSWORD', 'guest')
 PORT = int(os.getenv('PORT', 8080))
 TZ_TW = pytz.timezone('Asia/Taipei')
 TZ_NY = pytz.timezone('America/New_York')
-
 MIN_RELVOL_LIMIT = 3.0 
+FLOAT_CACHE = {}
 
 CATALYST_ARMORY = {}
 armory_path = os.path.join(os.path.dirname(__file__), 'catalysts.json')
@@ -66,10 +65,6 @@ def reload_armory():
     except: CATALYST_ARMORY = {}
 
 reload_armory()
-
-# --- 流通股抓取引擎 ---
-FLOAT_CACHE_FILE = os.path.join(os.path.dirname(__file__), 'float_cache.json')
-FLOAT_CACHE = {}
 
 def load_float_cache():
     global FLOAT_CACHE
@@ -87,7 +82,6 @@ def save_float_cache():
 
 def get_real_float(symbol):
     if symbol in FLOAT_CACHE: return FLOAT_CACHE[symbol]
-    
     real_float = 0.0
     try:
         yf_symbol = symbol.replace('-', '.')
@@ -96,7 +90,6 @@ def get_real_float(symbol):
         if yf_float and yf_float > 0:
             real_float = yf_float
     except: pass
-
     if real_float == 0.0 and FINNHUB_TOKEN:
         try:
             url = f"https://finnhub.io/api/v1/stock/metric?symbol={symbol}&metric=all&token={FINNHUB_TOKEN}"
@@ -106,7 +99,6 @@ def get_real_float(symbol):
                 if fh_float > 0:
                     real_float = fh_float * 1e6 if fh_float < 50000 else fh_float
         except: pass
-
     if real_float > 0:
         FLOAT_CACHE[symbol] = real_float
         save_float_cache()
@@ -201,7 +193,6 @@ def calculate_hft_score(headline, ticker=""):
     elite_hits = []
 
     reload_armory()
-
     HINDSIGHT_TRAPS = list(CATALYST_ARMORY.get("HINDSIGHT_NOISE", {}).keys())
     TOXIC_OFFERINGS = list(CATALYST_ARMORY.get("TOXIC_OFFERINGS", {}).keys())
     CLASS_ACTION_SPAM = list(CATALYST_ARMORY.get("CLASS_ACTION_SPAM", {}).keys())
@@ -211,19 +202,15 @@ def calculate_hft_score(headline, ticker=""):
 
     if "?" in text or any(trap in text for trap in HINDSIGHT_TRAPS) or all(x in text for x in ["WHY", "IS"]) or all(x in text for x in ["WHY", "ARE"]):
         return 0, False, []
-
     if any(trap in text for trap in TOXIC_OFFERINGS): return -50, True, [] 
     if any(trap in text for trap in CLASS_ACTION_SPAM): return 0, False, []
-
     if any(mc in text for mc in MEGACAPS):
         partnership_words = ["PARTNERSHIP", "COLLABORATION", "CONTRACT", "AGREEMENT", "JOINS", "INTEGRATES"]
         if not any(pw in text for pw in partnership_words): return 0, False, [] 
-
     if any(trap in text for trap in EARNINGS_PREVIEW): return 0, False, []
 
     for kw, score in MA_WORDS.items():
         if kw in text: total_score += score
-
     for kw, score in CATALYST_ARMORY.get("BLACK", {}).items():
         if kw in text: return -100, True, []
         
@@ -262,7 +249,7 @@ def background_translate_worker(ticker, en_headline, master_brain):
     except: pass
 
 def check_sec_fatal_traps(ticker):
-    headers = {"User-Agent": "SniperQuantSystem_V45"}
+    headers = {"User-Agent": "SniperQuantSystem_V45 AdminContact@yourdomain.com", "Accept-Encoding": "gzip, deflate", "Host": "www.sec.gov"}
     url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=&output=atom"
     try:
         time.sleep(0.5) 
@@ -565,16 +552,10 @@ def scanner_engine():
                     curr_ema52 = float(df['close'].ewm(span=52, adjust=False).mean().iloc[-1]) if len(df) >= 52 else p_live
                     past_high = float(df['high'].iloc[-11:-1].max()) if len(df) >= 11 else p_live
                     
-                    # 💡 【進階戰術警報系統】
+                    # 💡 【基礎進階戰術警報】
                     is_spark = bool(((rel_vol_live >= 2.5 and p_live >= past_high) or (rel_vol_prev >= 2.5 and p_prev >= past_high)) and (real_pct > 3.0))
-                    
-                    # 🚀 Ross 量比下修至 1.8x，大幅提早預警
                     is_ross_match = bool(real_pct >= 4.0 and float_m <= 50.0 and rel_vol_display >= 1.8)
-                    
-                    # ⚔️ VWAP 黃金帶量突破
                     is_vwap_breakout = bool(p_prev < current_vwap and p_live > current_vwap and rel_vol_display >= 1.5 and float_m <= 50.0)
-                    
-                    # 🚨 水下死貓防護網
                     is_dead_bounce = bool((p_live < current_vwap) and (curr_ema9 < curr_ema20) and (real_pct > 0))
 
                     # 💡 【高階戰術：牛旗微回撤突破】
@@ -635,9 +616,11 @@ def scanner_engine():
                         current_signal = f"🚨水下反彈警報{vol_warn}"
                         status_color = "red"
                     elif is_micro_pullback:
-                        current_signal = f"🚩牛旗回踩突破{vol_warn}"; status_color = "yellow"
+                        current_signal = f"🚩牛旗回踩突破{vol_warn}"
+                        status_color = "yellow"
                     elif is_whole_dollar:
-                        current_signal = f"🧲整數磁吸(${target_dollar:.2f}){vol_warn}"; status_color = "yellow"
+                        current_signal = f"🧲整數磁吸(${target_dollar:.2f}){vol_warn}"
+                        status_color = "yellow"
                     elif is_vwap_breakout:
                         current_signal = f"⚔️VWAP帶量突破{vol_warn}"
                         status_color = "yellow"
@@ -665,7 +648,6 @@ def scanner_engine():
                         
                         # 💡 【跨表持久標示 (15分鐘餘溫) + 接收 Alpaca 即時警報】
                         if current_signal:
-                            # 確保不會蓋掉 Alpaca 的 ⚡極速 標籤
                             if "⚡" in cell.get("StickySignal", "") and now_ts - cell.get("StickyTime", 0) < 15:
                                 current_signal = current_signal + " [⚡極速]"
                                 status_color = "purple"
@@ -851,5 +833,5 @@ if __name__ == '__main__':
     # 💡 【終極啟動】：喚醒 Alpaca 毫秒級火控雷達
     init_alpaca(MASTER_BRAIN, DYNAMIC_WATCHLIST, brain_lock)
     
-    # 💡 【防止分身衝突】：加入 use_reloader=False，防止 Flask 啟動雙線程導致 Alpaca 429 錯誤
+    # 💡 【核心阻斷裝甲】：強制關閉 Flask 自動重載，防止雙線程打架引發 429 錯誤
     app.run(host='0.0.0.0', port=PORT, use_reloader=False)

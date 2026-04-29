@@ -4,9 +4,7 @@ numpy
 requests
 pytz
 deep-translator
-setuptools
-websocket-client>=1.0
 git+https://github.com/rongardF/tvdatafeed.git
 yfinance
-alpaca-trade-api>=3.0.0
+alpaca-trade-api
 websockets

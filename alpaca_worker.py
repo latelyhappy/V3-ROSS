@@ -36,6 +36,7 @@ def _alpaca_thread():
         price_history[ticker].append((now_ts, price))
         price_history[ticker] = [x for x in price_history[ticker] if now_ts - x[0] <= 10]
         
+        # ⚡ 加速度偵測 (5秒內漲幅 > 0.5%)
         past_5s = [x for x in price_history[ticker] if 4.0 <= now_ts - x[0] <= 6.0]
         is_velocity_spike = False
         if past_5s:
@@ -43,6 +44,7 @@ def _alpaca_thread():
             if old_price > 0 and (price - old_price) / old_price >= 0.005:
                 is_velocity_spike = True
 
+        # 🧲 整數關卡磁吸
         is_whole_dollar = False
         if 0.95 <= price % 1.0 <= 0.99 and price > 1.0:
             is_whole_dollar = True
@@ -75,7 +77,7 @@ def _alpaca_thread():
         while True:
             time.sleep(5)
             try:
-                # 💡 【核心修復】：強制截斷為前 25 檔，避免突破 Alpaca 免費版 30 檔的上限
+                # 💡 強制截斷為前 25 檔，避免突破 Alpaca 免費版 30 檔上限
                 safe_watchlist = list(_DYNAMIC_WATCHLIST)[:25]
                 target_subs = set(safe_watchlist)
                 
@@ -95,7 +97,7 @@ def _alpaca_thread():
 
     threading.Thread(target=watch_subscriptions, daemon=True).start()
     
-    # 💡 【防衝突裝甲】：攔截 429 與 ValueError，進入 30 秒冷卻避免洗版
+    # 💡 加入 429 連線超限防護與退避機制
     while True:
         try:
             print("🚀 Alpaca 毫秒級火控雷達連線中...")
