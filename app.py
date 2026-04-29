@@ -256,7 +256,7 @@ def background_translate_worker(ticker, en_headline, master_brain):
     except: pass
 
 def check_sec_fatal_traps(ticker):
-    headers = {"User-Agent": "SniperQuantSystem_V44 AdminContact@yourdomain.com", "Accept-Encoding": "gzip, deflate", "Host": "www.sec.gov"}
+    headers = {"User-Agent": "SniperQuantSystem_V45"}
     url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=&output=atom"
     try:
         time.sleep(0.5) 
@@ -571,6 +571,23 @@ def scanner_engine():
                     # 🚨 水下死貓防護網
                     is_dead_bounce = bool((p_live < current_vwap) and (curr_ema9 < curr_ema20) and (real_pct > 0))
 
+                    # 💡 【高階戰術：牛旗微回撤突破】
+                    is_micro_pullback = False
+                    if len(df) >= 3 and float_m <= 50.0:
+                        prev_open = float(df['open'].iloc[-2])
+                        prev_high = float(df['high'].iloc[-2])
+                        if p_prev <= prev_open and p_prev > curr_ema9:
+                            if p_live > prev_high and rel_vol_live >= 1.5:
+                                is_micro_pullback = True
+
+                    # 💡 【高階戰術：整數關卡磁吸】
+                    is_whole_dollar = False
+                    if float_m <= 50.0 and rel_vol_display >= 1.5 and p_live > p_prev:
+                        remainder = p_live % 1.0
+                        if 0.90 <= remainder <= 0.98:
+                            is_whole_dollar = True
+                            target_dollar = math.ceil(p_live)
+
                     # 📦 爆量箱子(大量進場)
                     is_massive_inflow = False
                     if len(df) >= 10:
@@ -611,6 +628,10 @@ def scanner_engine():
                     if is_dead_bounce and is_ross_match:
                         current_signal = f"🚨水下反彈警報{vol_warn}"
                         status_color = "red"
+                    elif is_micro_pullback:
+                        current_signal = f"🚩牛旗回踩突破{vol_warn}"; status_color = "yellow"
+                    elif is_whole_dollar:
+                        current_signal = f"🧲整數磁吸(${target_dollar:.2f}){vol_warn}"; status_color = "yellow"
                     elif is_vwap_breakout:
                         current_signal = f"⚔️VWAP帶量突破{vol_warn}"
                         status_color = "yellow"
@@ -662,7 +683,7 @@ def scanner_engine():
                         
                         cell.update(stats)
                         
-                        if is_ross_match or is_spark or is_dead_bounce or is_massive_inflow or is_vwap_breakout:
+                        if is_ross_match or is_spark or is_dead_bounce or is_massive_inflow or is_vwap_breakout or is_micro_pullback or is_whole_dollar:
                             last_trigger_time = cooldown_tracker.get(ticker, 0)
                             if now_ts - last_trigger_time > 60:
                                 
@@ -824,4 +845,5 @@ if __name__ == '__main__':
     # 💡 【終極啟動】：喚醒 Alpaca 毫秒級火控雷達
     init_alpaca(MASTER_BRAIN, DYNAMIC_WATCHLIST, brain_lock)
     
-    app.run(host='0.0.0.0', port=PORT)
+    # 💡 【防止分身衝突】：加入 use_reloader=False，防止 Flask 啟動雙線程導致 Alpaca 429 錯誤
+    app.run(host='0.0.0.0', port=PORT, use_reloader=False)

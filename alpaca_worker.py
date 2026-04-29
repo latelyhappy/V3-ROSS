@@ -75,7 +75,7 @@ def _alpaca_thread():
         while True:
             time.sleep(5)
             try:
-                # 💡 【核心修復】：強制截斷為前 25 檔，避免突破 Alpaca 免費版 30 檔的上限！
+                # 💡 【核心修復】：強制截斷為前 25 檔，避免突破 Alpaca 免費版 30 檔的上限
                 safe_watchlist = list(_DYNAMIC_WATCHLIST)[:25]
                 target_subs = set(safe_watchlist)
                 
@@ -95,10 +95,18 @@ def _alpaca_thread():
 
     threading.Thread(target=watch_subscriptions, daemon=True).start()
     
+    # 💡 【防衝突裝甲】：攔截 429 與 ValueError，進入 30 秒冷卻避免洗版
     while True:
         try:
             print("🚀 Alpaca 毫秒級火控雷達連線中...")
             stream.run()
+        except ValueError as e:
+            if "connection limit exceeded" in str(e).lower() or "429" in str(e):
+                print("⚠️ [警告] Alpaca 連線數爆滿 (429)！請確認沒有重複運行程式。雷達強制冷卻 30 秒...")
+                time.sleep(30)
+            else:
+                print(f"⚠️ Alpaca 數值錯誤: {e}")
+                time.sleep(10)
         except Exception as e:
-            print(f"⚠️ Alpaca 連線中斷，5秒後重連: {e}")
-            time.sleep(5)
+            print(f"⚠️ Alpaca 連線異常中斷，10秒後重連: {e}")
+            time.sleep(10)
