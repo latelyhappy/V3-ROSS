@@ -75,6 +75,8 @@
 <body>
     <div id="tactical-bar">
         <button id="audio-btn" class="ghost-btn" style="border-color:var(--green); color:var(--green);" onclick="toggleAudio()">🔊 警報/防睡眠</button>
+        <button id="test-audio-btn" class="ghost-btn" style="border-color:var(--purple); color:var(--purple);" onclick="testAudio()">🎵 測試音效</button>
+        
         <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 ETF</button>
         <button class="ghost-btn" style="border-color:var(--neon-green); color:var(--neon-green);" onclick="checkDrafts()">📝 審核 AI 草稿</button>
         
@@ -186,7 +188,6 @@
     </div>
 
     <script>
-        // 💡 修改：audioOn 預設為 true
         let brain = {}, activeSym = "", audioOn = true, played = {}, showETF = false, lastTopNewsHeadline = ""; 
         const sounds = { spark: new Audio('/static/sounds/spark.mp3'), nova: new Audio('/static/sounds/nova.mp3') };
         let rankCfg = { col: 'Pct', asc: false }, newsCfg = { col: 'CatScore', asc: false };
@@ -194,17 +195,22 @@
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
 
-        // 💡 隱形解鎖器：只要使用者在網頁任何地方點擊一次，就會無聲解鎖瀏覽器的音效限制
+        // 💡 修改：徹底修復的隱形解鎖器 (防 1% 音量 Bug)
         let audioUnlocked = false;
         function initAudioContext() {
             if (audioUnlocked) return;
             audioUnlocked = true;
             sounds.nova.volume = 0.01;
-            sounds.nova.play().then(() => {
-                sounds.nova.pause();
-                sounds.nova.currentTime = 0;
-                sounds.nova.volume = 1.0;
-            }).catch(e => {});
+            let playPromise = sounds.nova.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    sounds.nova.pause();
+                    sounds.nova.currentTime = 0;
+                    sounds.nova.volume = 1.0; // 成功則恢復音量
+                }).catch(e => {
+                    sounds.nova.volume = 1.0; // 失敗也必須強制恢復音量，否則會永久 1%
+                });
+            } else { sounds.nova.volume = 1.0; }
             
             document.removeEventListener('click', initAudioContext);
             document.removeEventListener('touchstart', initAudioContext);
@@ -213,7 +219,6 @@
         document.addEventListener('click', initAudioContext);
         document.addEventListener('touchstart', initAudioContext);
 
-        // 💡 開關控制器：允許使用者手動靜音/開啟
         function toggleAudio() {
             audioOn = !audioOn;
             let btn = document.getElementById('audio-btn');
@@ -221,12 +226,24 @@
                 btn.style.borderColor="var(--green)";
                 btn.style.color="var(--green)";
                 btn.innerText="🔊 警報/防睡眠";
-                initAudioContext(); // 確保手動開啟時順便解鎖通道
+                initAudioContext();
             } else {
                 btn.style.borderColor="var(--red)";
                 btn.style.color="var(--red)";
                 btn.innerText="🔇 音效 (已靜音)";
             }
+        }
+
+        // 💡 新增：音效測試按鈕功能
+        function testAudio() {
+            initAudioContext(); // 確保通道解鎖
+            sounds.nova.currentTime = 0;
+            sounds.nova.volume = 1.0;
+            sounds.nova.play().then(() => {
+                alert("✅ 音效測試成功！聲音正常播放。\n\n只要這個按鈕有聲音，系統在偵測到極端動能時就一定會響。如果盤中沒聲音，請先確認日誌內是否有『紫字/黃字』訊號。");
+            }).catch(e => {
+                alert("❌ 音效播放失敗！\n\n您的瀏覽器強制封鎖了音效。請確保您不是在『靜音模式』，或者嘗試點擊網頁其他空白處後再測試一次。\n錯誤細節：" + e.message);
+            });
         }
 
         function checkDrafts() {
@@ -238,74 +255,35 @@
                 alert("🤖 目前沒有新的 AI 學習草稿。\n系統會在每日美東時間 16:30 自動分析當日暴漲股並生成。");
                 return;
             }
-            
-            let w = words[0];
-            let info = data[w];
-            let msg = `🤖 AI 自動學習系統發現高勝率單字！\n\n📌 關鍵字: ${w}\n📊 歷史最高平均漲幅: +${info.avg_impact_pct}%\n🔍 觸發次數: ${info.count} 次\n📝 備註: ${info.note}\n\n您要將此單字加入您的正式實戰詞庫 (trends.json) 並啟用加分嗎？`;
-            
-            if (confirm(msg)) {
-                processDraft(w, 'approve');
-            } else {
-                if(confirm("要將此單字從草稿中刪除 (拒絕) 嗎？")) {
-                    processDraft(w, 'reject');
-                }
-            }
-        });
-        }
-
-        function processDraft(word, action) {
-            fetch('/api/approve_draft', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({word: word, action: action})
-            }).then(() => {
-                checkDrafts(); 
+            let w = words[0]; let info = data[w];
+            let msg = `🤖 AI 自動學習系統發現高勝率單字！\n\n📌 關鍵字: ${w}\n📊 歷史最高平均漲幅: +${info.avg_impact_pct}%\n🔍 觸發次數: ${info.count} 次\n📝 備註: ${info.note}\n\n您要將此單字加入實戰詞庫 (trends.json) 嗎？`;
+            if (confirm(msg)) { processDraft(w, 'approve'); } else { if(confirm("要將此單字從草稿中刪除嗎？")) { processDraft(w, 'reject'); } }
             });
         }
+
+        function processDraft(word, action) { fetch('/api/approve_draft', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({word: word, action: action}) }).then(() => { checkDrafts(); }); }
 
         let wakeLock = null;
         async function requestWakeLock() {
             try {
                 if ('wakeLock' in navigator) {
                     wakeLock = await navigator.wakeLock.request('screen');
-                    console.log('🛡️ 螢幕長亮模式已啟動');
                     document.addEventListener('visibilitychange', async () => {
-                        if (wakeLock !== null && document.visibilityState === 'visible') {
-                            wakeLock = await navigator.wakeLock.request('screen');
-                        }
+                        if (wakeLock !== null && document.visibilityState === 'visible') { wakeLock = await navigator.wakeLock.request('screen'); }
                     });
                 }
             } catch (err) { }
         }
 
         let currentZoom = parseFloat(localStorage.getItem('sniper_zoom')) || 1.0;
-
-        function applyZoom() {
-            document.body.style.zoom = currentZoom;
-            let zl = document.getElementById('zoom-label');
-            if(zl) zl.innerText = Math.round(currentZoom * 100) + '%';
-        }
-
-        function changeZoom(delta) {
-            currentZoom += delta;
-            if(currentZoom < 0.5) currentZoom = 0.5;
-            if(currentZoom > 2.0) currentZoom = 2.0;
-            currentZoom = Math.round(currentZoom * 10) / 10;
-            localStorage.setItem('sniper_zoom', currentZoom);
-            applyZoom();
-        }
+        function applyZoom() { document.body.style.zoom = currentZoom; let zl = document.getElementById('zoom-label'); if(zl) zl.innerText = Math.round(currentZoom * 100) + '%'; }
+        function changeZoom(delta) { currentZoom += delta; if(currentZoom < 0.5) currentZoom = 0.5; if(currentZoom > 2.0) currentZoom = 2.0; currentZoom = Math.round(currentZoom * 10) / 10; localStorage.setItem('sniper_zoom', currentZoom); applyZoom(); }
 
         function toggleMode() {
             isMobileMode = !isMobileMode;
             let btn = document.getElementById('mode-btn');
-            if (isMobileMode) {
-                document.body.classList.add('mobile-mode');
-                btn.innerText = "💻 切換電腦版";
-            } else {
-                document.body.classList.remove('mobile-mode');
-                btn.innerText = "📱 切換手機版";
-                initWindowManager(); 
-            }
+            if (isMobileMode) { document.body.classList.add('mobile-mode'); btn.innerText = "💻 切換電腦版"; } 
+            else { document.body.classList.remove('mobile-mode'); btn.innerText = "📱 切換手機版"; initWindowManager(); }
         }
 
         function switchTab(tabId, btn) {
@@ -321,10 +299,7 @@
             if (col === 'Code' || col === 'time') return val.toString();
             let str = val.toString();
             let num = parseFloat(str.replace(/[^0-9.-]/g, '')) || 0;
-            if (col === 'Vol' || col === 'Float') {
-                if (str.includes('M')) return num * 1000000;
-                if (str.includes('K')) return num * 1000;
-            }
+            if (col === 'Vol' || col === 'Float') { if (str.includes('M')) return num * 1000000; if (str.includes('K')) return num * 1000; }
             if (col === 'VolAcc' || col === 'RelVol' || col === 'Pct') return parseFloat(str.replace(/[^0-9.-]/g, '')) || 0;
             return num;
         }
@@ -340,8 +315,7 @@
 
         function setSort(table, col) {
             let cfg = table === 'rank' ? rankCfg : newsCfg;
-            if (cfg.col === col) cfg.asc = !cfg.asc; 
-            else { cfg.col = col; cfg.asc = false; }
+            if (cfg.col === col) cfg.asc = !cfg.asc; else { cfg.col = col; cfg.asc = false; }
             document.querySelectorAll(`[id^="sort-${table}-"]`).forEach(el => el.innerText = "");
             document.getElementById(`sort-${table}-${col}`).innerText = cfg.asc ? "▲" : "▼";
             if (Object.keys(brain).length > 0) refreshUI(brain);
@@ -372,8 +346,7 @@
         function initWindowManager() {
             if (isMobileMode) return;
             const wins = ['win-log', 'win-rank', 'win-news', 'win-detail', 'win-vwap'];
-            let w_half = (window.innerWidth / 2) - 15;
-            let h_half = (window.innerHeight / 2) - 35;
+            let w_half = (window.innerWidth / 2) - 15; let h_half = (window.innerHeight / 2) - 35;
             const defL = {
                 'win-log': {x:10, y:10, w: w_half, h: h_half},
                 'win-detail': {x:10 + w_half + 10, y:10, w: w_half, h: h_half},
@@ -390,41 +363,13 @@
             });
         }
         
-        function dML(e) { 
-            let t=e.target, 
-                x=(parseFloat(t.getAttribute('data-x'))||0) + (e.dx / currentZoom), 
-                y=(parseFloat(t.getAttribute('data-y'))||0) + (e.dy / currentZoom);
-            t.style.transform=`translate(${x}px, ${y}px)`; 
-            t.setAttribute('data-x',x); 
-            t.setAttribute('data-y',y); 
-        }
-        function rML(e) { 
-            let t=e.target, 
-                x=(parseFloat(t.getAttribute('data-x'))||0), 
-                y=(parseFloat(t.getAttribute('data-y'))||0);
-            t.style.width = (e.rect.width / currentZoom) + 'px'; 
-            t.style.height = (e.rect.height / currentZoom) + 'px'; 
-            t.style.transform=`translate(${x}px, ${y}px)`; 
-            t.setAttribute('data-x',x); 
-            t.setAttribute('data-y',y);
-        }
-        function sL() { ['win-log','win-rank','win-news','win-detail','win-vwap'].forEach(id=>{ let el=document.getElementById(id); if(el) localStorage.setItem('sniper_v42_layout_'+id, JSON.stringify({x:parseFloat(el.getAttribute('data-x'))||0, y:parseFloat(el.getAttribute('data-y'))||0, w:el.offsetWidth, h:el.offsetHeight})); });
-        }
+        function dML(e) { let t=e.target, x=(parseFloat(t.getAttribute('data-x'))||0) + (e.dx / currentZoom), y=(parseFloat(t.getAttribute('data-y'))||0) + (e.dy / currentZoom); t.style.transform=`translate(${x}px, ${y}px)`; t.setAttribute('data-x',x); t.setAttribute('data-y',y); }
+        function rML(e) { let t=e.target, x=(parseFloat(t.getAttribute('data-x'))||0), y=(parseFloat(t.getAttribute('data-y'))||0); t.style.width = (e.rect.width / currentZoom) + 'px'; t.style.height = (e.rect.height / currentZoom) + 'px'; t.style.transform=`translate(${x}px, ${y}px)`; t.setAttribute('data-x',x); t.setAttribute('data-y',y); }
+        function sL() { ['win-log','win-rank','win-news','win-detail','win-vwap'].forEach(id=>{ let el=document.getElementById(id); if(el) localStorage.setItem('sniper_v42_layout_'+id, JSON.stringify({x:parseFloat(el.getAttribute('data-x'))||0, y:parseFloat(el.getAttribute('data-y'))||0, w:el.offsetWidth, h:el.offsetHeight})); }); }
         
-        function resetLayout() { 
-            let savedZoom = localStorage.getItem('sniper_zoom');
-            localStorage.clear(); 
-            if(savedZoom) localStorage.setItem('sniper_zoom', savedZoom);
-            location.reload(); 
-        }
-        
-        function toggleETF() { showETF = !showETF;
-            let btn = document.getElementById('etf-btn'); if (showETF) { btn.innerText = "🔘 隱藏 ETF"; btn.style.borderColor = "var(--red)"; btn.style.color = "var(--red)";
-            } else { btn.innerText = "🔘 ETF"; btn.style.borderColor = "var(--border)"; btn.style.color = "var(--text-main)"; } if (Object.keys(brain).length > 0) refreshUI(brain);
-        }
-        
-        function openTW(s) { window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank');
-        }
+        function resetLayout() { let savedZoom = localStorage.getItem('sniper_zoom'); localStorage.clear(); if(savedZoom) localStorage.setItem('sniper_zoom', savedZoom); location.reload(); }
+        function toggleETF() { showETF = !showETF; let btn = document.getElementById('etf-btn'); if (showETF) { btn.innerText = "🔘 隱藏 ETF"; btn.style.borderColor = "var(--red)"; btn.style.color = "var(--red)"; } else { btn.innerText = "🔘 ETF"; btn.style.borderColor = "var(--border)"; btn.style.color = "var(--text-main)"; } if (Object.keys(brain).length > 0) refreshUI(brain); }
+        function openTW(s) { window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank'); }
 
         setInterval(() => { document.getElementById('sys-clock').innerText = new Date().toLocaleTimeString('zh-TW', {timeZone: 'Asia/Taipei', hour12: false}); }, 1000);
         
@@ -432,11 +377,7 @@
             fetch('/data?t=' + Date.now())
                 .then(r => r.json())
                 .then(d => { brain = d; refreshUI(d); setTimeout(refresh, 5000); })
-                .catch(e => { 
-                    document.getElementById('sys-status').innerText = "⚠️ 網路閃斷，重連中..."; 
-                    document.getElementById('sys-status').style.color = "var(--red)"; 
-                    setTimeout(refresh, 5000); 
-                });
+                .catch(e => { document.getElementById('sys-status').innerText = "⚠️ 網路閃斷，重連中..."; document.getElementById('sys-status').style.color = "var(--red)"; setTimeout(refresh, 5000); });
         }
 
         function highlightElites(text, elites, trends) {
@@ -473,12 +414,13 @@
                     <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'} <small style="color:var(--text-muted);">(${r.Amt||'-'})</small></td><td style="font-weight:bold; color:${r.Signal.includes('🎯') ? 'var(--neon-green)' : 'inherit'};">${r.Signal||'-'}</td>
                 </tr>`;
                 
-                // 💡 播放音效邏輯
+                // 💡 確保音效通道不受 1% bug 影響，正常播放 100% 聲音
                 if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { 
                     played[r.SignalTS] = r.SignalTS; 
                     let audioToPlay = sounds[r.Audio] || sounds.nova;
+                    audioToPlay.volume = 1.0; 
                     audioToPlay.currentTime = 0; 
-                    audioToPlay.play().catch(e => console.log("音效未播放，請確保您有在網頁上隨意點擊一次以解鎖")); 
+                    audioToPlay.play().catch(e => console.log("等待使用者點擊畫面解鎖")); 
                     if ("vibrate" in navigator) navigator.vibrate([300, 100, 300, 100, 300]); 
                 }
             });
@@ -512,7 +454,6 @@
                 let det = d.details[r.Code] || {};
                 let icon = det.IsTrap ? " 💀" : ((det.CatScore||0)>8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
                 let rowClass = `tr-${det.Status || r.Status || 'green'}`; if (det.IsTrap) rowClass += " trap-row";
-                
                 let vwapColor = r.VWAP_Rating === 'High' ? 'var(--red)' : (r.VWAP_Rating === 'Mid' ? 'var(--yellow)' : 'var(--neon-green)');
                 let vwapGlow = r.VWAP_Rating === 'High' ? 'text-shadow: 0 0 5px rgba(248,81,73,0.4);' : '';
                 
@@ -531,9 +472,7 @@
             let h3 = "";
             if (d.top_catalysts && d.top_catalysts.length > 0) {
                 let fVN = d.top_catalysts.find(n => n.NewsList && n.NewsList.length > 0);
-                let cLH = fVN ? (fVN.NewsList[0].headline || fVN.NewsList[0].raw_title) : "";
-                
-                lastTopNewsHeadline = cLH;
+                lastTopNewsHeadline = fVN ? (fVN.NewsList[0].headline || fVN.NewsList[0].raw_title) : "";
                 
                 let newsData = [...d.top_catalysts].filter(n => !(n?.Type === 'fund' && !showETF) && n?.NewsList && n.NewsList.length > 0);
                 newsData.sort((a, b) => {
@@ -541,45 +480,29 @@
                     if (newsCfg.col === 'time') { vA = a.NewsList[0]?.time||""; vB = b.NewsList[0]?.time||""; } 
                     else if (newsCfg.col === 'CatScore') { vA = a.CatScore!==undefined ? a.CatScore : (a.score||0); vB = b.CatScore!==undefined ? b.CatScore : (b.score||0); } 
                     else { vA = a[newsCfg.col]; vB = b[newsCfg.col]; }
-                    vA = parseValue(vA, newsCfg.col);
-                    vB = parseValue(vB, newsCfg.col);
-                    if (vA < vB) return newsCfg.asc ? -1 : 1;
-                    if (vA > vB) return newsCfg.asc ? 1 : -1;
-                    return 0;
+                    vA = parseValue(vA, newsCfg.col); vB = parseValue(vB, newsCfg.col);
+                    if (vA < vB) return newsCfg.asc ? -1 : 1; if (vA > vB) return newsCfg.asc ? 1 : -1; return 0;
                 });
                 newsData.forEach(n => {
-                    let latest = n.NewsList[0];
-                    let isElite = latest.elites && latest.elites.length > 0;
+                    let latest = n.NewsList[0]; let isElite = latest.elites && latest.elites.length > 0;
                     let hl_text = latest.title === "⏳ 翻譯中..." ? latest.raw_title : latest.title;
-                    
                     hl_text = highlightElites(hl_text, latest.elites, d.live_trends);
                     if (latest.title === "⏳ 翻譯中...") hl_text += ` <span class="translating">⏳翻譯中...</span>`;
-
-                    let f_Score = n.CatScore !== undefined ? n.CatScore : (n.score || 0);
-                    let f_Pct = n.Pct || "-";
-                    let f_Price = n.Price || "-";
-                    let f_Float = n.Type === 'fund' ? 'N/A' : (n.Float || "-");
-                    let f_vol = n.Is100K ? `<span class="vol-100k">${n.Vol||"-"} 📦</span>` : (n.Vol||"-");
- 
-                    let rowClass = isElite ? "elite-news-row" : "tr-green";
-                    let titleClass = isElite ? "elite-title" : "";
+                    let f_Score = n.CatScore !== undefined ? n.CatScore : (n.score || 0); let f_Pct = n.Pct || "-"; let f_Price = n.Price || "-";
+                    let f_Float = n.Type === 'fund' ? 'N/A' : (n.Float || "-"); let f_vol = n.Is100K ? `<span class="vol-100k">${n.Vol||"-"} 📦</span>` : (n.Vol||"-");
+                    let rowClass = isElite ? "elite-news-row" : "tr-green"; let titleClass = isElite ? "elite-title" : "";
 
                     h3 += `<tr class="${rowClass}" onclick="loadDetail('${n.Code||n.ticker}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[4]);" ondblclick="openTW('${n.Code||n.ticker}')">
                         <td class="status-indicator" style="background:${f_Score >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
                         <td style="color:${latest.is_today?'#ffa500':'var(--text-muted)'}; font-size:11px;">${latest.time||'-'}</td>
                         <td class="sym">${n.Code||n.ticker}</td><td style="color:${f_Score>=6?'var(--yellow)':'var(--text-muted)'}; font-weight:bold;">${f_Score}</td>
                         <td class="${titleClass} news-title-cell" style="font-size:12px; line-height:1.4; max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${hl_text}</td>
-                        <td>${f_Float}</td>
-                        <td>${f_Price}</td>
-                        <td><b style="color:var(--yellow);">${n.RelVol||"-"}</b></td>
-                        <td>${formatVolAcc(n.VolAcc)}</td>
-                        <td>${f_vol}</td> 
-                        <td class="${parseFloat(f_Pct)>0?'up':'down'}" style="font-weight:bold;">${f_Pct}</td>
+                        <td>${f_Float}</td><td>${f_Price}</td><td><b style="color:var(--yellow);">${n.RelVol||"-"}</b></td>
+                        <td>${formatVolAcc(n.VolAcc)}</td><td>${f_vol}</td><td class="${parseFloat(f_Pct)>0?'up':'down'}" style="font-weight:bold;">${f_Pct}</td>
                     </tr>`;
                 });
                 document.getElementById('news-list').innerHTML = h3 || `<tr><td colspan="11" style="text-align:center; padding:20px; color:var(--text-muted);">符合條件之情報已過濾</td></tr>`;
             } else { document.getElementById('news-list').innerHTML = `<tr><td colspan="11" style="text-align:center; padding:20px; color:var(--text-muted);">今日尚無重大情報</td></tr>`; }
-            
             if(activeSym) loadDetail(activeSym);
         }
 
@@ -594,23 +517,11 @@
 
             let volHTML = d.Is100K ? `<b class="vol-100k" style="font-size:14px;">${d.Vol||'-'} 📦</b>` : `<b style="color:var(--text-main); font-size:14px;">${d.Vol||'-'}</b>`;
 
-            let snScore = d.SN_Score || 0;
-            let vsaState = d.VsaState || 0;
-            let snColor = "var(--text-muted)";
-            let scoreLabel = "🧊 偏弱";
-            let vsaWarning = "✅ 量價配合健康";
-            let flashClass = "";
-            
-            if (snScore >= 400) { scoreLabel = "🔥 極佳"; snColor = "var(--neon-green)"; }
-            else if (snScore >= 200) { scoreLabel = "↗️ 過半"; snColor = "var(--yellow)"; }
+            let snScore = d.SN_Score || 0; let vsaState = d.VsaState || 0; let snColor = "var(--text-muted)"; let scoreLabel = "🧊 偏弱"; let vsaWarning = "✅ 量價配合健康"; let flashClass = "";
+            if (snScore >= 400) { scoreLabel = "🔥 極佳"; snColor = "var(--neon-green)"; } else if (snScore >= 200) { scoreLabel = "↗️ 過半"; snColor = "var(--yellow)"; }
+            if (vsaState === 2) { vsaWarning = "🚨 致命出貨 (爆量滯漲)"; flashClass = "trap-row"; snColor = "var(--red)"; scoreLabel = "💀 危險"; } else if (vsaState === 1) { vsaWarning = "⚠️ 背離警告 (推升困難)"; snColor = "var(--red)"; scoreLabel = "⚠️ 背離"; }
 
-            if (vsaState === 2) { vsaWarning = "🚨 致命出貨 (爆量滯漲)"; flashClass = "trap-row"; snColor = "var(--red)"; scoreLabel = "💀 危險"; }
-            else if (vsaState === 1) { vsaWarning = "⚠️ 背離警告 (推升困難)"; snColor = "var(--red)"; scoreLabel = "⚠️ 背離"; }
-
-            let gaugeMax = 600;
-            let fillRatio = Math.min(snScore / gaugeMax, 1);
-            let dashOffset = 141.37 * (1 - fillRatio);
-            
+            let gaugeMax = 600; let fillRatio = Math.min(snScore / gaugeMax, 1); let dashOffset = 141.37 * (1 - fillRatio);
             let gaugeHTML = `
             <div class="${flashClass}" style="position:relative; width:120px; height:70px; display:flex; flex-direction:column; align-items:center; justify-content:flex-end;">
                 <svg viewBox="0 0 120 70" style="position:absolute; top:0; left:0; width:100%; height:100%;">
@@ -621,8 +532,7 @@
                     <div style="font-size:22px; font-weight:900; color:${snColor}; line-height:1; text-shadow: 0 0 8px ${snColor}80;">${snScore}</div>
                     <div style="font-size:10px; color:${snColor}; font-weight:bold; margin-top:2px;">${scoreLabel}</div>
                 </div>
-            </div>
-            `;
+            </div>`;
             
             let vwapColor = d.VWAP_Rating === 'High' ? 'var(--red)' : (d.VWAP_Rating === 'Mid' ? 'var(--yellow)' : 'var(--neon-green)');
             let vwapGlow = d.VWAP_Rating === 'High' ? 'text-shadow: 0 0 5px rgba(248,81,73,0.4);' : '';
@@ -630,18 +540,11 @@
             let html = `<div style="text-align:center;">${trapWarn}
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
                     <div style="text-align:left; display:flex; flex-direction:column; justify-content:center;">
-                        <h2 class="sym" style="font-size:28px; margin:0; display:flex; align-items:center;">
-                            ${sym} <span style="font-size:18px; color:var(--text-muted); margin-left:10px;">${d.Price||'-'}</span>
-                        </h2>
-                        <div style="margin-top:5px; font-size:12px; color:${vsaState > 0 ? 'var(--red)' : 'var(--green)'}; font-weight:bold;">
-                            ${vsaWarning}
-                        </div>
+                        <h2 class="sym" style="font-size:28px; margin:0; display:flex; align-items:center;">${sym} <span style="font-size:18px; color:var(--text-muted); margin-left:10px;">${d.Price||'-'}</span></h2>
+                        <div style="margin-top:5px; font-size:12px; color:${vsaState > 0 ? 'var(--red)' : 'var(--green)'}; font-weight:bold;">${vsaWarning}</div>
                         <div style="margin-top:5px; font-size:13px; color:var(--text-main);">🛡️ 動態防守線: <b style="color:var(--red);">$${(d.StopLoss||0).toFixed(2)}</b></div>
                     </div>
-                    <div style="display:flex; gap:10px; align-items:center;">
-                        ${gaugeHTML}
-                        <button class="ghost-btn" style="padding:4px 10px; font-size:12px; height:fit-content; margin:0;" onclick="openTW('${sym}')">TV ↗</button>
-                    </div>
+                    <div style="display:flex; gap:10px; align-items:center;">${gaugeHTML}<button class="ghost-btn" style="padding:4px 10px; font-size:12px; height:fit-content; margin:0;" onclick="openTW('${sym}')">TV ↗</button></div>
                 </div>
                 
                 <div style="background:rgba(0,0,0,0.3); padding:10px; border-radius:8px; display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; font-size:12px; border:1px solid rgba(255,255,255,0.05);">
@@ -649,10 +552,8 @@
                     <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center;">量比<br><b style="color:var(--yellow); font-size:14px;">${d.RelVol||'-'}</b></div>
                     <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center;">量能加速<br><b style="font-size:14px;">${formatVolAcc(d.VolAcc)}</b></div>
                     <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center; box-shadow: 0 0 5px rgba(227, 179, 65, 0.2);">量比加速度<br><b style="color:var(--yellow); font-size:14px;">${d.VR_Acc||0}%</b></div>
-                    
                     <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center; grid-column:span 2;">VWAP 乖離率<br><b style="color:${vwapColor}; font-size:14px; ${vwapGlow}">${d.VWAP_Dev>0?'+'+d.VWAP_Dev:d.VWAP_Dev}%</b></div>
                     <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center; grid-column:span 2;">催化評分<br><b style="color:var(--yellow); font-size:14px;">${d.CatScore||0}</b></div>
-                    
                     <div style="grid-column:span 2; padding-left:4px;">籌碼: <b style="color:var(--text-main);">${d.Float||'-'}</b></div>
                     <div style="grid-column:span 2; padding-left:4px;">當前狀態: <b style="color:${d.Signal.includes('洗盤')?'var(--text-muted)':'var(--yellow)'};">${d.Signal||'掃描中...'}</b></div>
                     ${vcpHTML ? `<div style="grid-column:1/-1;">${vcpHTML}</div>` : ''}
@@ -661,24 +562,13 @@
             
             if (!d.NewsList || d.NewsList.length === 0) html += `<div style="text-align:left; color:var(--text-muted); font-size:13px;">近 3 日無新聞。</div>`;
             else d.NewsList.forEach(n => { 
-                let d_title = n.title==="⏳ 翻譯中..."?n.raw_title:n.title;
-                d_title = highlightElites(d_title, n.elites, brain.live_trends);
+                let d_title = n.title==="⏳ 翻譯中..."?n.raw_title:n.title; d_title = highlightElites(d_title, n.elites, brain.live_trends);
                 
-                let p_news = n.p_news || 0;
-                let max_p_15m = n.max_p_15m || 0;
-                let confirm_html = "";
-                if (p_news > 0) {
-                    if (max_p_15m > p_news) {
-                        confirm_html = `<span style="color:var(--neon-green); font-weight:bold; margin-left:10px;">✅ 實體突破發布高點 ($${max_p_15m.toFixed(2)})</span>`;
-                    } else {
-                        confirm_html = `<span style="color:var(--text-muted); margin-left:10px;">⏳ 尚未突破 ($${p_news.toFixed(2)})</span>`;
-                    }
-                }
+                let p_news = n.p_news || 0; let max_p_15m = n.max_p_15m || 0; let confirm_html = "";
+                if (p_news > 0) { if (max_p_15m > p_news) { confirm_html = `<span style="color:var(--neon-green); font-weight:bold; margin-left:10px;">✅ 實體突破發布高點 ($${max_p_15m.toFixed(2)})</span>`; } else { confirm_html = `<span style="color:var(--text-muted); margin-left:10px;">⏳ 尚未突破 ($${p_news.toFixed(2)})</span>`; } }
                 
                 html += `<div style="margin-bottom:8px; text-align:left; padding:10px; background:rgba(255,255,255,0.02); border-radius:6px; border-left:3px solid ${n.elites && n.elites.length>0?'var(--neon-green)':(n.is_today?'#ffa500':'var(--border)')};">
-                    <div style="color:${n.is_today?'#ffa500':'var(--text-muted)'}; font-size:11px; margin-bottom:4px; font-weight:bold;">
-                        ${n.time} | 權重: ${n.score} ${confirm_html}
-                    </div>
+                    <div style="color:${n.is_today?'#ffa500':'var(--text-muted)'}; font-size:11px; margin-bottom:4px; font-weight:bold;">${n.time} | 權重: ${n.score} ${confirm_html}</div>
                     <a href="${n.link}" target="_blank" style="text-decoration:none; color:var(--text-main); font-size:13px;">${d_title}</a>
                 </div>`; 
             });
