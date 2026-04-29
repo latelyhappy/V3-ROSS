@@ -17,7 +17,7 @@
     "avg_impact_pct": 65.0,
     "note": "實戰驗證：政府合約，無腦做多訊號"
   },
-    "STRATEGIC ACQUISITION": {
+  "STRATEGIC ACQUISITION": {
     "score": 15,
     "count": 3,
     "avg_impact_pct": 81.7,
@@ -32,25 +32,19 @@
   "PARTNERSHIP AGREEMENT": {
     "score": 10,
     "count": 2,
-    "avg_impact_pct": 27.4,
-    "note": "實戰驗證：正式合作夥伴協議 (如 SPAIF)，比單純的 Joins 更有力"
+    "avg_impact_pct": 18.5,
+    "note": "實戰驗證：合作協議"
   },
-  "LICENSE": {
+  "AI-DRIVEN": {
+    "score": 13,
+    "count": 1,
+    "avg_impact_pct": 13.0,
+    "note": "實戰驗證：2026/04/29 KFRC 財報中出現的 AI 需求加速，漲幅 13%"
+  },
+  "DEMAND ACCELERATION": {
     "score": 10,
-    "count": 2,
-    "avg_impact_pct": 48.0,
-    "note": "實戰驗證：專利或技術授權 (如 VRSSF)，對科技/生技微盤股是巨大利多"
-  },
-  "PRICE TARGET": {
-    "score": 8,
-    "count": 4,
-    "avg_impact_pct": 31.9,
-    "note": "實戰驗證：機構給予明確目標價 (如 CAST)，極易吸引散戶跟風"
-  },
-  "BUY RATING": {
-    "score": 8,
-    "count": 3,
-    "avg_impact_pct": 31.9,
-    "note": "實戰驗證：券商買入評級，通常與目標價伴隨出現"
+    "count": 1,
+    "avg_impact_pct": 13.0,
+    "note": "實戰驗證：與 AI-DRIVEN 搭配出現的強力催化劑"
   }
 }

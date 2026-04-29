@@ -9,13 +9,33 @@
     "無增發計畫": 30
   },
   "MEGA_CATALYSTS": {
-    "_註記": "核彈級併購與正式協議 (V43.19 強化版)",
+    "_註記": "核彈級併購、正式協議與財報突破 (V45 強化版)",
     "DEFINITIVE AGREEMENT": 95,
     "ACQUISITION": 85,
     "BUYOUT": 85,
     "MERGER": 85,
     "OFFER TO": 80,
-    "PURCHASE AGREEMENT": 75
+    "PURCHASE AGREEMENT": 75,
+    "Q1 EARNINGS": 15,
+    "第一季財報": 15,
+    "FINANCIAL RESULTS": 15,
+    "RECORD REVENUE": 15,
+    "BEATS ESTIMATES": 15
+  },
+  "HINDSIGHT_NOISE": {
+    "_註記": "後見之明與市場總結雜訊 (強制歸零，解決 OMCL 與 BIYA 洗版問題)",
+    "為什麼": 0,
+    "WHY": 0,
+    "跑贏大市": 0,
+    "跑贏大盤": 0,
+    "OUTPERFORM": 0,
+    "漲幅最大": 0,
+    "TOP GAINERS": 0,
+    "BIGGEST MOVERS": 0,
+    "活躍": 0,
+    "MOST ACTIVE": 0,
+    "交易中走勢": 0,
+    "WHAT TO KNOW": 0
   },
   "TOXIC_OFFERINGS": {
     "_註記": "增資毒藥鎖 (直接負分)",
@@ -28,36 +48,8 @@
     "_註記": "訴訟農場垃圾桶 (強制歸零)",
     "REMINDS INVESTORS": 0,
     "DEADLINE APPROACHING": 0,
-    "LAW OFFICES OF": 0,
-    "CLASS ACTION": 0,
-    "SECURITIES FRAUD": 0
-  },
-  "HINDSIGHT_NOISE": {
-    "_註記": "V43.19 新增：傳聞與馬後炮過濾 (強制歸零)",
-    "REPORTS": 0,
-    "TALKS": 0,
-    "RUMORS": 0,
-    "CHANGE ITS NAME": 0,
-    "VALUATION AFTER": 0,
-    "REASSESS": 0,
-    "SOARS AS": 0,
-    "SURGES OVER": 0,
-    "HITS NEW HIGH": 0,
-    "WHY": 0,
-    "SOARS": 0,
-    "JUMPS": 0,
-    "PLUMMETING": 0,
-    "SKYROCKETED": 0,
-    "IS UP TODAY": 0,
-    "TRADING HIGHER": 0,
-    "WHAT HAPPENED": 0,
-    "STOCKS MOVING": 0,
-    "STOCKS TO WATCH": 0,
-    "MOST ACTIVE": 0,
-    "MOVERS": 0,
-    "COULD DOUBLE": 0,
-    "SHOULD YOU BUY": 0,
-    "IS IT TIME": 0
+    "LAW FIRM INVESTIGATES": 0,
+    "CLASS ACTION": 0
   },
   "SYMPATHY_MEGACAPS": {
     "_註記": "巨頭代碼過濾蹭熱度文章",
@@ -91,47 +83,6 @@
     "CRYPTO": 4,
     "NUCLEAR": 6,
     "SMR": 5,
-    "GLP-1": 6,
-    "OBESITY": 5
-  },
-  "RED": {
-    "_註記": "核彈級利多單字 (8-10分)",
-    "APPROVAL": 10,
-    "SQUEEZE": 9,
-    "FUTILITY": 10,
-    "MRD": 10,
-    "INTERIM": 9,
-    "PIVOTAL": 8,
-    "EXCLUSIVE": 9,
-    "BREAKTHROUGH": 9,
-    "BUYBACK": 8,
-    "REPURCHASE": 8,
-    "GOV CONTRACT": 10
-  },
-  "ORANGE": {
-    "_註記": "強勢動能單字 (6-7分)",
-    "PATENT": 7,
-    "EARNINGS BEAT": 7,
-    "REVENUE GROWTH": 7,
-    "UPGRADE": 6,
-    "RAISES GUIDANCE": 7,
-    "STRATEGIC": 6
-  },
-  "YELLOW": {
-    "_註記": "一般利多單字 (3-5分)",
-    "LAUNCHES": 5,
-    "NEW PRODUCT": 5,
-    "EXPANDS": 4,
-    "JOINS": 4,
-    "PRESENTS": 3,
-    "PARTNERSHIP": 5
-  },
-  "BLACK": {
-    "_註記": "致命陷阱單字 (觸發即放棄)",
-    "CHAPTER 11": -100,
-    "DELISTING": -100,
-    "BANKRUPTCY": -100,
-    "SEC INVESTIGATION": -100,
-    "HALTED": -100
+    "GLP-1": 6
   }
 }
