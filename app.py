@@ -15,6 +15,9 @@ import logging
 import concurrent.futures 
 import yfinance as yf  
 
+# 💡【新增】：匯入 Alpaca 混合引擎
+from alpaca_worker import init_alpaca
+
 logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
 
 brain_lock = threading.RLock() 
@@ -626,8 +629,13 @@ def scanner_engine():
                     with brain_lock:
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "StickySignal": "", "StickyColor": "green", "StickyTime": 0})
                         
-                        # 💡 【跨表持久標示 (15分鐘餘溫)】：確保警報發生後，在排行榜與情報雷達上能黏住 15 分鐘
+                        # 💡 【跨表持久標示 (15分鐘餘溫) + 接收 Alpaca 即時警報】
                         if current_signal:
+                            # 確保不會蓋掉 Alpaca 的 ⚡極速 標籤
+                            if "⚡" in cell.get("StickySignal", "") and now_ts - cell.get("StickyTime", 0) < 15:
+                                current_signal = current_signal + " [⚡極速]"
+                                status_color = "purple"
+                            
                             cell["StickySignal"] = current_signal
                             cell["StickyColor"] = status_color
                             cell["StickyTime"] = now_ts
@@ -805,4 +813,8 @@ if __name__ == '__main__':
     threading.Thread(target=scanner_engine, daemon=True).start()
     threading.Thread(target=finnhub_news_monitor_worker, daemon=True).start()
     threading.Thread(target=auto_trend_updater, daemon=True).start()
+    
+    # 💡 【終極啟動】：喚醒 Alpaca 毫秒級火控雷達
+    init_alpaca(MASTER_BRAIN, DYNAMIC_WATCHLIST, brain_lock)
+    
     app.run(host='0.0.0.0', port=PORT)
