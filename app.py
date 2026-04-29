@@ -673,9 +673,18 @@ def scanner_engine():
                         
                         if is_ross_match or is_spark or is_dead_bounce or is_massive_inflow or is_vwap_breakout or is_micro_pullback or is_whole_dollar:
                             last_trigger_time = cooldown_tracker.get(ticker, 0)
+                            last_massive_time = STATE_TRACKER.get(f"{ticker}_massive", 0)
                             
-                            # 💡 核心修復：如果是紫色「爆量箱子」，無視 60 秒冷卻，強制開火並寫入日誌！
-                            if is_massive_inflow or (now_ts - last_trigger_time > 60):
+                            # 💡 終極防爆鎖定：常規訊號與紫色爆量獨立冷卻，互不干擾且絕不洗版！
+                            can_trigger = False
+                            if now_ts - last_trigger_time > 60:
+                                can_trigger = True
+                            elif is_massive_inflow and (now_ts - last_massive_time > 60):
+                                can_trigger = True
+                                
+                            if can_trigger:
+                                if is_massive_inflow: STATE_TRACKER[f"{ticker}_massive"] = now_ts
+                                cooldown_tracker[ticker] = now_ts 
                                 
                                 is_sec_trap = check_sec_fatal_traps(ticker)
                                 if is_sec_trap:
@@ -684,7 +693,6 @@ def scanner_engine():
                                     
                                 MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova"})
                                 MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
-                                cooldown_tracker[ticker] = now_ts 
                                 
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
                 except Exception as e: return
