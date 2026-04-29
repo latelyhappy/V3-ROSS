@@ -188,6 +188,7 @@
     </div>
 
     <script>
+        // 💡 確保 audioOn 預設為 true
         let brain = {}, activeSym = "", audioOn = true, played = {}, showETF = false, lastTopNewsHeadline = ""; 
         const sounds = { spark: new Audio('/static/sounds/spark.mp3'), nova: new Audio('/static/sounds/nova.mp3') };
         let rankCfg = { col: 'Pct', asc: false }, newsCfg = { col: 'CatScore', asc: false };
@@ -195,7 +196,7 @@
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
 
-        // 💡 修改：徹底修復的隱形解鎖器 (防 1% 音量 Bug)
+        // 💡 徹底修復的隱形解鎖器 (防 1% 音量 Bug)
         let audioUnlocked = false;
         function initAudioContext() {
             if (audioUnlocked) return;
@@ -206,9 +207,9 @@
                 playPromise.then(() => {
                     sounds.nova.pause();
                     sounds.nova.currentTime = 0;
-                    sounds.nova.volume = 1.0; // 成功則恢復音量
+                    sounds.nova.volume = 1.0; 
                 }).catch(e => {
-                    sounds.nova.volume = 1.0; // 失敗也必須強制恢復音量，否則會永久 1%
+                    sounds.nova.volume = 1.0; 
                 });
             } else { sounds.nova.volume = 1.0; }
             
@@ -234,15 +235,15 @@
             }
         }
 
-        // 💡 新增：音效測試按鈕功能
+        // 💡 音效測試按鈕功能
         function testAudio() {
-            initAudioContext(); // 確保通道解鎖
+            initAudioContext(); 
             sounds.nova.currentTime = 0;
             sounds.nova.volume = 1.0;
             sounds.nova.play().then(() => {
-                alert("✅ 音效測試成功！聲音正常播放。\n\n只要這個按鈕有聲音，系統在偵測到極端動能時就一定會響。如果盤中沒聲音，請先確認日誌內是否有『紫字/黃字』訊號。");
+                alert("✅ 音效測試成功！聲音正常播放。");
             }).catch(e => {
-                alert("❌ 音效播放失敗！\n\n您的瀏覽器強制封鎖了音效。請確保您不是在『靜音模式』，或者嘗試點擊網頁其他空白處後再測試一次。\n錯誤細節：" + e.message);
+                alert("❌ 音效播放失敗！\n\n您的瀏覽器強制封鎖了音效。請點擊網頁空白處後再測試一次。\n錯誤細節：" + e.message);
             });
         }
 
@@ -414,13 +415,13 @@
                     <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'} <small style="color:var(--text-muted);">(${r.Amt||'-'})</small></td><td style="font-weight:bold; color:${r.Signal.includes('🎯') ? 'var(--neon-green)' : 'inherit'};">${r.Signal||'-'}</td>
                 </tr>`;
                 
-                // 💡 確保音效通道不受 1% bug 影響，正常播放 100% 聲音
+                // 💡 確保音量 100% 播放
                 if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { 
                     played[r.SignalTS] = r.SignalTS; 
                     let audioToPlay = sounds[r.Audio] || sounds.nova;
                     audioToPlay.volume = 1.0; 
                     audioToPlay.currentTime = 0; 
-                    audioToPlay.play().catch(e => console.log("等待使用者點擊畫面解鎖")); 
+                    audioToPlay.play().catch(e => console.log("音效未播放，請確保您有在網頁上隨意點擊一次以解鎖")); 
                     if ("vibrate" in navigator) navigator.vibrate([300, 100, 300, 100, 300]); 
                 }
             });

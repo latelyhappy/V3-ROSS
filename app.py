@@ -673,7 +673,9 @@ def scanner_engine():
                         
                         if is_ross_match or is_spark or is_dead_bounce or is_massive_inflow or is_vwap_breakout or is_micro_pullback or is_whole_dollar:
                             last_trigger_time = cooldown_tracker.get(ticker, 0)
-                            if now_ts - last_trigger_time > 60:
+                            
+                            # 💡 核心修復：如果是紫色「爆量箱子」，無視 60 秒冷卻，強制開火並寫入日誌！
+                            if is_massive_inflow or (now_ts - last_trigger_time > 60):
                                 
                                 is_sec_trap = check_sec_fatal_traps(ticker)
                                 if is_sec_trap:
@@ -830,8 +832,8 @@ if __name__ == '__main__':
     threading.Thread(target=finnhub_news_monitor_worker, daemon=True).start()
     threading.Thread(target=auto_trend_updater, daemon=True).start()
     
-    # 💡 【終極啟動】：喚醒 Alpaca 毫秒級火控雷達
+    # 💡 喚醒 Alpaca 毫秒級火控雷達
     init_alpaca(MASTER_BRAIN, DYNAMIC_WATCHLIST, brain_lock)
     
-    # 💡 【核心阻斷裝甲】：強制關閉 Flask 自動重載，防止雙線程打架引發 429 錯誤
+    # 💡 強制關閉 Flask 自動重載，防止雙線程衝突
     app.run(host='0.0.0.0', port=PORT, use_reloader=False)
