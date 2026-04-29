@@ -1,6 +1,9 @@
 import warnings
-warnings.simplefilter(action='ignore', category=FutureWarning)
-warnings.filterwarnings("ignore", module="yfinance")
+# 💡 終極消音器：直接鎖定 "Timestamp.utcnow" 這句台詞進行無差別封殺
+warnings.filterwarnings("ignore", message=".*Timestamp.utcnow.*")
+warnings.filterwarnings("ignore", module="yfinance.*")
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.simplefilter(action='ignore', category=UserWarning)
 
 from flask import Flask, jsonify, render_template, request, send_file
 import io
