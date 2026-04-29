@@ -1,3 +1,7 @@
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+warnings.filterwarnings("ignore", module="yfinance")
+
 from flask import Flask, jsonify, render_template, request, send_file
 import io
 import time, threading, os, json, re, base64, copy, math
@@ -15,7 +19,7 @@ import logging
 import concurrent.futures 
 import yfinance as yf  
 
-# 💡【新增】：匯入 Alpaca 混合引擎
+# 匯入 Alpaca 混合引擎
 from alpaca_worker import init_alpaca
 
 logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
