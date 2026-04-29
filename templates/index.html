@@ -447,11 +447,13 @@ function processDraft(word, action) {
                     <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'} <small style="color:var(--text-muted);">(${r.Amt||'-'})</small></td><td style="font-weight:bold; color:${r.Signal.includes('🎯') ? 'var(--neon-green)' : 'inherit'};">${r.Signal||'-'}</td>
                 </tr>`;
                 
-                if (r.Audio && r.Audio === 'spark' && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { 
-                    played[r.SignalTS] = r.SignalTS; 
-                    sounds.spark.currentTime=0; 
-                    sounds.spark.play().catch(e=>{}); 
-                    if ("vibrate" in navigator) navigator.vibrate([300, 100, 300, 100, 300]); 
+                // 💡 修復：根據後端傳來的 Audio 欄位名稱自動播放對應音效
+                if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { 
+                 played[r.SignalTS] = r.SignalTS; 
+                let audioToPlay = sounds[r.Audio] || sounds.nova; // 優先播放指定音效，預設用 nova
+                audioToPlay.currentTime = 0; 
+                audioToPlay.play().catch(e => console.log("播放失敗，請確認已點擊音效啟動按鈕")); 
+                if ("vibrate" in navigator) navigator.vibrate([300, 100, 300, 100, 300]); 
                 }
             });
             document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="10" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
