@@ -1,16 +1,18 @@
-import warnings
-import logging
+import os
+# 💡 核彈級消音器：直接從作業系統環境變數封殺所有 Python 警告！
+os.environ["PYTHONWARNINGS"] = "ignore"
 
-# 💡 核彈級消音器：絕對封殺所有 Python 警告 (包含頑固的 Pandas4Warning)
+import warnings
 warnings.filterwarnings("ignore")
 
-# 💡 封殺第三方套件的底層連線日誌，保持終端機極度乾淨
+import logging
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
 logging.getLogger('urllib3').setLevel(logging.CRITICAL)
-logging.getLogger('werkzeug').setLevel(logging.ERROR) # 隱藏 Flask 每次網頁刷新的 GET 紀錄
+logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
 from flask import Flask, jsonify, render_template, request, send_file
+
 import io
 import time, threading, os, json, re, base64, copy, math
 from datetime import datetime, timedelta
