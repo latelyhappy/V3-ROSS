@@ -1,9 +1,14 @@
 import warnings
-# 💡 終極消音器：直接鎖定 "Timestamp.utcnow" 這句台詞進行無差別封殺
-warnings.filterwarnings("ignore", message=".*Timestamp.utcnow.*")
-warnings.filterwarnings("ignore", module="yfinance.*")
-warnings.filterwarnings("ignore", category=FutureWarning)
-warnings.simplefilter(action='ignore', category=UserWarning)
+import logging
+
+# 💡 核彈級消音器：絕對封殺所有 Python 警告 (包含頑固的 Pandas4Warning)
+warnings.filterwarnings("ignore")
+
+# 💡 封殺第三方套件的底層連線日誌，保持終端機極度乾淨
+logging.getLogger('yfinance').setLevel(logging.CRITICAL)
+logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
+logging.getLogger('urllib3').setLevel(logging.CRITICAL)
+logging.getLogger('werkzeug').setLevel(logging.ERROR) # 隱藏 Flask 每次網頁刷新的 GET 紀錄
 
 from flask import Flask, jsonify, render_template, request, send_file
 import io
@@ -18,7 +23,6 @@ import pytz
 from tvDatafeed import TvDatafeed, Interval
 from deep_translator import GoogleTranslator
 from collections import Counter
-import logging
 import concurrent.futures 
 import yfinance as yf  
 
