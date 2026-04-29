@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V43.18 - Vol Comb & Lab Confirmation</title>
+    <title>Sniper V45 - Chimera Fire Control</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
@@ -14,6 +14,25 @@
         }
         body { margin: 0; background: var(--bg-base); color: var(--text-main); font-family: -apple-system, sans-serif; overflow-x: auto; padding-top: 50px; user-select: none; }
         
+        /* 💡 新增：啟動解鎖蓋板樣式 */
+        #start-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(13, 17, 23, 0.98); z-index: 100000;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            cursor: pointer; transition: opacity 0.4s;
+        }
+        .pulse-btn {
+            padding: 20px 50px; font-size: 26px; font-weight: 900;
+            background: var(--purple); color: white; border: none; border-radius: 12px;
+            cursor: pointer; box-shadow: 0 0 30px rgba(163, 113, 247, 0.6);
+            animation: pulse-effect 1.5s infinite;
+        }
+        @keyframes pulse-effect {
+            0% { transform: scale(1); box-shadow: 0 0 20px rgba(163, 113, 247, 0.5); }
+            50% { transform: scale(1.05); box-shadow: 0 0 50px rgba(163, 113, 247, 0.8); }
+            100% { transform: scale(1); box-shadow: 0 0 20px rgba(163, 113, 247, 0.5); }
+        }
+
         #tactical-bar { position: fixed; top: 0; left: 0; width: 100%; height: 50px; background: rgba(13, 17, 23, 0.95); border-bottom: 1px solid var(--border); z-index: 9999; display: flex; align-items: center; padding: 0 15px; box-sizing: border-box; overflow-x: auto; white-space: nowrap; -ms-overflow-style: none; scrollbar-width: none; }
         #tactical-bar::-webkit-scrollbar { display: none; }
         
@@ -73,6 +92,11 @@
     </style>
 </head>
 <body>
+    <div id="start-overlay" onclick="startSystem()">
+        <button class="pulse-btn">🚀 啟動超新星火控雷達</button>
+        <div style="color: var(--text-muted); margin-top: 20px; font-size: 15px;">點擊以連接伺服器並解鎖毫秒級音效</div>
+    </div>
+
     <div id="tactical-bar">
         <button id="audio-btn" class="ghost-btn" style="border-color:var(--red); color:var(--red);" onclick="unlockAudio()">🔇 音效/防睡眠</button>
         <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 ETF</button>
@@ -192,41 +216,57 @@
 
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
-        
-        function checkDrafts() {
-        fetch('/api/drafts')
-        .then(r => r.json())
-        .then(data => {
-        let words = Object.keys(data);
-        if (words.length === 0) {
-            alert("🤖 目前沒有新的 AI 學習草稿。\n系統會在每日美東時間 16:30 自動分析當日暴漲股並生成。");
-            return;
-        }
-        
-        let w = words[0];
-        let info = data[w];
-        let msg = `🤖 AI 自動學習系統發現高勝率單字！\n\n📌 關鍵字: ${w}\n📊 歷史最高平均漲幅: +${info.avg_impact_pct}%\n🔍 觸發次數: ${info.count} 次\n📝 備註: ${info.note}\n\n您要將此單字加入您的正式實戰詞庫 (trends.json) 並啟用加分嗎？`;
-        
-        if (confirm(msg)) {
-            processDraft(w, 'approve');
-        } else {
-            if(confirm("要將此單字從草稿中刪除 (拒絕) 嗎？")) {
-                processDraft(w, 'reject');
-            }
-        }
-    });
-}
 
-function processDraft(word, action) {
-    fetch('/api/approve_draft', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({word: word, action: action})
-    }).then(() => {
-        // 處理完畢後，自動遞迴檢查下一個草稿單字
-        checkDrafts(); 
-    });
-}
+        // 💡 新增：系統啟動與音效解鎖功能
+        function startSystem() {
+            let overlay = document.getElementById('start-overlay');
+            overlay.style.opacity = '0';
+            setTimeout(() => { overlay.style.display = 'none'; }, 400);
+            
+            unlockAudio(); // 解鎖音效按鈕
+
+            // 發送靜音片段強制突破瀏覽器限制
+            sounds.nova.volume = 0.01;
+            sounds.nova.play().then(() => {
+                sounds.nova.pause();
+                sounds.nova.currentTime = 0;
+                sounds.nova.volume = 1.0;
+            }).catch(e => console.log("靜音解鎖失敗，但點擊已生效"));
+        }
+
+        function checkDrafts() {
+            fetch('/api/drafts')
+            .then(r => r.json())
+            .then(data => {
+            let words = Object.keys(data);
+            if (words.length === 0) {
+                alert("🤖 目前沒有新的 AI 學習草稿。\n系統會在每日美東時間 16:30 自動分析當日暴漲股並生成。");
+                return;
+            }
+            
+            let w = words[0];
+            let info = data[w];
+            let msg = `🤖 AI 自動學習系統發現高勝率單字！\n\n📌 關鍵字: ${w}\n📊 歷史最高平均漲幅: +${info.avg_impact_pct}%\n🔍 觸發次數: ${info.count} 次\n📝 備註: ${info.note}\n\n您要將此單字加入您的正式實戰詞庫 (trends.json) 並啟用加分嗎？`;
+            
+            if (confirm(msg)) {
+                processDraft(w, 'approve');
+            } else {
+                if(confirm("要將此單字從草稿中刪除 (拒絕) 嗎？")) {
+                    processDraft(w, 'reject');
+                }
+            }
+        });
+        }
+
+        function processDraft(word, action) {
+            fetch('/api/approve_draft', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({word: word, action: action})
+            }).then(() => {
+                checkDrafts(); 
+            });
+        }
 
         let wakeLock = null;
         async function requestWakeLock() {
@@ -314,7 +354,7 @@ function processDraft(word, action) {
 
         function showAITrends() {
             if (!brain || !brain.live_trends) return alert("📡 系統尚未載入...");
-            let msg = `🔥 V43 戰果加權 NLP 詞庫：\n📅 更新時間：${brain.trends_date || '未知'}\n\n`;
+            let msg = `🔥 V45 戰果加權 NLP 詞庫：\n📅 更新時間：${brain.trends_date || '即時同步'}\n\n`;
             Object.keys(brain.live_trends).forEach(k => { 
                 let data = brain.live_trends[k];
                 let score = typeof data === 'object' ? (data.score || 5) : data;
@@ -388,12 +428,13 @@ function processDraft(word, action) {
             } else { btn.innerText = "🔘 ETF"; btn.style.borderColor = "var(--border)"; btn.style.color = "var(--text-main)"; } if (Object.keys(brain).length > 0) refreshUI(brain);
         }
         
+        // 💡 修改：點擊後文字改變，並確保設定 audioOn 為 true
         function unlockAudio() { 
             audioOn = true;
             let btn = document.getElementById('audio-btn'); 
             btn.style.borderColor="var(--green)"; 
             btn.style.color="var(--green)"; 
-            btn.innerText="🔊 警報/防睡眠"; 
+            btn.innerText="🔊 警報/防睡眠 (已解鎖)"; 
             requestWakeLock();
         }
         
@@ -426,7 +467,6 @@ function processDraft(word, action) {
 
         function refreshUI(d) {
             if (!d) return;
-
             document.getElementById('sys-status').innerText = `📡 數據更新: ${d.last_update || '--:--:--'}`;
             document.getElementById('sys-status').style.color = "var(--green)";
             
@@ -435,6 +475,7 @@ function processDraft(word, action) {
                 if (r.Type === 'fund' && !showETF) return; 
                 let det = (d.details && d.details[r.Code]) ? d.details[r.Code] : {};
                 let isFatal = r.Signal && r.Signal.includes("💀"), icon = isFatal ? " 💀" : ((det.CatScore || 0) > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
+     
                 let rowClass = r.Status ? `tr-${r.Status}` : ""; if (r.Signal && r.Signal.includes("⚡VCP")) rowClass += " tr-vcp"; if (isFatal) rowClass += " trap-row"; 
                 let f_float = r.Type === 'fund' ? '<span style="color:var(--border);">N/A(ETF)</span>' : (r.Float||'-');
                 let f_vol = r.Is100K ? `<span class="vol-100k">${r.Vol}</span>` : (r.Vol||"-");
@@ -447,15 +488,13 @@ function processDraft(word, action) {
                     <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'} <small style="color:var(--text-muted);">(${r.Amt||'-'})</small></td><td style="font-weight:bold; color:${r.Signal.includes('🎯') ? 'var(--neon-green)' : 'inherit'};">${r.Signal||'-'}</td>
                 </tr>`;
                 
-                // 💡 修正後：根據後端傳來的欄位自動播放對應音效 (如 nova)
+                // 💡 核心修復：動態讀取後端指定的 Audio，預設為 nova，並確保在 audioOn 解鎖後播放
                 if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { 
-                 played[r.SignalTS] = r.SignalTS; 
-                 // 優先播放指定音效，如果後端沒給或名稱不對，則預警使用 nova
-                 let audioToPlay = sounds[r.Audio] || sounds.nova; 
-                 audioToPlay.currentTime = 0; 
-                 audioToPlay.play().catch(e => console.log("播放失敗，請確認已點擊啟動按鈕")); 
-    
-                 if ("vibrate" in navigator) navigator.vibrate([300, 100, 300, 100, 300]); 
+                    played[r.SignalTS] = r.SignalTS; 
+                    let audioToPlay = sounds[r.Audio] || sounds.nova;
+                    audioToPlay.currentTime = 0; 
+                    audioToPlay.play().catch(e => console.log("播放失敗，請確認已解鎖音效")); 
+                    if ("vibrate" in navigator) navigator.vibrate([300, 100, 300, 100, 300]); 
                 }
             });
             document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="10" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
@@ -508,6 +547,7 @@ function processDraft(word, action) {
             if (d.top_catalysts && d.top_catalysts.length > 0) {
                 let fVN = d.top_catalysts.find(n => n.NewsList && n.NewsList.length > 0);
                 let cLH = fVN ? (fVN.NewsList[0].headline || fVN.NewsList[0].raw_title) : "";
+                
                 lastTopNewsHeadline = cLH;
                 
                 let newsData = [...d.top_catalysts].filter(n => !(n?.Type === 'fund' && !showETF) && n?.NewsList && n.NewsList.length > 0);
@@ -519,7 +559,8 @@ function processDraft(word, action) {
                     vA = parseValue(vA, newsCfg.col);
                     vB = parseValue(vB, newsCfg.col);
                     if (vA < vB) return newsCfg.asc ? -1 : 1;
-                    if (vA > vB) return newsCfg.asc ? 1 : -1; return 0;
+                    if (vA > vB) return newsCfg.asc ? 1 : -1;
+                    return 0;
                 });
                 newsData.forEach(n => {
                     let latest = n.NewsList[0];
@@ -534,6 +575,7 @@ function processDraft(word, action) {
                     let f_Price = n.Price || "-";
                     let f_Float = n.Type === 'fund' ? 'N/A' : (n.Float || "-");
                     let f_vol = n.Is100K ? `<span class="vol-100k">${n.Vol||"-"} 📦</span>` : (n.Vol||"-");
+ 
                     let rowClass = isElite ? "elite-news-row" : "tr-green";
                     let titleClass = isElite ? "elite-title" : "";
 
