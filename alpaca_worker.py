@@ -50,30 +50,32 @@ def _alpaca_thread():
             with _brain_lock:
                 if ticker in _MASTER_BRAIN["details"]:
                     cell = _MASTER_BRAIN["details"][ticker]
-                    current_signal = cell.get("Signal", "")
-                    signal_triggered = False
+                    # 先取出原有的訊號，並做基礎清理，避免包含舊的極速或撞擊字眼
+                    raw_signal = cell.get("Signal", "").replace("⚡極速拉升(+0.5%/5s)", "").replace(f"🧲即將撞擊(${math.ceil(price):.2f})", "").strip()
                     
+                    signal_triggered = False
+                    new_tag = ""
+                    
+                    # 💡 核心修復：使用乾淨的標籤覆蓋，不無限疊加
                     if is_velocity_spike:
-                        if "⚡極速" not in current_signal:
-                            cell["Signal"] = f"⚡極速拉升(+0.5%/5s) " + current_signal
-                            signal_triggered = True
+                        new_tag = "⚡極速拉升(+0.5%/5s) "
                         cell["Status"] = "purple"
                         cell["StickyColor"] = "purple"
-                        cell["StickySignal"] = cell["Signal"]
-                        cell["StickyTime"] = now_ts
+                        signal_triggered = True
                         
                     elif is_whole_dollar:
-                        if "🧲磁吸" not in current_signal:
-                            cell["Signal"] = f"🧲即將撞擊(${math.ceil(price):.2f}) " + current_signal
-                            signal_triggered = True
+                        new_tag = f"🧲即將撞擊(${math.ceil(price):.2f}) "
                         if cell.get("Status") != "purple":
                             cell["Status"] = "yellow"
                             cell["StickyColor"] = "yellow"
+                        signal_triggered = True
+
+                    if signal_triggered:
+                        # 將新標籤與清理過的原有訊號結合，保證乾淨俐落
+                        cell["Signal"] = new_tag + raw_signal
                         cell["StickySignal"] = cell["Signal"]
                         cell["StickyTime"] = now_ts
-
-                    # 💡 核心防爆修復：Alpaca 獨立 30 秒冷卻閘門
-                    if signal_triggered:
+                        
                         last_a_time = _alpaca_cooldown.get(ticker, 0)
                         if now_ts - last_a_time > 30:
                             _alpaca_cooldown[ticker] = now_ts
