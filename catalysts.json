@@ -11,19 +11,39 @@
   "MEGA_CATALYSTS": {
     "_註記": "核彈級併購、正式協議與財報突破 (V45 強化版)",
     "DEFINITIVE AGREEMENT": 95,
+    "CASH ACQUISITION": 95,
+    "TENDER OFFER": 90,
     "ACQUISITION": 85,
     "BUYOUT": 85,
     "MERGER": 85,
+    "EXCLUSIVE LICENSE": 85,
+    "EXCLUSIVE": 80,
     "OFFER TO": 80,
     "PURCHASE AGREEMENT": 75,
+    "INTENT TO ACQUIRE": 75,
     "Q1 EARNINGS": 15,
     "第一季財報": 15,
     "FINANCIAL RESULTS": 15,
     "RECORD REVENUE": 15,
     "BEATS ESTIMATES": 15
   },
+  "CLINICAL_SUCCESS": {
+    "_註記": "生技股 (Biotech) 專屬暴漲催化劑",
+    "FDA APPROVAL": 95,
+    "FDA CLEARED": 90,
+    "PHASE 3 SUCCESS": 85,
+    "POSITIVE TOPLINE": 75,
+    "MET PRIMARY ENDPOINT": 75,
+    "ORPHAN DRUG DESIGNATION": 60,
+    "PDUFA": 50
+  },
+  "COMPLIANCE_WINS": {
+    "_註記": "合規與專利除雷",
+    "PATENT GRANTED": 45,
+    "NASDAQ COMPLIANCE": 40
+  },
   "HINDSIGHT_NOISE": {
-    "_註記": "後見之明與市場總結雜訊 (強制歸零，解決 OMCL 與 BIYA 洗版問題)",
+    "_註記": "後見之明與市場總結雜訊 (強制歸零，防洗版)",
     "為什麼": 0,
     "WHY": 0,
     "跑贏大市": 0,
@@ -35,14 +55,18 @@
     "活躍": 0,
     "MOST ACTIVE": 0,
     "交易中走勢": 0,
-    "WHAT TO KNOW": 0
+    "WHAT TO KNOW": 0,
+    "POST-MARKET MOVEMENTS": 0,
+    "BEFORE THE BELL": 0
   },
   "TOXIC_OFFERINGS": {
     "_註記": "增資毒藥鎖 (直接負分)",
     "DIRECT OFFERING": -50,
     "PUBLIC OFFERING": -50,
     "PRICED AT": -50,
-    "PRIVATE PLACEMENT": -50
+    "PRIVATE PLACEMENT": -50,
+    "WARRANT EXERCISE": -50,
+    "SHELF REGISTRATION": -40
   },
   "CLASS_ACTION_SPAM": {
     "_註記": "訴訟農場垃圾桶 (強制歸零)",
@@ -75,14 +99,18 @@
   },
   "THEMATIC_TRENDS": {
     "_註記": "市場熱點單字 (疊加加分用)",
-    "GOVERNMENT-BACKED": 15,
+    "GOVERNMENT CONTRACT": 80,
+    "GOVERNMENT-BACKED": 20,
+    "SMR": 10,
+    "NUCLEAR": 8,
+    "QUANTUM": 8,
     "NVIDIA": 6,
     "NVDA": 6,
+    "HBM": 6,
+    "GLP-1": 6,
     "LIQUID": 5,
+    "DATA CENTER": 5,
     "BITCOIN": 5,
-    "CRYPTO": 4,
-    "NUCLEAR": 6,
-    "SMR": 5,
-    "GLP-1": 6
+    "CRYPTO": 4
   }
 }

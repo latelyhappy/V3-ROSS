@@ -220,7 +220,7 @@ def calculate_hft_score(headline, ticker=""):
             total_score += score
             if score >= 10 or data.get("count", 0) >= 3: elite_hits.append(kw)
 
-    for cat in ["RED", "ORANGE", "YELLOW"]:
+    for cat in ["RED", "ORANGE", "YELLOW", "CLINICAL_SUCCESS", "COMPLIANCE_WINS"]: # 💡 加入新的生技與合規類別
         for kw, score in CATALYST_ARMORY.get(cat, {}).items():
             if kw in text: 
                 total_score += score
