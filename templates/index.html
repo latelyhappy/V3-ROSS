@@ -38,28 +38,24 @@
         tr.tr-red .status-indicator { background: var(--red); } tr.tr-border .status-indicator { background: var(--text-muted); }
         tr.tr-vcp { background: rgba(227, 179, 65, 0.08); } 
         
-        /* 💡 終極閃爍系統：定義呼吸閃爍動畫 */
+        /* 💡 終極閃爍系統：定義紫色呼吸閃爍動畫 */
         @keyframes flash-purple {
             0% { background-color: rgba(163, 113, 247, 0.8); color: white; text-shadow: 0 0 10px rgba(255,255,255,0.8); box-shadow: inset 0 0 20px rgba(163, 113, 247, 1); }
             50% { background-color: rgba(163, 113, 247, 0.2); color: var(--neon-purple); text-shadow: none; box-shadow: none; }
             100% { background-color: rgba(163, 113, 247, 0.8); color: white; text-shadow: 0 0 10px rgba(255,255,255,0.8); box-shadow: inset 0 0 20px rgba(163, 113, 247, 1); }
         }
-        /* 💡 觸發前5秒：啟動閃爍 */
-        .flash-active {
-            animation: flash-purple 0.8s infinite;
-            border-radius: 4px;
-            font-weight: 900 !important;
-        }
-        /* 💡 觸發5秒後：停止閃爍，定格紫色 */
-        .flash-settled {
-            background-color: rgba(163, 113, 247, 0.2) !important;
-            color: var(--neon-purple) !important;
-            font-weight: bold;
-            border-radius: 4px;
-        }
+        .flash-active { animation: flash-purple 0.8s infinite; border-radius: 4px; font-weight: 900 !important; }
+        .flash-settled { background-color: rgba(163, 113, 247, 0.2) !important; color: var(--neon-purple) !important; font-weight: bold; border-radius: 4px; }
 
-        .trap-row { animation: blood-pulse 1.5s infinite; }
-        @keyframes blood-pulse { 0% {background: transparent;} 50% {background: rgba(248, 81, 73, 0.2);} 100% {background: transparent;} }
+        /* 💡 終極防爆系統：修正死亡陷阱的紅色閃爍，確保 5 秒後停止 */
+        @keyframes blood-pulse { 
+            0% {background-color: rgba(248, 81, 73, 0.4);} 
+            50% {background-color: rgba(248, 81, 73, 0.1);} 
+            100% {background-color: rgba(248, 81, 73, 0.4);} 
+        }
+        .trap-active { animation: blood-pulse 0.8s infinite !important; }
+        .trap-settled { background-color: rgba(248, 81, 73, 0.15) !important; } /* 5秒後定格的暗紅色 */
+
         .translating { color: #8b949e; animation: text-pulse 2s infinite; font-size: 11px; padding: 2px 6px; background: rgba(255,255,255,0.05); border-radius: 4px; margin-left: 5px; }
         @keyframes text-pulse { 0% {opacity: 0.4;} 50% {opacity: 1;} 100% {opacity: 0.4;} }
         .vcp-bar-container { width: 100%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; margin-top: 5px; overflow: hidden; }
@@ -216,7 +212,6 @@
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
 
-        // 隱形解鎖器
         let audioUnlocked = false;
         function initAudioContext() {
             if (audioUnlocked) return;
@@ -380,13 +375,13 @@
 
         setInterval(() => { document.getElementById('sys-clock').innerText = new Date().toLocaleTimeString('zh-TW', {timeZone: 'Asia/Taipei', hour12: false}); }, 1000);
         
-        // 💡 輔助函式：判斷是否該掛上閃爍類別
+        // 💡 輔助函式：控制 5 秒閃爍後切換定色
         function getFlashClass(triggerTs) {
             if (!triggerTs) return "";
-            const now = Date.now() / 1000; // 轉換為秒
+            const now = Date.now() / 1000;
             const diff = now - triggerTs;
-            if (diff < 5) return "flash-active";     // 5 秒內：狂閃
-            if (diff < 120) return "flash-settled";  // 5~120秒內：維持紫色底色 (2分鐘後自動消退，保持畫面乾淨)
+            if (diff < 5) return "flash-active";     // 5 秒內：狂閃紫色
+            if (diff < 120) return "flash-settled";  // 5~120秒內：維持深底紫色
             return "";
         }
 
@@ -413,6 +408,8 @@
             document.getElementById('sys-status').innerText = `📡 數據更新: ${d.last_update || '--:--:--'}`;
             document.getElementById('sys-status').style.color = "var(--green)";
             
+            const nowSec = Date.now() / 1000;
+
             // ==================
             // 1. 即時動能日誌 (surge_log)
             // ==================
@@ -420,12 +417,21 @@
             (d.surge_log || []).forEach(r => {
                 if (r.Type === 'fund' && !showETF) return; 
                 let det = (d.details && d.details[r.Code]) ? d.details[r.Code] : {};
-                let isFatal = r.Signal && r.Signal.includes("💀"), icon = isFatal ? " 💀" : ((det.CatScore || 0) > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
+                let isFatal = r.Signal && r.Signal.includes("💀");
+                let icon = isFatal ? " 💀" : ((det.CatScore || 0) > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
      
-                let rowClass = r.Status ? `tr-${r.Status}` : ""; if (r.Signal && r.Signal.includes("⚡VCP")) rowClass += " tr-vcp"; if (isFatal) rowClass += " trap-row"; 
+                let rowClass = r.Status ? `tr-${r.Status}` : ""; 
+                if (r.Signal && r.Signal.includes("⚡VCP")) rowClass += " tr-vcp"; 
+                
+                // 💡 修正死亡陷阱的 5 秒防爆煞車
+                if (isFatal) {
+                    if (r.SignalTS && (nowSec - r.SignalTS < 5)) rowClass += " trap-active";
+                    else rowClass += " trap-settled";
+                }
+                
                 let f_float = r.Type === 'fund' ? '<span style="color:var(--border);">N/A(ETF)</span>' : (r.Float||'-');
                 
-                // 💡 【閃爍植入點：日誌的成交量】
+                // 💡 閃爍植入：日誌的成交量與價格
                 let flashClass = getFlashClass(r.SignalTS);
                 let f_vol = `<span class="${r.Is100K ? 'vol-100k' : ''} ${flashClass}" style="${flashClass ? 'padding:2px 6px; display:inline-block;' : ''}">${r.Vol}</span>`;
 
@@ -460,11 +466,18 @@
                 if (vA < vB) return rankCfg.asc ? -1 : 1; if (vA > vB) return rankCfg.asc ? 1 : -1; return 0;
             });
             rankData.forEach(r => {
-                let det = d.details[r.Code] || {}, isFatal = det.IsTrap;
+                let det = d.details[r.Code] || {};
+                let isFatal = det.IsTrap;
                 let icon = isFatal ? " 💀" : ((det.CatScore||0)>8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
-                let rowClass = `tr-${det.Status || r.Status || 'green'}`; if (isFatal) rowClass += " trap-row";
                 
-                // 💡 【閃爍植入點：排行的價格與成交量】
+                let rowClass = `tr-${det.Status || r.Status || 'green'}`;
+                // 💡 修正死亡陷阱的 5 秒防爆煞車
+                if (isFatal) {
+                    if (det.TriggerTS && (nowSec - det.TriggerTS < 5)) rowClass += " trap-active";
+                    else rowClass += " trap-settled";
+                }
+                
+                // 💡 閃爍植入：排行的價格與成交量
                 let flashClass = getFlashClass(det.TriggerTS);
                 let f_price = `<span class="${flashClass}" style="${flashClass ? 'padding:2px 6px; display:inline-block;' : ''}">${r.Price||'-'}</span>`;
                 let f_vol = `<span class="${det.Is100K ? 'vol-100k' : ''} ${flashClass}" style="${flashClass ? 'padding:2px 6px; display:inline-block;' : ''}">${r.Vol||'-'}</span>`;
@@ -479,13 +492,20 @@
             document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="8" style="text-align:center; padding:20px; color:var(--text-muted);">無符合標的</td></tr>`;
 
             // ==================
-            // VWAP 略過 (不需閃爍)
+            // VWAP 略過 (不需閃爍，僅套用陷阱修正)
             // ==================
             let h_vwap = "";
             (d.vwap_list || []).forEach(r => {
                 let det = d.details[r.Code] || {};
-                let icon = det.IsTrap ? " 💀" : ((det.CatScore||0)>8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
-                let rowClass = `tr-${det.Status || r.Status || 'green'}`; if (det.IsTrap) rowClass += " trap-row";
+                let isFatal = det.IsTrap;
+                let icon = isFatal ? " 💀" : ((det.CatScore||0)>8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
+                
+                let rowClass = `tr-${det.Status || r.Status || 'green'}`; 
+                if (isFatal) {
+                    if (det.TriggerTS && (nowSec - det.TriggerTS < 5)) rowClass += " trap-active";
+                    else rowClass += " trap-settled";
+                }
+                
                 let vwapColor = r.VWAP_Rating === 'High' ? 'var(--red)' : (r.VWAP_Rating === 'Mid' ? 'var(--yellow)' : 'var(--neon-green)');
                 let vwapGlow = r.VWAP_Rating === 'High' ? 'text-shadow: 0 0 5px rgba(248,81,73,0.4);' : '';
                 h_vwap += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
@@ -526,8 +546,8 @@
                     let f_Float = n.Type === 'fund' ? 'N/A' : (n.Float || "-"); let f_vol = n.Is100K ? `<span class="vol-100k">${n.Vol||"-"} 📦</span>` : (n.Vol||"-");
                     let rowClass = isElite ? "elite-news-row" : "tr-green"; let titleClass = isElite ? "elite-title" : "";
 
-                    // 💡 【閃爍植入點：新聞的評分與標題】
-                    let flashClass = getFlashClass(latest.fetch_time_ts); // 使用新聞抓取的時間戳
+                    // 💡 閃爍植入：新聞的評分與標題
+                    let flashClass = getFlashClass(latest.fetch_time_ts); 
                     let score_html = `<span class="${flashClass}" style="${flashClass ? 'padding:2px 6px; display:inline-block;' : 'color:' + (f_Score>=6?'var(--yellow)':'var(--text-muted)') + '; font-weight:bold;'}">${f_Score}</span>`;
 
                     h3 += `<tr class="${rowClass}" onclick="loadDetail('${n.Code||n.ticker}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[4]);" ondblclick="openTW('${n.Code||n.ticker}')">
@@ -550,7 +570,8 @@
             if (!d && !rankData) return;
             if (!d && rankData) d = { Price:rankData.Price, Pct:rankData.Pct, Vol:rankData.Vol, RelVol:"-", Float:rankData.Type==='fund'?"N/A(ETF)":(rankData.Float||"-"), StopLoss:0, CatScore:0, IsTrap:false, NewsList:[], VolAcc:"-", Is100K:false, SN_Score:0, VsaState:0, VR_Acc:0, VWAP_Dev:0, VWAP_Rating:"Low" };
             
-            let trapWarn = d.IsTrap ? `<div style="background:rgba(248,81,73,0.2); border:1px solid var(--red); color:var(--red); padding:8px; margin-bottom:10px; border-radius:6px; font-weight:bold; font-size:13px; animation:blood-pulse 1s infinite;">🩸 致命警告：偵測到毒藥增發或退市風險</div>` : "";
+            // 💡 修正 Detail 右側面板的死亡警告，拔除無限閃爍，改為定格警告色
+            let trapWarn = d.IsTrap ? `<div class="trap-settled" style="border:1px solid var(--red); color:var(--red); padding:8px; margin-bottom:10px; border-radius:6px; font-weight:bold; font-size:13px;">🩸 致命警告：偵測到毒藥增發或退市風險</div>` : "";
             let vcpHTML = ""; if (d.Signal && d.Signal.includes("VCP")) { let m = d.Signal.match(/\((\d+)m\)/); let mins = m ? parseInt(m[1]) : 1; vcpHTML = `<div style="font-size:11px; color:var(--text-muted);">⚡ 壓縮蓄力 (${mins} mins)</div><div class="vcp-bar-container"><div class="vcp-bar" style="width:${Math.min(mins*10,100)}%; background:${mins>=10?'#fff':'#ffa500'};"></div></div>`; }
 
             let volHTML = d.Is100K ? `<b class="vol-100k" style="font-size:14px;">${d.Vol||'-'} 📦</b>` : `<b style="color:var(--text-main); font-size:14px;">${d.Vol||'-'}</b>`;
