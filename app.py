@@ -666,7 +666,8 @@ def scanner_engine():
                             "PriceVal": float(p_live), "HighVal": float(df['high'].iloc[-1]), "StopLoss": curr_ema20 * 0.99, 
                             "Float": float_str, "Type": stat_data.get('type', 'stock'), "VolAcc": vol_acc_str, "Is100K": False, 
                             "SN_Score": sn_score, "VsaState": 0, "VR_Acc": vr_acc, "VWAP_Dev": vwap_dev, "VWAP_Rating": vwap_rating,
-                            "EMA9": curr_ema9, "EMA52": curr_ema52 
+                            "EMA9": curr_ema9, "EMA52": curr_ema52,
+                            "TriggerTS": now_ts # 💡 新增：統一的毫秒級時間戳，供前端判斷閃爍動畫使用
                         }
                         
                         cell.update(stats)

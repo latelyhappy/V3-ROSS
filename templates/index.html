@@ -37,6 +37,27 @@
         tr.tr-blue .status-indicator { background: var(--blue); } tr.tr-green .status-indicator { background: var(--green); }
         tr.tr-red .status-indicator { background: var(--red); } tr.tr-border .status-indicator { background: var(--text-muted); }
         tr.tr-vcp { background: rgba(227, 179, 65, 0.08); } 
+        
+        /* 💡 終極閃爍系統：定義呼吸閃爍動畫 */
+        @keyframes flash-purple {
+            0% { background-color: rgba(163, 113, 247, 0.8); color: white; text-shadow: 0 0 10px rgba(255,255,255,0.8); box-shadow: inset 0 0 20px rgba(163, 113, 247, 1); }
+            50% { background-color: rgba(163, 113, 247, 0.2); color: var(--neon-purple); text-shadow: none; box-shadow: none; }
+            100% { background-color: rgba(163, 113, 247, 0.8); color: white; text-shadow: 0 0 10px rgba(255,255,255,0.8); box-shadow: inset 0 0 20px rgba(163, 113, 247, 1); }
+        }
+        /* 💡 觸發前5秒：啟動閃爍 */
+        .flash-active {
+            animation: flash-purple 0.8s infinite;
+            border-radius: 4px;
+            font-weight: 900 !important;
+        }
+        /* 💡 觸發5秒後：停止閃爍，定格紫色 */
+        .flash-settled {
+            background-color: rgba(163, 113, 247, 0.2) !important;
+            color: var(--neon-purple) !important;
+            font-weight: bold;
+            border-radius: 4px;
+        }
+
         .trap-row { animation: blood-pulse 1.5s infinite; }
         @keyframes blood-pulse { 0% {background: transparent;} 50% {background: rgba(248, 81, 73, 0.2);} 100% {background: transparent;} }
         .translating { color: #8b949e; animation: text-pulse 2s infinite; font-size: 11px; padding: 2px 6px; background: rgba(255,255,255,0.05); border-radius: 4px; margin-left: 5px; }
@@ -188,7 +209,6 @@
     </div>
 
     <script>
-        // 💡 確保 audioOn 預設為 true
         let brain = {}, activeSym = "", audioOn = true, played = {}, showETF = false, lastTopNewsHeadline = ""; 
         const sounds = { spark: new Audio('/static/sounds/spark.mp3'), nova: new Audio('/static/sounds/nova.mp3') };
         let rankCfg = { col: 'Pct', asc: false }, newsCfg = { col: 'CatScore', asc: false };
@@ -196,7 +216,7 @@
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
 
-        // 💡 徹底修復的隱形解鎖器 (防 1% 音量 Bug)
+        // 隱形解鎖器
         let audioUnlocked = false;
         function initAudioContext() {
             if (audioUnlocked) return;
@@ -208,11 +228,8 @@
                     sounds.nova.pause();
                     sounds.nova.currentTime = 0;
                     sounds.nova.volume = 1.0; 
-                }).catch(e => {
-                    sounds.nova.volume = 1.0; 
-                });
+                }).catch(e => { sounds.nova.volume = 1.0; });
             } else { sounds.nova.volume = 1.0; }
-            
             document.removeEventListener('click', initAudioContext);
             document.removeEventListener('touchstart', initAudioContext);
             requestWakeLock();
@@ -235,33 +252,22 @@
             }
         }
 
-        // 💡 音效測試按鈕功能
         function testAudio() {
             initAudioContext(); 
             sounds.nova.currentTime = 0;
             sounds.nova.volume = 1.0;
-            sounds.nova.play().then(() => {
-                alert("✅ 音效測試成功！聲音正常播放。");
-            }).catch(e => {
-                alert("❌ 音效播放失敗！\n\n您的瀏覽器強制封鎖了音效。請點擊網頁空白處後再測試一次。\n錯誤細節：" + e.message);
-            });
+            sounds.nova.play().then(() => { alert("✅ 音效測試成功！聲音正常播放。"); }).catch(e => { alert("❌ 音效播放失敗！\n\n您的瀏覽器強制封鎖了音效。請點擊網頁空白處後再測試一次。\n錯誤細節：" + e.message); });
         }
 
         function checkDrafts() {
-            fetch('/api/drafts')
-            .then(r => r.json())
-            .then(data => {
-            let words = Object.keys(data);
-            if (words.length === 0) {
-                alert("🤖 目前沒有新的 AI 學習草稿。\n系統會在每日美東時間 16:30 自動分析當日暴漲股並生成。");
-                return;
-            }
-            let w = words[0]; let info = data[w];
-            let msg = `🤖 AI 自動學習系統發現高勝率單字！\n\n📌 關鍵字: ${w}\n📊 歷史最高平均漲幅: +${info.avg_impact_pct}%\n🔍 觸發次數: ${info.count} 次\n📝 備註: ${info.note}\n\n您要將此單字加入實戰詞庫 (trends.json) 嗎？`;
-            if (confirm(msg)) { processDraft(w, 'approve'); } else { if(confirm("要將此單字從草稿中刪除嗎？")) { processDraft(w, 'reject'); } }
+            fetch('/api/drafts').then(r => r.json()).then(data => {
+                let words = Object.keys(data);
+                if (words.length === 0) { alert("🤖 目前沒有新的 AI 學習草稿。\n系統會在每日美東時間 16:30 自動分析當日暴漲股並生成。"); return; }
+                let w = words[0]; let info = data[w];
+                let msg = `🤖 AI 自動學習系統發現高勝率單字！\n\n📌 關鍵字: ${w}\n📊 歷史最高平均漲幅: +${info.avg_impact_pct}%\n🔍 觸發次數: ${info.count} 次\n📝 備註: ${info.note}\n\n您要將此單字加入實戰詞庫 (trends.json) 嗎？`;
+                if (confirm(msg)) { processDraft(w, 'approve'); } else { if(confirm("要將此單字從草稿中刪除嗎？")) { processDraft(w, 'reject'); } }
             });
         }
-
         function processDraft(word, action) { fetch('/api/approve_draft', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({word: word, action: action}) }).then(() => { checkDrafts(); }); }
 
         let wakeLock = null;
@@ -374,11 +380,14 @@
 
         setInterval(() => { document.getElementById('sys-clock').innerText = new Date().toLocaleTimeString('zh-TW', {timeZone: 'Asia/Taipei', hour12: false}); }, 1000);
         
-        function refresh() {
-            fetch('/data?t=' + Date.now())
-                .then(r => r.json())
-                .then(d => { brain = d; refreshUI(d); setTimeout(refresh, 5000); })
-                .catch(e => { document.getElementById('sys-status').innerText = "⚠️ 網路閃斷，重連中..."; document.getElementById('sys-status').style.color = "var(--red)"; setTimeout(refresh, 5000); });
+        // 💡 輔助函式：判斷是否該掛上閃爍類別
+        function getFlashClass(triggerTs) {
+            if (!triggerTs) return "";
+            const now = Date.now() / 1000; // 轉換為秒
+            const diff = now - triggerTs;
+            if (diff < 5) return "flash-active";     // 5 秒內：狂閃
+            if (diff < 120) return "flash-settled";  // 5~120秒內：維持紫色底色 (2分鐘後自動消退，保持畫面乾淨)
+            return "";
         }
 
         function highlightElites(text, elites, trends) {
@@ -392,11 +401,21 @@
             return res;
         }
 
+        function refresh() {
+            fetch('/data?t=' + Date.now())
+                .then(r => r.json())
+                .then(d => { brain = d; refreshUI(d); setTimeout(refresh, 5000); })
+                .catch(e => { document.getElementById('sys-status').innerText = "⚠️ 網路閃斷，重連中..."; document.getElementById('sys-status').style.color = "var(--red)"; setTimeout(refresh, 5000); });
+        }
+
         function refreshUI(d) {
             if (!d) return;
             document.getElementById('sys-status').innerText = `📡 數據更新: ${d.last_update || '--:--:--'}`;
             document.getElementById('sys-status').style.color = "var(--green)";
             
+            // ==================
+            // 1. 即時動能日誌 (surge_log)
+            // ==================
             let h1 = "";
             (d.surge_log || []).forEach(r => {
                 if (r.Type === 'fund' && !showETF) return; 
@@ -405,7 +424,10 @@
      
                 let rowClass = r.Status ? `tr-${r.Status}` : ""; if (r.Signal && r.Signal.includes("⚡VCP")) rowClass += " tr-vcp"; if (isFatal) rowClass += " trap-row"; 
                 let f_float = r.Type === 'fund' ? '<span style="color:var(--border);">N/A(ETF)</span>' : (r.Float||'-');
-                let f_vol = r.Is100K ? `<span class="vol-100k">${r.Vol}</span>` : (r.Vol||"-");
+                
+                // 💡 【閃爍植入點：日誌的成交量】
+                let flashClass = getFlashClass(r.SignalTS);
+                let f_vol = `<span class="${r.Is100K ? 'vol-100k' : ''} ${flashClass}" style="${flashClass ? 'padding:2px 6px; display:inline-block;' : ''}">${r.Vol}</span>`;
 
                 h1 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                     <td class="status-indicator"></td><td style="color:var(--text-muted);">${r.Time||'-'}</td><td class="sym">${r.Code}${icon}</td>
@@ -415,18 +437,20 @@
                     <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'} <small style="color:var(--text-muted);">(${r.Amt||'-'})</small></td><td style="font-weight:bold; color:${r.Signal.includes('🎯') ? 'var(--neon-green)' : 'inherit'};">${r.Signal||'-'}</td>
                 </tr>`;
                 
-                // 💡 確保音量 100% 播放
                 if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { 
                     played[r.SignalTS] = r.SignalTS; 
                     let audioToPlay = sounds[r.Audio] || sounds.nova;
                     audioToPlay.volume = 1.0; 
                     audioToPlay.currentTime = 0; 
-                    audioToPlay.play().catch(e => console.log("音效未播放，請確保您有在網頁上隨意點擊一次以解鎖")); 
+                    audioToPlay.play().catch(e => console.log("等待使用者解鎖")); 
                     if ("vibrate" in navigator) navigator.vibrate([300, 100, 300, 100, 300]); 
                 }
             });
             document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="10" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
 
+            // ==================
+            // 2. 超新星排行 (leaderboard)
+            // ==================
             let h2 = "", rankData = [...(d.leaderboard || [])].filter(r => !(r?.Type === 'fund' && !showETF));
             rankData.sort((a, b) => {
                 let detA = d.details[a.Code] || {}, detB = d.details[b.Code] || {};
@@ -439,17 +463,24 @@
                 let det = d.details[r.Code] || {}, isFatal = det.IsTrap;
                 let icon = isFatal ? " 💀" : ((det.CatScore||0)>8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
                 let rowClass = `tr-${det.Status || r.Status || 'green'}`; if (isFatal) rowClass += " trap-row";
-                let f_vol = det.Is100K ? `<span class="vol-100k">${r.Vol}</span>` : (r.Vol||"-");
+                
+                // 💡 【閃爍植入點：排行的價格與成交量】
+                let flashClass = getFlashClass(det.TriggerTS);
+                let f_price = `<span class="${flashClass}" style="${flashClass ? 'padding:2px 6px; display:inline-block;' : ''}">${r.Price||'-'}</span>`;
+                let f_vol = `<span class="${det.Is100K ? 'vol-100k' : ''} ${flashClass}" style="${flashClass ? 'padding:2px 6px; display:inline-block;' : ''}">${r.Vol||'-'}</span>`;
 
                 h2 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                     <td class="status-indicator"></td><td class="sym">${r.Code}${icon}</td><td>${r.Type==='fund'?'N/A':(r.Float||det.Float||"-")}</td>
-                    <td>${r.Price||'-'}</td><td><b style="color:var(--yellow);">${det.RelVol||r.RelVol||'-'}</b></td>
+                    <td>${f_price}</td><td><b style="color:var(--yellow);">${det.RelVol||r.RelVol||'-'}</b></td>
                     <td>${formatVolAcc(det.VolAcc||r.VolAcc)}</td>
                     <td>${f_vol}</td><td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'} <small style="color:var(--text-muted);">(${det.Amt||r.Amt||'-'})</small></td>
                 </tr>`;
             });
             document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="8" style="text-align:center; padding:20px; color:var(--text-muted);">無符合標的</td></tr>`;
 
+            // ==================
+            // VWAP 略過 (不需閃爍)
+            // ==================
             let h_vwap = "";
             (d.vwap_list || []).forEach(r => {
                 let det = d.details[r.Code] || {};
@@ -457,7 +488,6 @@
                 let rowClass = `tr-${det.Status || r.Status || 'green'}`; if (det.IsTrap) rowClass += " trap-row";
                 let vwapColor = r.VWAP_Rating === 'High' ? 'var(--red)' : (r.VWAP_Rating === 'Mid' ? 'var(--yellow)' : 'var(--neon-green)');
                 let vwapGlow = r.VWAP_Rating === 'High' ? 'text-shadow: 0 0 5px rgba(248,81,73,0.4);' : '';
-                
                 h_vwap += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                     <td class="status-indicator"></td><td class="sym">${r.Code}${icon}</td>
                     <td style="color:${vwapColor}; font-weight:bold; ${vwapGlow}">${r.VWAP_Dev > 0 ? '+'+r.VWAP_Dev : r.VWAP_Dev}%</td>
@@ -470,6 +500,9 @@
             });
             document.getElementById('vwap-list').innerHTML = h_vwap || `<tr><td colspan="8" style="text-align:center; padding:20px; color:var(--text-muted);">尚未掃描到符合條件的動能</td></tr>`;
 
+            // ==================
+            // 3. 情報雷達 (top_catalysts)
+            // ==================
             let h3 = "";
             if (d.top_catalysts && d.top_catalysts.length > 0) {
                 let fVN = d.top_catalysts.find(n => n.NewsList && n.NewsList.length > 0);
@@ -493,11 +526,15 @@
                     let f_Float = n.Type === 'fund' ? 'N/A' : (n.Float || "-"); let f_vol = n.Is100K ? `<span class="vol-100k">${n.Vol||"-"} 📦</span>` : (n.Vol||"-");
                     let rowClass = isElite ? "elite-news-row" : "tr-green"; let titleClass = isElite ? "elite-title" : "";
 
+                    // 💡 【閃爍植入點：新聞的評分與標題】
+                    let flashClass = getFlashClass(latest.fetch_time_ts); // 使用新聞抓取的時間戳
+                    let score_html = `<span class="${flashClass}" style="${flashClass ? 'padding:2px 6px; display:inline-block;' : 'color:' + (f_Score>=6?'var(--yellow)':'var(--text-muted)') + '; font-weight:bold;'}">${f_Score}</span>`;
+
                     h3 += `<tr class="${rowClass}" onclick="loadDetail('${n.Code||n.ticker}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[4]);" ondblclick="openTW('${n.Code||n.ticker}')">
                         <td class="status-indicator" style="background:${f_Score >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
                         <td style="color:${latest.is_today?'#ffa500':'var(--text-muted)'}; font-size:11px;">${latest.time||'-'}</td>
-                        <td class="sym">${n.Code||n.ticker}</td><td style="color:${f_Score>=6?'var(--yellow)':'var(--text-muted)'}; font-weight:bold;">${f_Score}</td>
-                        <td class="${titleClass} news-title-cell" style="font-size:12px; line-height:1.4; max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${hl_text}</td>
+                        <td class="sym">${n.Code||n.ticker}</td><td>${score_html}</td>
+                        <td class="${titleClass} news-title-cell ${flashClass}" style="font-size:12px; line-height:1.4; max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; ${flashClass ? 'padding:2px 6px;' : ''}">${hl_text}</td>
                         <td>${f_Float}</td><td>${f_Price}</td><td><b style="color:var(--yellow);">${n.RelVol||"-"}</b></td>
                         <td>${formatVolAcc(n.VolAcc)}</td><td>${f_vol}</td><td class="${parseFloat(f_Pct)>0?'up':'down'}" style="font-weight:bold;">${f_Pct}</td>
                     </tr>`;
