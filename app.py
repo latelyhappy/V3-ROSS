@@ -220,7 +220,7 @@ def calculate_hft_score(headline, ticker=""):
             total_score += score
             if score >= 10 or data.get("count", 0) >= 3: elite_hits.append(kw)
 
-    for cat in ["RED", "ORANGE", "YELLOW", "CLINICAL_SUCCESS", "COMPLIANCE_WINS"]: # 💡 加入新的生技與合規類別
+    for cat in ["RED", "ORANGE", "YELLOW", "CLINICAL_SUCCESS", "COMPLIANCE_WINS"]: 
         for kw, score in CATALYST_ARMORY.get(cat, {}).items():
             if kw in text: 
                 total_score += score
@@ -643,6 +643,48 @@ def scanner_engine():
                     if is_massive_inflow:
                         final_vol_text = f'<span style="color: #d942f5; font-weight: 900; text-shadow: 0 0 6px rgba(217, 66, 245, 0.5);">📦 {final_vol_text}</span>'
 
+                    # ==========================================
+                    # 💡 核心變動：動量增量過濾邏輯 (Momentum Delta Filter)
+                    # ==========================================
+                    
+                    # 判斷動態門檻 (低價股 3%，中高價股 1.5%)
+                    delta_threshold = 0.03 if p_live < 5.0 else 0.015
+                    
+                    # 讀取上次警報紀錄
+                    last_alert_info = STATE_TRACKER.get(f"{ticker}_last_alert", {"price": p_live, "vol": daily_vol})
+                    last_alert_price = last_alert_info["price"]
+                    last_alert_vol = last_alert_info["vol"]
+                    
+                    # 計算增量變化
+                    price_change_ratio = (p_live - last_alert_price) / last_alert_price if last_alert_price > 0 else 0.0
+                    vol_increase = daily_vol - last_alert_vol
+                    
+                    # 判定是否需要發出「新的」閃爍觸發指令 (TriggerType)
+                    trigger_type = "none"
+                    delta_pct_str = ""
+                    
+                    # 1. 價格大幅上漲
+                    if price_change_ratio >= delta_threshold:
+                        trigger_type = "up"
+                        delta_pct_str = f"+{(price_change_ratio*100):.1f}% ↗"
+                        # 更新基準點
+                        STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
+                        
+                    # 2. 價格大幅下跌
+                    elif price_change_ratio <= -delta_threshold:
+                        trigger_type = "down"
+                        delta_pct_str = f"{(price_change_ratio*100):.1f}% ↘"
+                        # 更新基準點
+                        STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
+                        
+                    # 3. 雖然價格沒大變，但成交量突然暴增 (例如突然多 500K 或增加 100%)
+                    elif vol_increase > 500000 or (last_alert_vol > 0 and vol_increase / last_alert_vol > 1.0):
+                        trigger_type = "vol_spike"
+                        delta_pct_str = f"📦 大單"
+                        # 更新基準點
+                        STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
+
+
                     with brain_lock:
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "StickySignal": "", "StickyColor": "green", "StickyTime": 0})
                         
@@ -667,7 +709,11 @@ def scanner_engine():
                             "Float": float_str, "Type": stat_data.get('type', 'stock'), "VolAcc": vol_acc_str, "Is100K": False, 
                             "SN_Score": sn_score, "VsaState": 0, "VR_Acc": vr_acc, "VWAP_Dev": vwap_dev, "VWAP_Rating": vwap_rating,
                             "EMA9": curr_ema9, "EMA52": curr_ema52,
-                            "TriggerTS": now_ts # 💡 新增：統一的毫秒級時間戳，供前端判斷閃爍動畫使用
+                            
+                            # 💡 傳遞動能變量給前端
+                            "TriggerType": trigger_type, 
+                            "DeltaStr": delta_pct_str,
+                            "TriggerTS": now_ts if trigger_type != "none" else cell.get("TriggerTS", 0) 
                         }
                         
                         cell.update(stats)
