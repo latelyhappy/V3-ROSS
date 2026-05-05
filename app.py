@@ -30,6 +30,8 @@ import yfinance as yf
 
 # 匯入 Alpaca 混合引擎
 from alpaca_worker import init_alpaca
+# 💡 匯入 V46 數據收集器
+import collector
 
 brain_lock = threading.RLock() 
 TRENDS_FILE_PATH = os.path.join(os.path.dirname(__file__), 'trends.json')
@@ -172,7 +174,8 @@ def get_live_trends():
     return _cached_trends
 
 def is_news_echo(new_title, new_dt_tpe, existing_news_list):
-    new_words = set(re.findall(r'\b[A-Z]{4,}\b', new_title.upper()))
+    # 💡 V46 升級：字元限制從 4 放寬為 3，確保抓到 FDA、SMR、IPO
+    new_words = set(re.findall(r'\b[A-Z]{3,}\b', new_title.upper()))
     if not new_words: return False
     for n in existing_news_list:
         try:
@@ -180,7 +183,7 @@ def is_news_echo(new_title, new_dt_tpe, existing_news_list):
             old_dt_tpe = datetime.strptime(old_dt_str, "%Y-%m-%d %H:%M")
             old_dt_tpe = TZ_TW.localize(old_dt_tpe)
             if abs((new_dt_tpe - old_dt_tpe).total_seconds()) <= 10800:
-                old_words = set(re.findall(r'\b[A-Z]{4,}\b', n['raw_title'].upper()))
+                old_words = set(re.findall(r'\b[A-Z]{3,}\b', n['raw_title'].upper()))
                 if old_words:
                     overlap = len(new_words.intersection(old_words)) / len(new_words.union(old_words))
                     if overlap >= 0.6: return True
@@ -193,6 +196,7 @@ def calculate_hft_score(headline, ticker=""):
     elite_hits = []
 
     reload_armory()
+    INVERTED_TRAPS = list(CATALYST_ARMORY.get("INVERTED_TRAPS", {}).keys())
     HINDSIGHT_TRAPS = list(CATALYST_ARMORY.get("HINDSIGHT_NOISE", {}).keys())
     TOXIC_OFFERINGS = list(CATALYST_ARMORY.get("TOXIC_OFFERINGS", {}).keys())
     CLASS_ACTION_SPAM = list(CATALYST_ARMORY.get("CLASS_ACTION_SPAM", {}).keys())
@@ -202,17 +206,27 @@ def calculate_hft_score(headline, ticker=""):
 
     if "?" in text or any(trap in text for trap in HINDSIGHT_TRAPS) or all(x in text for x in ["WHY", "IS"]) or all(x in text for x in ["WHY", "ARE"]):
         return 0, False, []
-    if any(trap in text for trap in TOXIC_OFFERINGS): return -50, True, [] 
     if any(trap in text for trap in CLASS_ACTION_SPAM): return 0, False, []
     if any(mc in text for mc in MEGACAPS):
         partnership_words = ["PARTNERSHIP", "COLLABORATION", "CONTRACT", "AGREEMENT", "JOINS", "INTEGRATES"]
         if not any(pw in text for pw in partnership_words): return 0, False, [] 
     if any(trap in text for trap in EARNINGS_PREVIEW): return 0, False, []
 
+    # 💡 毒藥與解藥邏輯 (V46)：先扣分，如果看到解藥再加回來
+    is_toxic = False
+    for kw, score in CATALYST_ARMORY.get("TOXIC_OFFERINGS", {}).items():
+        if kw in text: 
+            total_score += score
+            is_toxic = True
+    
+    for kw, score in CATALYST_ARMORY.get("INVERTED_TRAPS", {}).items():
+        if kw in text:
+            total_score += score
+            is_toxic = False # 被解藥化解，解除陷阱狀態
+            elite_hits.append(kw)
+
     for kw, score in MA_WORDS.items():
         if kw in text: total_score += score
-    for kw, score in CATALYST_ARMORY.get("BLACK", {}).items():
-        if kw in text: return -100, True, []
         
     for kw, data in get_live_trends().items():
         if kw in text:
@@ -220,13 +234,14 @@ def calculate_hft_score(headline, ticker=""):
             total_score += score
             if score >= 10 or data.get("count", 0) >= 3: elite_hits.append(kw)
 
-    for cat in ["RED", "ORANGE", "YELLOW", "CLINICAL_SUCCESS", "COMPLIANCE_WINS"]: 
+    # 包含 V45 的所有生技與熱點分類
+    for cat in ["CLINICAL_SUCCESS", "COMPLIANCE_WINS", "THEMATIC_TRENDS"]: 
         for kw, score in CATALYST_ARMORY.get(cat, {}).items():
             if kw in text: 
                 total_score += score
                 if score >= 8: elite_hits.append(kw)
                 
-    return total_score, False, elite_hits
+    return total_score, is_toxic, elite_hits
 
 def extract_top_catalysts(master_brain):
     top_list = []
@@ -285,7 +300,9 @@ def fetch_and_score_news(ticker, cell, force=False):
                 if raw_t in finnhub_titles: continue 
         
                 if is_news_echo(raw_t, dt_tpe, cell.get('NewsList', [])):
-                    score = 0; is_trap = False; elites = []; raw_t = "[Echo] " + raw_t
+                    # 💡 重複新聞 (Echo) 不直接歸零，保留原始分數並打上標記
+                    score, is_trap, elites = calculate_hft_score(raw_t, ticker)
+                    raw_t = "[Echo] " + raw_t
                 else:
                     score, is_trap, elites = calculate_hft_score(raw_t, ticker)
                 
@@ -343,7 +360,8 @@ def finnhub_news_monitor_worker():
                             with brain_lock:
                                 cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": []})
                                 if is_news_echo(art_headline, dt_tpe, cell.get('NewsList', [])):
-                                    score = 0; is_trap = False; elites = []; art_headline = "[Echo] " + art_headline
+                                    score, is_trap, elites = calculate_hft_score(art_headline, ticker)
+                                    art_headline = "[Echo] " + art_headline
                                 else:
                                     score, is_trap, elites = calculate_hft_score(art_headline, ticker)
 
@@ -497,6 +515,9 @@ def scanner_engine():
                     v_live = float(df['volume'].iloc[-1])
                     v_prev = float(df['volume'].iloc[-2]) if len(df) > 1 else v_live
                     
+                    # 💡 持續更新大數據資料庫中該股的 15 分鐘最高點
+                    collector.update_max_price(ticker, p_live)
+                    
                     daily_vol = int(today_df['volume'].sum()) if not today_df.empty else int(v_live)
 
                     try:
@@ -552,13 +573,11 @@ def scanner_engine():
                     curr_ema52 = float(df['close'].ewm(span=52, adjust=False).mean().iloc[-1]) if len(df) >= 52 else p_live
                     past_high = float(df['high'].iloc[-11:-1].max()) if len(df) >= 11 else p_live
                     
-                    # 💡 【基礎進階戰術警報】
                     is_spark = bool(((rel_vol_live >= 2.5 and p_live >= past_high) or (rel_vol_prev >= 2.5 and p_prev >= past_high)) and (real_pct > 3.0))
                     is_ross_match = bool(real_pct >= 4.0 and float_m <= 50.0 and rel_vol_display >= 1.8)
                     is_vwap_breakout = bool(p_prev < current_vwap and p_live > current_vwap and rel_vol_display >= 1.5 and float_m <= 50.0)
                     is_dead_bounce = bool((p_live < current_vwap) and (curr_ema9 < curr_ema20) and (real_pct > 0))
 
-                    # 💡 【高階戰術：牛旗微回撤突破】
                     is_micro_pullback = False
                     if len(df) >= 3 and float_m <= 50.0:
                         prev_open = float(df['open'].iloc[-2])
@@ -567,7 +586,6 @@ def scanner_engine():
                             if p_live > prev_high and rel_vol_live >= 1.5:
                                 is_micro_pullback = True
 
-                    # 💡 【高階戰術：整數關卡磁吸】
                     is_whole_dollar = False
                     if float_m <= 50.0 and rel_vol_display >= 1.5 and p_live > p_prev:
                         remainder = p_live % 1.0
@@ -575,7 +593,6 @@ def scanner_engine():
                             is_whole_dollar = True
                             target_dollar = math.ceil(p_live)
 
-                    # 📦 爆量箱子(大量進場)
                     is_massive_inflow = False
                     if len(df) >= 10:
                         recent_vol_max = float(df['volume'].iloc[-11:-1].max()) if len(df) >= 11 else v_live
@@ -603,7 +620,13 @@ def scanner_engine():
                             else:
                                 vol_acc_str = f"{sym_up} {ratio_3v3:.2f}x" if vol_A > vol_B else f"↘ {ratio_3v3:.2f}x"
 
-                    sn_score = int(round((stat_data.get('float_comp', 0) + real_pct) * (ratio_3v3 if ratio_3v3 > 1.0 else 0.5)))
+                    # 💡 V46：物理乘數 (Float Multiplier)
+                    base_sn_score = (stat_data.get('float_comp', 0) + real_pct) * (ratio_3v3 if ratio_3v3 > 1.0 else 0.5)
+                    if float_m < 2.0:
+                        base_sn_score *= 2.5 # 妖股加乘
+                    elif float_m > 80.0:
+                        base_sn_score = min(base_sn_score, 30.0) # 巨頭封頂
+                    sn_score = int(round(base_sn_score))
                     
                     vol_warn = " (⚠️量低)" if (p_live * max(v_live, v_prev, avg_vol)) < 50000 else ""
                     if not is_continuous:
@@ -638,57 +661,47 @@ def scanner_engine():
                             current_signal = f"📦爆量箱子(大量進場){vol_warn}"
                         status_color = "purple"
 
-                    # 💡 【動態文字變色】：當下爆量時，交易量文字瞬間變紫色
                     final_vol_text = format_vol(daily_vol)
                     if is_massive_inflow:
                         final_vol_text = f'<span style="color: #d942f5; font-weight: 900; text-shadow: 0 0 6px rgba(217, 66, 245, 0.5);">📦 {final_vol_text}</span>'
 
-                    # ==========================================
-                    # 💡 核心變動：動量增量過濾邏輯 (Momentum Delta Filter)
-                    # ==========================================
-                    
-                    # 判斷動態門檻 (低價股 3%，中高價股 1.5%)
                     delta_threshold = 0.03 if p_live < 5.0 else 0.015
-                    
-                    # 讀取上次警報紀錄
                     last_alert_info = STATE_TRACKER.get(f"{ticker}_last_alert", {"price": p_live, "vol": daily_vol})
                     last_alert_price = last_alert_info["price"]
                     last_alert_vol = last_alert_info["vol"]
-                    
-                    # 計算增量變化
                     price_change_ratio = (p_live - last_alert_price) / last_alert_price if last_alert_price > 0 else 0.0
                     vol_increase = daily_vol - last_alert_vol
                     
-                    # 判定是否需要發出「新的」閃爍觸發指令 (TriggerType)
                     trigger_type = "none"
                     delta_pct_str = ""
                     
-                    # 1. 價格大幅上漲
                     if price_change_ratio >= delta_threshold:
                         trigger_type = "up"
                         delta_pct_str = f"+{(price_change_ratio*100):.1f}% ↗"
-                        # 更新基準點
                         STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
-                        
-                    # 2. 價格大幅下跌
                     elif price_change_ratio <= -delta_threshold:
                         trigger_type = "down"
                         delta_pct_str = f"{(price_change_ratio*100):.1f}% ↘"
-                        # 更新基準點
                         STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
-                        
-                    # 3. 雖然價格沒大變，但成交量突然暴增 (例如突然多 500K 或增加 100%)
                     elif vol_increase > 500000 or (last_alert_vol > 0 and vol_increase / last_alert_vol > 1.0):
                         trigger_type = "vol_spike"
                         delta_pct_str = f"📦 大單"
-                        # 更新基準點
                         STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
-
 
                     with brain_lock:
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "StickySignal": "", "StickyColor": "green", "StickyTime": 0})
                         
-                        # 💡 【跨表持久標示 (15分鐘餘溫) + 接收 Alpaca 即時警報】
+                        # 💡 V46: 情緒反轉 (Sentiment Flip) 偵測
+                        has_sentiment_flip = False
+                        if cell.get("CatScore", 0) < 0 and p_live > current_vwap and curr_ema9 > curr_ema20:
+                            # 利空不跌，強行校正
+                            cell["CatScore"] = 60
+                            cell["IsTrap"] = False
+                            has_sentiment_flip = True
+                            if not current_signal: current_signal = "🚀"
+                            current_signal += " [💎 利空不跌]"
+                            status_color = "purple"
+                        
                         if current_signal:
                             if "⚡" in cell.get("StickySignal", "") and now_ts - cell.get("StickyTime", 0) < 15:
                                 current_signal = current_signal + " [⚡極速]"
@@ -709,11 +722,10 @@ def scanner_engine():
                             "Float": float_str, "Type": stat_data.get('type', 'stock'), "VolAcc": vol_acc_str, "Is100K": False, 
                             "SN_Score": sn_score, "VsaState": 0, "VR_Acc": vr_acc, "VWAP_Dev": vwap_dev, "VWAP_Rating": vwap_rating,
                             "EMA9": curr_ema9, "EMA52": curr_ema52,
-                            
-                            # 💡 傳遞動能變量給前端
                             "TriggerType": trigger_type, 
                             "DeltaStr": delta_pct_str,
-                            "TriggerTS": now_ts if trigger_type != "none" else cell.get("TriggerTS", 0) 
+                            "TriggerTS": now_ts if trigger_type != "none" else cell.get("TriggerTS", 0),
+                            "HasSentimentFlip": has_sentiment_flip # 傳遞給前端渲染金黃色標籤
                         }
                         
                         cell.update(stats)
@@ -722,7 +734,6 @@ def scanner_engine():
                             last_trigger_time = cooldown_tracker.get(ticker, 0)
                             last_massive_time = STATE_TRACKER.get(f"{ticker}_massive", 0)
                             
-                            # 💡 終極防爆鎖定：常規訊號與紫色爆量獨立冷卻，互不干擾且絕不洗版！
                             can_trigger = False
                             if now_ts - last_trigger_time > 60:
                                 can_trigger = True
@@ -734,12 +745,17 @@ def scanner_engine():
                                 cooldown_tracker[ticker] = now_ts 
                                 
                                 is_sec_trap = check_sec_fatal_traps(ticker)
-                                if is_sec_trap:
+                                if is_sec_trap and not has_sentiment_flip:
                                     stats["Signal"] += " 💀(SEC陷阱)"
                                     cell["IsTrap"] = True
                                     
                                 MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova"})
                                 MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
+                                
+                                # 💡 V46: 觸發大數據記錄 (只記錄帶有新聞的爆發)
+                                if cell.get('NewsList'):
+                                    headline = cell['NewsList'][0].get('raw_title', '')
+                                    collector.log_event(ticker, headline, float_m, float(p_live))
                                 
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
                 except Exception as e: return
@@ -783,7 +799,8 @@ def auto_trend_updater():
                             for news in data.get('NewsList', []):
                                 if news.get('is_today'):
                                     title = news.get('raw_title', '').upper()
-                                    words = set(re.findall(r'\b[A-Z]{4,}\b', title))
+                                    # 💡 V46 升級：字元限制從 4 放寬為 3
+                                    words = set(re.findall(r'\b[A-Z]{3,}\b', title))
                                     words = words - stop_words
                                     words = {w for w in words if not any(trap in w for trap in hindsight) and not any(trap in w for trap in toxic)}
                                     for w in words:
@@ -836,6 +853,14 @@ def export_news():
     df = pd.DataFrame(rows); output = io.BytesIO(); df.to_csv(output, index=False, encoding='utf-8-sig'); output.seek(0)
     return send_file(output, mimetype='text/csv', as_attachment=True, download_name="news.csv")
 
+# 💡 V46: 新增匯出戰略情報數據庫的 API
+@app.route('/api/export_intelligence')
+def export_intelligence():
+    export_path = collector.export_to_json()
+    if export_path and os.path.exists(export_path):
+        return send_file(export_path, mimetype='application/json', as_attachment=True, download_name="sniper_intelligence_export.json")
+    return jsonify({"status": "error", "message": "無已結案資料可匯出"}), 404
+
 @app.route('/api/drafts', methods=['GET'])
 def get_drafts():
     if os.path.exists(TRENDS_DRAFT_PATH):
@@ -880,6 +905,7 @@ def data():
     return jsonify(safe_brain)
 
 if __name__ == '__main__':
+    collector.init_db() # 💡 初始化戰略數據庫
     load_float_cache()
     load_intraday_state()
     threading.Thread(target=state_auto_save_worker, daemon=True).start()
@@ -887,8 +913,6 @@ if __name__ == '__main__':
     threading.Thread(target=finnhub_news_monitor_worker, daemon=True).start()
     threading.Thread(target=auto_trend_updater, daemon=True).start()
     
-    # 💡 喚醒 Alpaca 毫秒級火控雷達
     init_alpaca(MASTER_BRAIN, DYNAMIC_WATCHLIST, brain_lock)
     
-    # 💡 強制關閉 Flask 自動重載，防止雙線程衝突
     app.run(host='0.0.0.0', port=PORT, use_reloader=False)

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V45 - Chimera Fire Control</title>
+    <title>Sniper V46 - Chimera Fire Control</title>
     <script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
     <style>
         :root { 
@@ -38,7 +38,6 @@
         tr.tr-red .status-indicator { background: var(--red); } tr.tr-border .status-indicator { background: var(--text-muted); }
         tr.tr-vcp { background: rgba(227, 179, 65, 0.08); } 
         
-        /* 💡 動量增量閃爍系統：定義紫色(上漲)與紅色(下跌)動畫 */
         @keyframes flash-purple {
             0% { background-color: rgba(163, 113, 247, 0.8); color: white; text-shadow: 0 0 10px rgba(255,255,255,0.8); box-shadow: inset 0 0 20px rgba(163, 113, 247, 1); }
             50% { background-color: rgba(163, 113, 247, 0.2); color: var(--neon-purple); text-shadow: none; box-shadow: none; }
@@ -48,6 +47,11 @@
             0% { background-color: rgba(248, 81, 73, 0.8); color: white; text-shadow: 0 0 10px rgba(255,255,255,0.8); box-shadow: inset 0 0 20px rgba(248, 81, 73, 1); }
             50% { background-color: rgba(248, 81, 73, 0.2); color: var(--red); text-shadow: none; box-shadow: none; }
             100% { background-color: rgba(248, 81, 73, 0.8); color: white; text-shadow: 0 0 10px rgba(255,255,255,0.8); box-shadow: inset 0 0 20px rgba(248, 81, 73, 1); }
+        }
+        @keyframes gold-glow {
+            0% { box-shadow: 0 0 5px rgba(255, 215, 0, 0.4); border-color: rgba(255, 215, 0, 0.4); }
+            50% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.8); border-color: rgba(255, 215, 0, 1); }
+            100% { box-shadow: 0 0 5px rgba(255, 215, 0, 0.4); border-color: rgba(255, 215, 0, 0.4); }
         }
 
         .flash-active-up { animation: flash-purple 0.8s infinite; border-radius: 4px; font-weight: 900 !important; }
@@ -74,6 +78,8 @@
         .elite-title { color: #e1e4e8 !important; } 
         .neon-word { color: var(--neon-green); font-weight: 900; text-shadow: 0 0 5px rgba(57,255,20,0.4); }
         .vol-100k { color: var(--neon-purple); font-weight: bold; text-shadow: 0 0 5px rgba(210,146,255,0.3); } 
+        
+        .echo-badge { background: rgba(88,166,255,0.15); color: var(--blue); padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; margin-right: 5px; border: 1px solid rgba(88,166,255,0.3); }
 
         #mobile-tabs { display: none; }
         
@@ -103,7 +109,7 @@
         <button id="test-audio-btn" class="ghost-btn" style="border-color:var(--purple); color:var(--purple);" onclick="testAudio()">🎵 測試音效</button>
         
         <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 ETF</button>
-        <button class="ghost-btn" style="border-color:var(--neon-green); color:var(--neon-green);" onclick="checkDrafts()">📝 審核 AI 草稿</button>
+        <button id="draft-btn" class="ghost-btn" style="border-color:var(--neon-green); color:var(--neon-green);" onclick="checkDrafts()">📝 審核 AI 草稿</button>
         
         <div style="display:flex; align-items:center; border:1px solid var(--border); border-radius:6px; padding:2px 5px; margin-right:10px; background:rgba(0,0,0,0.2); flex-shrink: 0;">
             <button style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-weight:bold; padding:0 8px; font-size:14px; outline:none;" onclick="changeZoom(-0.1)">-</button>
@@ -114,7 +120,9 @@
         <button class="ghost-btn" style="border-color:var(--blue); color:var(--blue);" onclick="showAITrends()">🧠 AI 戰果詞庫</button>
         <button id="mode-btn" class="ghost-btn" style="border-color:var(--yellow); color:var(--yellow);" onclick="toggleMode()">📱 切換手機版</button>
         <button class="ghost-btn" onclick="resetLayout()">🔄 重置網格</button>
-        <button class="ghost-btn" style="border-color:var(--neon-purple); color:var(--neon-purple);" onclick="exportNewsExcel()">📥 匯出實驗報表</button>
+        
+        <!-- 💡 V46：將匯出舊版 CSV 改為匯出戰略大數據 JSON -->
+        <button class="ghost-btn" style="border-color:var(--neon-purple); color:var(--neon-purple);" onclick="exportIntelligence()">📥 匯出戰略情報</button>
         
         <div style="font-size: 13px; color: var(--text-muted); font-family: monospace; margin-left:10px; flex-shrink: 0;">TPE: <span id="sys-clock" style="color: var(--text-main); font-weight: bold;">--:--:--</span></div>
         <span id="sys-status" style="margin-left:auto; font-size:11px; color: var(--text-muted); padding-left: 15px;">📡 系統初始化...</span>
@@ -263,16 +271,32 @@
             sounds.nova.play().then(() => { alert("✅ 音效測試成功！聲音正常播放。"); }).catch(e => { alert("❌ 音效播放失敗！\n\n您的瀏覽器強制封鎖了音效。請點擊網頁空白處後再測試一次。\n錯誤細節：" + e.message); });
         }
 
+        // 💡 V46: 背景輪詢檢查是否有新的 AI 草稿
+        function silentCheckDrafts() {
+            fetch('/api/drafts').then(r => r.json()).then(data => {
+                let btn = document.getElementById('draft-btn');
+                if (Object.keys(data).length > 0) {
+                    btn.classList.add('flash-active-up');
+                    btn.innerText = "📝 新草稿待審!";
+                } else {
+                    btn.classList.remove('flash-active-up');
+                    btn.innerText = "📝 審核 AI 草稿";
+                }
+            }).catch(e => {});
+        }
+        setInterval(silentCheckDrafts, 60000);
+        setTimeout(silentCheckDrafts, 2000);
+
         function checkDrafts() {
             fetch('/api/drafts').then(r => r.json()).then(data => {
                 let words = Object.keys(data);
-                if (words.length === 0) { alert("🤖 目前沒有新的 AI 學習草稿。\n系統會在每日美東時間 16:30 自動分析當日暴漲股並生成。"); return; }
+                if (words.length === 0) { alert("🤖 目前沒有新的 AI 學習草稿。\n系統會在盤中追蹤暴漲單字並自動生成。"); return; }
                 let w = words[0]; let info = data[w];
                 let msg = `🤖 AI 自動學習系統發現高勝率單字！\n\n📌 關鍵字: ${w}\n📊 歷史最高平均漲幅: +${info.avg_impact_pct}%\n🔍 觸發次數: ${info.count} 次\n📝 備註: ${info.note}\n\n您要將此單字加入實戰詞庫 (trends.json) 嗎？`;
                 if (confirm(msg)) { processDraft(w, 'approve'); } else { if(confirm("要將此單字從草稿中刪除嗎？")) { processDraft(w, 'reject'); } }
             });
         }
-        function processDraft(word, action) { fetch('/api/approve_draft', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({word: word, action: action}) }).then(() => { checkDrafts(); }); }
+        function processDraft(word, action) { fetch('/api/approve_draft', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({word: word, action: action}) }).then(() => { silentCheckDrafts(); checkDrafts(); }); }
 
         let wakeLock = null;
         async function requestWakeLock() {
@@ -334,7 +358,7 @@
 
         function showAITrends() {
             if (!brain || !brain.live_trends) return alert("📡 系統尚未載入...");
-            let msg = `🔥 V45 戰果加權 NLP 詞庫：\n📅 更新時間：${brain.trends_date || '即時同步'}\n\n`;
+            let msg = `🔥 V46 戰果加權 NLP 詞庫：\n📅 更新時間：${brain.trends_date || '即時同步'}\n\n`;
             Object.keys(brain.live_trends).forEach(k => { 
                 let data = brain.live_trends[k];
                 let score = typeof data === 'object' ? (data.score || 5) : data;
@@ -344,12 +368,12 @@
             alert(msg);
         }
 
-        function exportNewsExcel() {
-            document.getElementById('sys-status').innerText = "⏳ 正在生成 Excel 實驗報表...";
+        function exportIntelligence() {
+            document.getElementById('sys-status').innerText = "⏳ 正在打包戰略數據庫...";
             document.getElementById('sys-status').style.color = "var(--yellow)";
-            window.location.href = '/api/export_news';
+            window.location.href = '/api/export_intelligence';
             setTimeout(() => {
-                document.getElementById('sys-status').innerText = "✅ 報表匯出指令已發送";
+                document.getElementById('sys-status').innerText = "✅ 戰略情報已匯出";
                 document.getElementById('sys-status').style.color = "var(--green)";
             }, 2000);
         }
@@ -384,7 +408,6 @@
 
         setInterval(() => { document.getElementById('sys-clock').innerText = new Date().toLocaleTimeString('zh-TW', {timeZone: 'Asia/Taipei', hour12: false}); }, 1000);
         
-        // 💡 輔助函式：根據 TriggerType 和時間戳返回 CSS 閃爍類別
         function getFlashClass(triggerTs, triggerType) {
             if (!triggerTs || triggerType === "none" || !triggerType) return "";
             const now = Date.now() / 1000;
@@ -392,7 +415,7 @@
             
             if (diff < 5) {
                 if (triggerType === "down") return "flash-active-down";
-                return "flash-active-up"; // up 和 vol_spike 都用紫色閃爍
+                return "flash-active-up"; 
             }
             if (diff < 120) {
                 if (triggerType === "down") return "flash-settled-down";
@@ -401,19 +424,20 @@
             return "";
         }
         
-        // 💡 輔助函式：產生動能標籤
         function getDeltaTag(triggerTs, deltaStr, triggerType) {
             if (!deltaStr || !triggerTs || triggerType === "none") return '<span style="color:var(--text-muted);">-</span>';
             const now = Date.now() / 1000;
-            if (now - triggerTs > 120) return '<span style="color:var(--text-muted);">-</span>'; // 2分鐘後過期
+            if (now - triggerTs > 120) return '<span style="color:var(--text-muted);">-</span>'; 
             
             let color = triggerType === "down" ? "var(--red)" : "var(--neon-purple)";
             return `<span style="color:${color}; font-weight:bold; background:rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; font-size: 11px;">${deltaStr}</span>`;
         }
 
         function highlightElites(text, elites, trends) {
-            if (!elites || elites.length === 0) return text;
-            let res = text;
+            if (!text) return text;
+            let res = text.replace(/\[Echo\] /g, `<span class="echo-badge">🔔 發酵中</span> `);
+            if (!elites || elites.length === 0) return res;
+            
             elites.forEach(w => {
                 let regex = new RegExp(`\\b${w}\\b`, 'gi');
                 let exp = trends && trends[w] && trends[w].avg_impact_pct > 15 ? ` <span style="color:#ffa500; font-size:10px;">(🔥+${trends[w].avg_impact_pct}%)</span>` : "";
@@ -454,12 +478,15 @@
                 }
                 
                 let f_float = r.Type === 'fund' ? '<span style="color:var(--border);">N/A(ETF)</span>' : (r.Float||'-');
-                
-                // 💡 閃爍植入：套用動能增量類別
                 let flashClass = getFlashClass(det.TriggerTS, det.TriggerType);
                 let deltaTag = getDeltaTag(det.TriggerTS, det.DeltaStr, det.TriggerType);
                 let f_price = `<span class="${flashClass}">${r.Price||'-'}</span>`;
                 let f_vol = `<span class="${r.Is100K ? 'vol-100k' : ''} ${flashClass}">${r.Vol}</span>`;
+
+                // 💡 V46: 利空不跌的訊號字體高亮處理
+                let signalColor = "inherit";
+                if (r.Signal && r.Signal.includes('💎')) signalColor = "#ffd700; text-shadow: 0 0 5px rgba(255,215,0,0.5);";
+                else if (r.Signal && r.Signal.includes('🎯')) signalColor = "var(--neon-green)";
 
                 h1 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                     <td class="status-indicator"></td><td style="color:var(--text-muted);">${r.Time||'-'}</td><td class="sym">${r.Code}${icon}</td>
@@ -467,7 +494,7 @@
                     <td>${formatVolAcc(r.VolAcc)}</td>
                     <td>${f_vol}</td>
                     <td>${deltaTag}</td>
-                    <td style="font-weight:bold; color:${r.Signal.includes('🎯') ? 'var(--neon-green)' : 'inherit'};">${r.Signal||'-'}</td>
+                    <td style="font-weight:bold; color:${signalColor};">${r.Signal||'-'}</td>
                 </tr>`;
                 
                 if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { 
@@ -503,7 +530,6 @@
                     else rowClass += " trap-settled";
                 }
                 
-                // 💡 閃爍植入：套用動能增量類別
                 let flashClass = getFlashClass(det.TriggerTS, det.TriggerType);
                 let deltaTag = getDeltaTag(det.TriggerTS, det.DeltaStr, det.TriggerType);
                 let f_price = `<span class="${flashClass}">${r.Price||'-'}</span>`;
@@ -520,7 +546,7 @@
             document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--text-muted);">無符合標的</td></tr>`;
 
             // ==================
-            // VWAP 略過 (不需閃爍，僅套用陷阱修正)
+            // VWAP 略過
             // ==================
             let h_vwap = "";
             (d.vwap_list || []).forEach(r => {
@@ -574,7 +600,6 @@
                     let f_Float = n.Type === 'fund' ? 'N/A' : (n.Float || "-"); let f_vol = n.Is100K ? `<span class="vol-100k">${n.Vol||"-"} 📦</span>` : (n.Vol||"-");
                     let rowClass = isElite ? "elite-news-row" : "tr-green"; let titleClass = isElite ? "elite-title" : "";
 
-                    // 💡 情報雷達使用新聞本身的 fetch_time 來決定閃爍，不受價格增量影響
                     let newsFlashClass = "";
                     if (nowSec - latest.fetch_time_ts < 5) newsFlashClass = "flash-active-up";
                     else if (nowSec - latest.fetch_time_ts < 120) newsFlashClass = "flash-settled-up";
@@ -599,9 +624,15 @@
             activeSym = sym;
             let d = (brain.details && brain.details[sym]) ? brain.details[sym] : null; let rankData = brain.leaderboard ? brain.leaderboard.find(x => x.Code === sym) : null;
             if (!d && !rankData) return;
-            if (!d && rankData) d = { Price:rankData.Price, Pct:rankData.Pct, Vol:rankData.Vol, RelVol:"-", Float:rankData.Type==='fund'?"N/A(ETF)":(rankData.Float||"-"), StopLoss:0, CatScore:0, IsTrap:false, NewsList:[], VolAcc:"-", Is100K:false, SN_Score:0, VsaState:0, VR_Acc:0, VWAP_Dev:0, VWAP_Rating:"Low" };
+            if (!d && rankData) d = { Price:rankData.Price, Pct:rankData.Pct, Vol:rankData.Vol, RelVol:"-", Float:rankData.Type==='fund'?"N/A(ETF)":(rankData.Float||"-"), StopLoss:0, CatScore:0, IsTrap:false, NewsList:[], VolAcc:"-", Is100K:false, SN_Score:0, VsaState:0, VR_Acc:0, VWAP_Dev:0, VWAP_Rating:"Low", HasSentimentFlip:false };
             
             let trapWarn = d.IsTrap ? `<div class="trap-settled" style="border:1px solid var(--red); color:var(--red); padding:8px; margin-bottom:10px; border-radius:6px; font-weight:bold; font-size:13px;">🩸 致命警告：偵測到毒藥增發或退市風險</div>` : "";
+            
+            // 💡 V46: 專屬「利空不跌」警告面板
+            if (d.HasSentimentFlip) {
+                trapWarn = `<div style="border:1px solid rgba(255, 215, 0, 0.6); background: rgba(255, 215, 0, 0.1); color:#ffd700; padding:8px; margin-bottom:10px; border-radius:6px; font-weight:bold; font-size:13px; text-shadow: 0 0 5px rgba(255, 215, 0, 0.5); animation: gold-glow 1.5s infinite;">💎 戰術警報：利空不跌！主力強勢承接 (已校正評分)</div>` + trapWarn;
+            }
+
             let vcpHTML = ""; if (d.Signal && d.Signal.includes("VCP")) { let m = d.Signal.match(/\((\d+)m\)/); let mins = m ? parseInt(m[1]) : 1; vcpHTML = `<div style="font-size:11px; color:var(--text-muted);">⚡ 壓縮蓄力 (${mins} mins)</div><div class="vcp-bar-container"><div class="vcp-bar" style="width:${Math.min(mins*10,100)}%; background:${mins>=10?'#fff':'#ffa500'};"></div></div>`; }
 
             let volHTML = d.Is100K ? `<b class="vol-100k" style="font-size:14px;">${d.Vol||'-'} 📦</b>` : `<b style="color:var(--text-main); font-size:14px;">${d.Vol||'-'}</b>`;
