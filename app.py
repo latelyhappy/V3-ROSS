@@ -33,6 +33,47 @@ from alpaca_worker import init_alpaca
 # 💡 匯入 V46 數據收集器
 import collector
 
+# ==========================================
+# 📡 戰略情報匯出接口 (支援分批與當日過濾)
+# ==========================================
+@app.route('/api/export_intelligence')
+def export_intelligence():
+    """
+    獲取實戰 JSON 檔案。
+    可用參數: ?limit=500 或 ?today=true
+    """
+    # 解析網址參數
+    limit = request.args.get('limit', default=None, type=int)
+    today = request.args.get('today', default='false').lower() == 'true'
+    
+    # 呼叫底層 collector 執行過濾匯出
+    export_path = collector.export_to_json(limit=limit, today_only=today)
+    
+    # 確認檔案存在並發送給使用者下載
+    if export_path and os.path.exists(export_path):
+        # 加上時間戳記避免檔名重複
+        filename = f"sniper_intel_{datetime.now().strftime('%m%d_%H%M')}.json"
+        return send_file(export_path, mimetype='application/json', as_attachment=True, download_name=filename)
+        
+    return jsonify({"status": "error", "message": "無符合條件之資料，或資料庫為空"}), 404
+
+
+# ==========================================
+# 🧠 AI 戰略摘要引擎接口 (減輕大數據分析負擔)
+# ==========================================
+@app.route('/api/intelligence_summary')
+def intelligence_summary():
+    """
+    由後端 Python 直接運算前 50 大高勝率、高漲幅詞彙，
+    輸出輕量化 JSON 報表，供指揮官直接貼給 AI 進行分析。
+    """
+    result = collector.generate_intelligence_summary()
+    
+    if result.get("status") == "success":
+        return jsonify(result), 200
+    else:
+        return jsonify(result), 500
+
 brain_lock = threading.RLock() 
 TRENDS_FILE_PATH = os.path.join(os.path.dirname(__file__), 'trends.json')
 TRENDS_DRAFT_PATH = os.path.join(os.path.dirname(__file__), 'trends_draft.json') 
