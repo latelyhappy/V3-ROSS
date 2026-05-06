@@ -54,11 +54,18 @@
             50% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.8); border-color: rgba(255, 215, 0, 1); }
             100% { box-shadow: 0 0 5px rgba(255, 215, 0, 0.4); border-color: rgba(255, 215, 0, 0.4); }
         }
-        /* 💡 V46: 專屬的狙擊點閃爍特效 */
+        /* 💡 V46: 專屬的狙擊點閃爍特效 (已調暗，護眼溫和呼吸燈) */
         @keyframes sniper-pulse {
-            0% { text-shadow: 0 0 5px rgba(57,255,20,0.5); color: var(--neon-green); }
-            50% { text-shadow: 0 0 20px rgba(57,255,20,1); color: #fff; }
-            100% { text-shadow: 0 0 5px rgba(57,255,20,0.5); color: var(--neon-green); }
+            0% { text-shadow: 0 0 2px rgba(63,185,80,0.3); color: var(--green); }
+            50% { text-shadow: 0 0 8px rgba(57,255,20,0.6); color: var(--neon-green); }
+            100% { text-shadow: 0 0 2px rgba(63,185,80,0.3); color: var(--green); }
+        }
+        .sniper-tag { animation: sniper-pulse 1.5s infinite; font-weight: bold; }
+
+        /* 💡 V46: 動態提醒列剛觸發前 5 秒的專屬戰術底色 */
+        .new-alert-row { 
+            background-color: rgba(88, 166, 255, 0.15) !important; 
+            box-shadow: inset 0 0 10px rgba(88, 166, 255, 0.1);
         }
         .sniper-tag { animation: sniper-pulse 1s infinite; font-weight: 900; }
 
