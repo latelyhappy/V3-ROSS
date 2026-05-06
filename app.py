@@ -1,12 +1,12 @@
 import os
-# 💡 作業系統級消音器：從根源封殺所有 Python 警告！[cite: 5]
+# 💡 作業系統級消音器：從根源封殺所有 Python 警告！[cite: 8]
 os.environ["PYTHONWARNINGS"] = "ignore"
 
 import warnings
 warnings.filterwarnings("ignore")
 
 import logging
-# 💡 封殺第三方套件的底層連線日誌，保持終端機極度乾淨[cite: 5]
+# 💡 封殺第三方套件的底層連線日誌，保持終端機極度乾淨[cite: 8]
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
 logging.getLogger('urllib3').setLevel(logging.CRITICAL)
@@ -28,18 +28,18 @@ from collections import Counter
 import concurrent.futures 
 import yfinance as yf  
 
-# 匯入 Alpaca 混合引擎[cite: 5]
+# 匯入 Alpaca 混合引擎[cite: 8]
 from alpaca_worker import init_alpaca
-# 💡 匯入 V46 數據收集器[cite: 5]
+# 💡 匯入 V46 數據收集器[cite: 8]
 import collector
 
 # ==========================================
-# 💡 必須在這裡初始化 Flask 應用程式！[cite: 5]
+# 💡 必須在這裡初始化 Flask 應用程式！[cite: 8]
 # ==========================================
 app = Flask(__name__)
 
 # ==========================================
-# 📡 戰略情報匯出接口 (支援分批與當日過濾)[cite: 5]
+# 📡 戰略情報匯出接口 (支援分批與當日過濾)[cite: 8]
 # ==========================================
 @app.route('/api/export_intelligence')
 def export_intelligence():
@@ -54,7 +54,7 @@ def export_intelligence():
     return jsonify({"status": "error", "message": "無符合條件之資料，或資料庫為空"}), 404
 
 # ==========================================
-# 🧠 AI 戰略摘要引擎接口[cite: 5]
+# 🧠 AI 戰略摘要引擎接口[cite: 8]
 # ==========================================
 @app.route('/api/intelligence_summary')
 def intelligence_summary():
@@ -247,7 +247,7 @@ def calculate_hft_score(headline, ticker=""):
     EARNINGS_PREVIEW = list(CATALYST_ARMORY.get("EARNINGS_PREVIEW", {}).keys())
     MA_WORDS = CATALYST_ARMORY.get("MEGA_CATALYSTS", {})
 
-    if not is_core: # 如果不是核心情報，再進行常規雜訊過濾
+    if not is_core: 
         if any(mc in text for mc in MEGACAPS):
             partnership_words = ["PARTNERSHIP", "COLLABORATION", "CONTRACT", "AGREEMENT", "JOINS", "INTEGRATES"]
             if not any(pw in text for pw in partnership_words): return -1, False, [] 
@@ -830,7 +830,8 @@ def scanner_engine():
                             can_trigger = False
                             if now_ts - last_trigger_time > 60:
                                 can_trigger = True
-                            elif is_massive_inflow and (now_ts - last_massive_time > 60):
+                            # 💡 V46 縮短爆量箱子冷卻時間至 30 秒，避免錯失連續加倉機會[cite: 8]
+                            elif is_massive_inflow and (now_ts - last_massive_time > 30):
                                 can_trigger = True
                                 
                             if can_trigger:
@@ -842,7 +843,26 @@ def scanner_engine():
                                     stats["Signal"] += " 💀(SEC陷阱)"
                                     cell["IsTrap"] = True
                                     
-                                MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova"})
+                                # 💡 V46 專屬：重要提示音效分級與物理靜音邏輯
+                                alert_audio = None
+
+                                # 1. 物理靜音：陷阱區強制靜音
+                                if "陷阱" in ui_tag or cell.get("IsTrap", False):
+                                    alert_audio = None
+                                # 2. 最高優先級 (nova)
+                                elif "狙擊" in current_signal or has_sentiment_flip:
+                                    alert_audio = "nova"
+                                # 3. 中優先級 (spark)
+                                elif is_vwap_magnet or is_massive_inflow:
+                                    alert_audio = "spark"
+
+                                # 4. 發送警報 (僅當 alert_audio 存在時發出聲音)
+                                if alert_audio:
+                                    MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": alert_audio})
+                                else:
+                                    # 無音效寫入日誌 (保持視覺提醒)
+                                    MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts})
+                                    
                                 MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
                                 
                                 if cell.get('NewsList'):
