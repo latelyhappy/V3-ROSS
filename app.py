@@ -1,12 +1,12 @@
 import os
-# 💡 作業系統級消音器：從根源封殺所有 Python 警告！[cite: 3]
+# 💡 作業系統級消音器：從根源封殺所有 Python 警告！[cite: 5]
 os.environ["PYTHONWARNINGS"] = "ignore"
 
 import warnings
 warnings.filterwarnings("ignore")
 
 import logging
-# 💡 封殺第三方套件的底層連線日誌，保持終端機極度乾淨[cite: 3]
+# 💡 封殺第三方套件的底層連線日誌，保持終端機極度乾淨[cite: 5]
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
 logging.getLogger('urllib3').setLevel(logging.CRITICAL)
@@ -28,59 +28,43 @@ from collections import Counter
 import concurrent.futures 
 import yfinance as yf  
 
-# 匯入 Alpaca 混合引擎[cite: 3]
+# 匯入 Alpaca 混合引擎[cite: 5]
 from alpaca_worker import init_alpaca
-# 💡 匯入 V46 數據收集器[cite: 3]
+# 💡 匯入 V46 數據收集器[cite: 5]
 import collector
 
 # ==========================================
-# 💡 必須在這裡初始化 Flask 應用程式！[cite: 3]
+# 💡 必須在這裡初始化 Flask 應用程式！[cite: 5]
 # ==========================================
 app = Flask(__name__)
 
 # ==========================================
-# 📡 戰略情報匯出接口 (支援分批與當日過濾)[cite: 3]
+# 📡 戰略情報匯出接口 (支援分批與當日過濾)[cite: 5]
 # ==========================================
 @app.route('/api/export_intelligence')
 def export_intelligence():
-    """
-    獲取實戰 JSON 檔案。
-    可用參數: ?limit=500 或 ?today=true
-    """
-    # 解析網址參數[cite: 3]
     limit = request.args.get('limit', default=None, type=int)
     today = request.args.get('today', default='false').lower() == 'true'
-    
-    # 呼叫底層 collector 執行過濾匯出[cite: 3]
     export_path = collector.export_to_json(limit=limit, today_only=today)
     
-    # 確認檔案存在並發送給使用者下載[cite: 3]
     if export_path and os.path.exists(export_path):
-        # 加上時間戳記避免檔名重複[cite: 3]
         filename = f"sniper_intel_{datetime.now().strftime('%m%d_%H%M')}.json"
         return send_file(export_path, mimetype='application/json', as_attachment=True, download_name=filename)
         
     return jsonify({"status": "error", "message": "無符合條件之資料，或資料庫為空"}), 404
 
-
 # ==========================================
-# 🧠 AI 戰略摘要引擎接口 (減輕大數據分析負擔)[cite: 3]
+# 🧠 AI 戰略摘要引擎接口[cite: 5]
 # ==========================================
 @app.route('/api/intelligence_summary')
 def intelligence_summary():
-    """
-    由後端 Python 直接運算前 50 大高勝率、高漲幅詞彙，[cite: 3]
-    輸出輕量化 JSON 報表，供指揮官直接貼給 AI 進行分析。[cite: 3]
-    """
     result = collector.generate_intelligence_summary()
-    
     if result.get("status") == "success":
         return jsonify(result), 200
     else:
         return jsonify(result), 500
 
 brain_lock = threading.RLock() 
-# ✂️ [瘦身] 移除了 TRENDS_DRAFT_PATH
 TRENDS_FILE_PATH = os.path.join(os.path.dirname(__file__), 'trends.json')
 DISCOVERY_LOG_PATH = os.path.join(os.path.dirname(__file__), 'discovery_log.json') 
 SESSION_BACKUP_PATH = os.path.join(os.path.dirname(__file__), 'session_state.json')
@@ -235,28 +219,40 @@ def is_news_echo(new_title, new_dt_tpe, existing_news_list):
     return False
 
 def calculate_hft_score(headline, ticker=""):
+    """
+    💡 V46 情報物理過濾閘門：第一道防線 (Lexical Blacklist)
+    """
     text = (headline or "").upper()
     total_score = 0
     elite_hits = []
 
+    # 🚫 第一防線：垃圾廣告與法律訴訟物理阻斷 (回傳 -1 代表直接丟棄)
+    HARD_TRASH = ["WHY IT'S MOVING", "INVESTOR ALERT", "LAWSUIT", "CLASS ACTION", "INVESTIGATION", "DEADLINE", "TOP STOCK TO BUY", "IS A BUY", "IS THIS STOCK A BUY", "HAGENS BERMAN", "POMERANTZ", "KESSLER TOPAZ", "GLANCY PRONGAY", "BRONSTEIN"]
+    if any(trash in text for trash in HARD_TRASH) or "?" in text or all(x in text for x in ["WHY", "IS"]):
+        return -1, False, []
+
+    # 💎 核心情報置頂：捕捉到黑馬詞彙直接賦予壓倒性高分
+    CORE_WORDS = ["WOLFPACK", "AFRL", "MARINE CORPS", "FDA APPROVAL", "FAST TRACK", "DEPARTMENT OF DEFENSE", "DOD"]
+    is_core = False
+    for kw in CORE_WORDS:
+        if kw in text:
+            total_score += 100
+            elite_hits.append("💎" + kw)
+            is_core = True
+
     reload_armory()
     INVERTED_TRAPS = list(CATALYST_ARMORY.get("INVERTED_TRAPS", {}).keys())
-    HINDSIGHT_TRAPS = list(CATALYST_ARMORY.get("HINDSIGHT_NOISE", {}).keys())
     TOXIC_OFFERINGS = list(CATALYST_ARMORY.get("TOXIC_OFFERINGS", {}).keys())
-    CLASS_ACTION_SPAM = list(CATALYST_ARMORY.get("CLASS_ACTION_SPAM", {}).keys())
     MEGACAPS = list(CATALYST_ARMORY.get("SYMPATHY_MEGACAPS", {}).keys())
     EARNINGS_PREVIEW = list(CATALYST_ARMORY.get("EARNINGS_PREVIEW", {}).keys())
     MA_WORDS = CATALYST_ARMORY.get("MEGA_CATALYSTS", {})
 
-    if "?" in text or any(trap in text for trap in HINDSIGHT_TRAPS) or all(x in text for x in ["WHY", "IS"]) or all(x in text for x in ["WHY", "ARE"]):
-        return 0, False, []
-    if any(trap in text for trap in CLASS_ACTION_SPAM): return 0, False, []
-    if any(mc in text for mc in MEGACAPS):
-        partnership_words = ["PARTNERSHIP", "COLLABORATION", "CONTRACT", "AGREEMENT", "JOINS", "INTEGRATES"]
-        if not any(pw in text for pw in partnership_words): return 0, False, [] 
-    if any(trap in text for trap in EARNINGS_PREVIEW): return 0, False, []
+    if not is_core: # 如果不是核心情報，再進行常規雜訊過濾
+        if any(mc in text for mc in MEGACAPS):
+            partnership_words = ["PARTNERSHIP", "COLLABORATION", "CONTRACT", "AGREEMENT", "JOINS", "INTEGRATES"]
+            if not any(pw in text for pw in partnership_words): return -1, False, [] 
+        if any(trap in text for trap in EARNINGS_PREVIEW): return -1, False, []
 
-    # 💡 毒藥與解藥邏輯 (V46)
     is_toxic = False
     for kw, score in CATALYST_ARMORY.get("TOXIC_OFFERINGS", {}).items():
         if kw in text: 
@@ -266,7 +262,7 @@ def calculate_hft_score(headline, ticker=""):
     for kw, score in CATALYST_ARMORY.get("INVERTED_TRAPS", {}).items():
         if kw in text:
             total_score += score
-            is_toxic = False # 被解藥化解，解除陷阱狀態
+            is_toxic = False 
             elite_hits.append(kw)
 
     for kw, score in MA_WORDS.items():
@@ -348,13 +344,21 @@ def fetch_and_score_news(ticker, cell, force=False):
                 else:
                     score, is_trap, elites = calculate_hft_score(raw_t, ticker)
                 
+                # 🚫 拋棄垃圾新聞
+                if score == -1: continue
+
                 if is_trap: has_trap = True
                 all_elites.update(elites)
                 
+                # 💡 V46 新增置頂標示
+                if any("💎" in e for e in elites):
+                    raw_t = "[💎 核心情報] " + raw_t
+
                 p_news = cell.get('HighVal', 0.0)
                 articles.append({
                     "ticker": ticker, "title": "⏳ 翻譯中...", "raw_title": raw_t,
                     "link": item.find('link').text, "time": dt_tpe.strftime("%m-%d %H:%M"),
+                    "pub_ts": dt_tpe.timestamp(), # 💡 新增真實時間戳記供時效過濾使用
                     "is_today": (dt_tpe.date() == now_tpe.date()), 
                     "score": score, "elites": list(elites), "source": "Yahoo",
                     "p_news": p_news, "max_p_15m": p_news, "fetch_time_ts": time.time()
@@ -407,10 +411,19 @@ def finnhub_news_monitor_worker():
                                 else:
                                     score, is_trap, elites = calculate_hft_score(art_headline, ticker)
 
+                                # 🚫 拋棄垃圾新聞
+                                if score == -1: continue
+
+                                # 💡 V46 新增置頂標示與來源權重加乘 (+20%)
+                                score = int(score * 1.2)
+                                if any("💎" in e for e in elites):
+                                    art_headline = "[💎 核心情報] " + art_headline
+
                                 p_news = cell.get('HighVal', 0.0)
                                 new_article = {
                                     "ticker": ticker, "title": "⏳ 翻譯中...", "raw_title": art_headline, "link": art_url,
-                                    "time": dt_tpe.strftime("%m-%d %H:%M"), "is_today": (dt_tpe.date() == datetime.now(TZ_TW).date()),
+                                    "time": dt_tpe.strftime("%m-%d %H:%M"), "pub_ts": dt_tpe.timestamp(),
+                                    "is_today": (dt_tpe.date() == datetime.now(TZ_TW).date()),
                                     "score": score, "elites": list(elites), "source": "Finnhub PR",
                                     "p_news": p_news, "max_p_15m": p_news, "fetch_time_ts": time.time()
                                 }
@@ -579,8 +592,6 @@ def scanner_engine():
                     rel_vol_prev = float(round(v_prev / avg_vol, 2))
                     rel_vol_display = max(rel_vol_live, rel_vol_prev)
                     
-                    # 💡 V46 物理紅線：ROSS 量比校正
-                    # 如果成交量極小，量比直接歸零，封殺 VECO 假警報
                     if daily_vol < 50000:
                         rel_vol_display = 0.0
 
@@ -616,10 +627,40 @@ def scanner_engine():
                     else:
                         float_str = "未知"
 
+                    # 💡 V46: 實裝 EMA 9-20-50 階梯均線系統
                     curr_ema9 = float(df['close'].ewm(span=9, adjust=False).mean().iloc[-1]) if len(df) >= 9 else p_live
                     curr_ema20 = float(df['close'].ewm(span=20, adjust=False).mean().iloc[-1]) if len(df) >= 20 else p_live
                     curr_ema52 = float(df['close'].ewm(span=52, adjust=False).mean().iloc[-1]) if len(df) >= 52 else p_live
                     past_high = float(df['high'].iloc[-11:-1].max()) if len(df) >= 11 else p_live
+                    
+                    ratio_3v3 = 1.0; vol_acc_str = "-"; vr_acc = 0.0 
+                    if len(df) >= 6:
+                        vol_A = vol_3m
+                        vol_B = float(df['volume'].iloc[-6:-3].sum())
+                        vol_C = float(df['volume'].iloc[-9:-6].sum()) if len(df) >= 9 else 0.0
+                        
+                        if vol_B >= 0: vr_acc = float(round(((vol_A - vol_B) / max(vol_B, 0.01)) * 100, 2))
+                        if vol_B > 0:
+                            ratio_3v3 = float(vol_A / vol_B)
+                            sym_up, sym_extreme = ("↗", "🔥") if p_live >= p_prev else ("🔻", "🩸")
+                            
+                            if len(df) >= 9:
+                                if vol_A > vol_B > vol_C: vol_acc_str = f"{sym_extreme} {ratio_3v3:.2f}x"
+                                elif vol_A > vol_B and vol_B <= vol_C: vol_acc_str = f"{sym_up} {ratio_3v3:.2f}x"
+                                elif vol_A < vol_B < vol_C: vol_acc_str = f"🧊 {ratio_3v3:.2f}x"
+                                elif vol_A < vol_B and vol_B >= vol_C: vol_acc_str = f"↘ {ratio_3v3:.2f}x"
+                                else: vol_acc_str = f"- {ratio_3v3:.2f}x"
+                            else:
+                                vol_acc_str = f"{sym_up} {ratio_3v3:.2f}x" if vol_A > vol_B else f"↘ {ratio_3v3:.2f}x"
+
+                    # 💡 V46: 實裝磁吸噴發預警系統 (Magnet Squeeze)
+                    ema_max = max(curr_ema9, curr_ema20, curr_ema52)
+                    ema_min = min(curr_ema9, curr_ema20, curr_ema52)
+                    is_ema_tight = (ema_max - ema_min) / ema_min < 0.02 # 均線密集糾結於 2% 內
+
+                    is_vwap_magnet = False
+                    if (p_live < current_vwap) and (vwap_dev >= -1.5) and is_ema_tight and (vr_acc > 0 or ratio_3v3 > 1.0) and float_m <= 50.0:
+                        is_vwap_magnet = True
                     
                     is_spark = bool(((rel_vol_live >= 2.5 and p_live >= past_high) or (rel_vol_prev >= 2.5 and p_prev >= past_high)) and (real_pct > 3.0))
                     is_ross_match = bool(real_pct >= 4.0 and float_m <= 50.0 and rel_vol_display >= 1.8)
@@ -647,28 +688,6 @@ def scanner_engine():
                         if v_live > recent_vol_max and v_live >= avg_vol * 3.0 and p_live >= df['open'].iloc[-1]:
                             is_massive_inflow = True
 
-                    ratio_3v3 = 1.0; vol_acc_str = "-"; vr_acc = 0.0 
-                    
-                    if len(df) >= 6:
-                        vol_A = vol_3m
-                        vol_B = float(df['volume'].iloc[-6:-3].sum())
-                        vol_C = float(df['volume'].iloc[-9:-6].sum()) if len(df) >= 9 else 0.0
-                        
-                        if vol_B >= 0: vr_acc = float(round(((vol_A - vol_B) / max(vol_B, 0.01)) * 100, 2))
-                        if vol_B > 0:
-                            ratio_3v3 = float(vol_A / vol_B)
-                            sym_up, sym_extreme = ("↗", "🔥") if p_live >= p_prev else ("🔻", "🩸")
-                            
-                            if len(df) >= 9:
-                                if vol_A > vol_B > vol_C: vol_acc_str = f"{sym_extreme} {ratio_3v3:.2f}x"
-                                elif vol_A > vol_B and vol_B <= vol_C: vol_acc_str = f"{sym_up} {ratio_3v3:.2f}x"
-                                elif vol_A < vol_B < vol_C: vol_acc_str = f"🧊 {ratio_3v3:.2f}x"
-                                elif vol_A < vol_B and vol_B >= vol_C: vol_acc_str = f"↘ {ratio_3v3:.2f}x"
-                                else: vol_acc_str = f"- {ratio_3v3:.2f}x"
-                            else:
-                                vol_acc_str = f"{sym_up} {ratio_3v3:.2f}x" if vol_A > vol_B else f"↘ {ratio_3v3:.2f}x"
-
-                    # 💡 V46：物理乘數 (Float Multiplier)
                     base_sn_score = (stat_data.get('float_comp', 0) + real_pct) * (ratio_3v3 if ratio_3v3 > 1.0 else 0.5)
                     if float_m < 2.0:
                         base_sn_score *= 2.5 
@@ -683,7 +702,6 @@ def scanner_engine():
                     status_color = "green"
                     current_signal = ""
                     
-                    # 💡 V46 前端 UI 標籤判定引擎融合 (保留原有的高級戰術名稱)
                     ui_tag = collector.evaluate_sniper_tags(ticker, float_m, daily_vol, rel_vol_display, real_pct, p_live > current_vwap)
                     
                     if "陷阱" in ui_tag:
@@ -692,10 +710,13 @@ def scanner_engine():
                     else:
                         if "狙擊" in ui_tag:
                             current_signal = "🎯 建議狙擊 "
-                            status_color = "red" # 最高警報色
+                            status_color = "red"
                         
-                        # 疊加原有高級戰術
-                        if is_dead_bounce and is_ross_match:
+                        # 💡 V46 導入磁吸信號優先級
+                        if is_vwap_magnet:
+                            current_signal += f"🧲 磁吸噴發預警{vol_warn}"
+                            if status_color == "green": status_color = "purple"
+                        elif is_dead_bounce and is_ross_match:
                             current_signal += f"🚨水下反彈警報{vol_warn}"
                             if status_color == "green": status_color = "red"
                         elif is_micro_pullback:
@@ -751,6 +772,20 @@ def scanner_engine():
                     with brain_lock:
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "StickySignal": "", "StickyColor": "green", "StickyTime": 0})
                         
+                        # 💡 V46 情報物理過濾閘門：第二道防線 (時效性蒸發)
+                        if "NewsList" in cell:
+                            valid_news = []
+                            for n in cell["NewsList"]:
+                                pub_ts = n.get("pub_ts", now_ts)
+                                # 如果超過 120 分鐘且股價已經跌破 EMA20，判定該情報已失效，自動隱藏
+                                if (now_ts - pub_ts > 7200) and (p_live < curr_ema20):
+                                    continue
+                                valid_news.append(n)
+                            cell["NewsList"] = valid_news
+                            cell["HasNews"] = len(valid_news) > 0
+                            if cell["NewsList"]: cell["CatScore"] = max(n['score'] for n in cell["NewsList"])
+                            else: cell["CatScore"] = 0
+
                         has_sentiment_flip = False
                         if cell.get("CatScore", 0) < 0 and p_live > current_vwap and curr_ema9 > curr_ema20:
                             cell["CatScore"] = 60
@@ -788,7 +823,7 @@ def scanner_engine():
                         
                         cell.update(stats)
                         
-                        if is_ross_match or is_spark or is_dead_bounce or is_massive_inflow or is_vwap_breakout or is_micro_pullback or is_whole_dollar:
+                        if is_vwap_magnet or is_ross_match or is_spark or is_dead_bounce or is_massive_inflow or is_vwap_breakout or is_micro_pullback or is_whole_dollar:
                             last_trigger_time = cooldown_tracker.get(ticker, 0)
                             last_massive_time = STATE_TRACKER.get(f"{ticker}_massive", 0)
                             
@@ -810,7 +845,6 @@ def scanner_engine():
                                 MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": "nova"})
                                 MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
                                 
-                                # 💡 V46: 升級寫入邏輯，傳遞正確參數讓資料庫過濾
                                 if cell.get('NewsList'):
                                     headline = cell['NewsList'][0].get('raw_title', '')
                                     collector.log_event(ticker, headline, float_m, float(p_live), volume=daily_vol, change_percent=real_pct)
@@ -870,7 +904,7 @@ def data():
     return jsonify(safe_brain)
 
 if __name__ == '__main__':
-    collector.init_db() # 💡 初始化戰略數據庫
+    collector.init_db() 
     load_float_cache()
     load_intraday_state()
     threading.Thread(target=state_auto_save_worker, daemon=True).start()

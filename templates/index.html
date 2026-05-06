@@ -67,7 +67,6 @@
             background-color: rgba(88, 166, 255, 0.15) !important; 
             box-shadow: inset 0 0 10px rgba(88, 166, 255, 0.1);
         }
-        .sniper-tag { animation: sniper-pulse 1s infinite; font-weight: 900; }
 
         .flash-active-up { animation: flash-purple 0.8s infinite; border-radius: 4px; font-weight: 900 !important; }
         .flash-active-down { animation: flash-red 0.8s infinite; border-radius: 4px; font-weight: 900 !important; }
@@ -125,7 +124,6 @@
         
         <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 ETF</button>
         
-        <!-- 💡 V46: 移除草稿按鈕，換上戰略報表 -->
         <button id="summary-btn" class="ghost-btn" style="border-color:var(--neon-green); color:var(--neon-green);" onclick="fetchSummary()">📊 高勝率詞彙報表</button>
         
         <div style="display:flex; align-items:center; border:1px solid var(--border); border-radius:6px; padding:2px 5px; margin-right:10px; background:rgba(0,0,0,0.2); flex-shrink: 0;">
@@ -179,25 +177,6 @@
             </div>
         </div>
 
-        <div id="win-vwap" class="window-panel">
-            <div class="panel-header"><span style="color:var(--neon-green); text-shadow:0 0 5px rgba(57,255,20,0.3);">🚀 VWAP 乖離與動能</span></div>
-            <div class="panel-content">
-                <table>
-                    <thead><tr>
-                        <th class="status-indicator"></th>
-                        <th>代碼</th>
-                        <th>VWAP 乖離</th>
-                        <th>量比加速度</th>
-                        <th>漲幅</th>
-                        <th>量比</th>
-                        <th>加速</th>
-                        <th>訊號</th>
-                    </tr></thead>
-                    <tbody id="vwap-list"><tr><td colspan="8" style="text-align:center; padding: 20px; color: var(--text-muted);">掃描中...</td></tr></tbody>
-                </table>
-            </div>
-        </div>
-
         <div id="win-news" class="window-panel">
             <div class="panel-header"><span>🗞️ 情報雷達</span></div>
             <div class="panel-content">
@@ -228,9 +207,9 @@
         </div>
     </div>
 
+    <!-- 💡 移除了手機版的 VWAP 切換按鈕 -->
     <div id="mobile-tabs">
         <button class="tab-btn active" onclick="switchTab('win-rank', this)">🏆 排行</button>
-        <button class="tab-btn" onclick="switchTab('win-vwap', this)">🚀 VWAP</button>
         <button class="tab-btn" onclick="switchTab('win-log', this)">動態</button>
         <button class="tab-btn" onclick="switchTab('win-news', this)">🗞️ 情報</button>
         <button class="tab-btn" onclick="switchTab('win-detail', this)">📊 戰報</button>
@@ -344,7 +323,6 @@
             if (Object.keys(brain).length > 0) refreshUI(brain);
         }
 
-        // 💡 V46: 呼叫後端大數據運算高勝率報表
         function fetchSummary() {
             document.getElementById('sys-status').innerText = "⏳ 正在運算高勝率情報...";
             fetch('/api/intelligence_summary')
@@ -376,16 +354,16 @@
             }, 2000);
         }
 
+        // 💡 重組為 2x2 完美陣型，移除了 win-vwap 的配置
         function initWindowManager() {
             if (isMobileMode) return;
-            const wins = ['win-log', 'win-rank', 'win-news', 'win-detail', 'win-vwap'];
+            const wins = ['win-log', 'win-rank', 'win-news', 'win-detail'];
             let w_half = (window.innerWidth / 2) - 15; let h_half = (window.innerHeight / 2) - 35;
             const defL = {
                 'win-log': {x:10, y:10, w: w_half, h: h_half},
                 'win-detail': {x:10 + w_half + 10, y:10, w: w_half, h: h_half},
                 'win-rank': {x:10, y:10 + h_half + 10, w: w_half, h: h_half},
-                'win-news': {x:10 + w_half + 10, y:10 + h_half + 10, w: w_half, h: h_half},
-                'win-vwap': {x:10 + w_half + 10, y:10 + h_half + 10, w: w_half, h: h_half}
+                'win-news': {x:10 + w_half + 10, y:10 + h_half + 10, w: w_half, h: h_half}
             };
             wins.forEach(id => {
                 const el = document.getElementById(id); if (!el) return;
@@ -398,7 +376,7 @@
         
         function dML(e) { let t=e.target, x=(parseFloat(t.getAttribute('data-x'))||0) + (e.dx / currentZoom), y=(parseFloat(t.getAttribute('data-y'))||0) + (e.dy / currentZoom); t.style.transform=`translate(${x}px, ${y}px)`; t.setAttribute('data-x',x); t.setAttribute('data-y',y); }
         function rML(e) { let t=e.target, x=(parseFloat(t.getAttribute('data-x'))||0), y=(parseFloat(t.getAttribute('data-y'))||0); t.style.width = (e.rect.width / currentZoom) + 'px'; t.style.height = (e.rect.height / currentZoom) + 'px'; t.style.transform=`translate(${x}px, ${y}px)`; t.setAttribute('data-x',x); t.setAttribute('data-y',y); }
-        function sL() { ['win-log','win-rank','win-news','win-detail','win-vwap'].forEach(id=>{ let el=document.getElementById(id); if(el) localStorage.setItem('sniper_v42_layout_'+id, JSON.stringify({x:parseFloat(el.getAttribute('data-x'))||0, y:parseFloat(el.getAttribute('data-y'))||0, w:el.offsetWidth, h:el.offsetHeight})); }); }
+        function sL() { ['win-log','win-rank','win-news','win-detail'].forEach(id=>{ let el=document.getElementById(id); if(el) localStorage.setItem('sniper_v42_layout_'+id, JSON.stringify({x:parseFloat(el.getAttribute('data-x'))||0, y:parseFloat(el.getAttribute('data-y'))||0, w:el.offsetWidth, h:el.offsetHeight})); }); }
         
         function resetLayout() { let savedZoom = localStorage.getItem('sniper_zoom'); localStorage.clear(); if(savedZoom) localStorage.setItem('sniper_zoom', savedZoom); location.reload(); }
         function toggleETF() { showETF = !showETF; let btn = document.getElementById('etf-btn'); if (showETF) { btn.innerText = "🔘 隱藏 ETF"; btn.style.borderColor = "var(--red)"; btn.style.color = "var(--red)"; } else { btn.innerText = "🔘 ETF"; btn.style.borderColor = "var(--border)"; btn.style.color = "var(--text-main)"; } if (Object.keys(brain).length > 0) refreshUI(brain); }
@@ -468,11 +446,17 @@
                 let isFatal = r.Signal && r.Signal.includes("💀");
                 let icon = isFatal ? " 💀" : ((det.CatScore || 0) > 8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
      
+                // 💡 實裝 5 秒戰術高亮邏輯
                 let rowClass = r.Status ? `tr-${r.Status}` : ""; 
                 if (r.Signal && r.Signal.includes("⚡VCP")) rowClass += " tr-vcp"; 
+                
+                let isNewAlert = r.SignalTS && (nowSec - r.SignalTS < 5);
+                
                 if (isFatal) {
-                    if (r.SignalTS && (nowSec - r.SignalTS < 5)) rowClass += " trap-active";
+                    if (isNewAlert) rowClass += " trap-active";
                     else rowClass += " trap-settled";
+                } else if (isNewAlert) {
+                    rowClass += " new-alert-row"; 
                 }
                 
                 let f_float = r.Type === 'fund' ? '<span style="color:var(--border);">N/A(ETF)</span>' : (r.Float||'-');
@@ -484,7 +468,6 @@
                 let signalDisplay = r.Signal || '-';
                 let signalColor = "inherit";
                 
-                // 💡 V46: 利空不跌與狙擊點的視覺強化
                 if (signalDisplay.includes('💎')) signalColor = "#ffd700; text-shadow: 0 0 5px rgba(255,215,0,0.5);";
                 if (signalDisplay.includes('🎯')) {
                     signalDisplay = `<span class="sniper-tag">${signalDisplay}</span>`;
@@ -527,9 +510,14 @@
                 let icon = isFatal ? " 💀" : ((det.CatScore||0)>8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
                 
                 let rowClass = `tr-${det.Status || r.Status || 'green'}`;
+                
+                // 💡 在排行榜同樣套用 5 秒底色判斷
+                let isNewAlert = det.TriggerTS && (nowSec - det.TriggerTS < 5);
                 if (isFatal) {
-                    if (det.TriggerTS && (nowSec - det.TriggerTS < 5)) rowClass += " trap-active";
+                    if (isNewAlert) rowClass += " trap-active";
                     else rowClass += " trap-settled";
+                } else if (isNewAlert) {
+                    rowClass += " new-alert-row";
                 }
                 
                 let flashClass = getFlashClass(det.TriggerTS, det.TriggerType);
@@ -546,39 +534,6 @@
                 </tr>`;
             });
             document.getElementById('rank-list').innerHTML = h2 || `<tr><td colspan="9" style="text-align:center; padding:20px; color:var(--text-muted);">無符合標的</td></tr>`;
-
-            // ==================
-            // VWAP 略過
-            // ==================
-            let h_vwap = "";
-            (d.vwap_list || []).forEach(r => {
-                let det = d.details[r.Code] || {};
-                let isFatal = det.IsTrap;
-                let icon = isFatal ? " 💀" : ((det.CatScore||0)>8 ? " 🔥📰" : (det.HasNews ? " 📰" : ""));
-                
-                let rowClass = `tr-${det.Status || r.Status || 'green'}`; 
-                if (isFatal) {
-                    if (det.TriggerTS && (nowSec - det.TriggerTS < 5)) rowClass += " trap-active";
-                    else rowClass += " trap-settled";
-                }
-                
-                let vwapColor = r.VWAP_Rating === 'High' ? 'var(--red)' : (r.VWAP_Rating === 'Mid' ? 'var(--yellow)' : 'var(--neon-green)');
-                let vwapGlow = r.VWAP_Rating === 'High' ? 'text-shadow: 0 0 5px rgba(248,81,73,0.4);' : '';
-                
-                let signalDisplay = r.Signal || '';
-                if (signalDisplay.includes('🎯')) signalDisplay = `<span class="sniper-tag">${signalDisplay}</span>`;
-
-                h_vwap += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
-                    <td class="status-indicator"></td><td class="sym">${r.Code}${icon}</td>
-                    <td style="color:${vwapColor}; font-weight:bold; ${vwapGlow}">${r.VWAP_Dev > 0 ? '+'+r.VWAP_Dev : r.VWAP_Dev}%</td>
-                    <td style="color:var(--yellow); font-weight:bold;">${r.VR_Acc}%</td>
-                    <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct}</td>
-                    <td><b style="color:var(--yellow);">${r.RelVol}</b></td>
-                    <td>${formatVolAcc(r.VolAcc)}</td>
-                    <td style="font-weight:bold;">${signalDisplay}</td>
-                </tr>`;
-            });
-            document.getElementById('vwap-list').innerHTML = h_vwap || `<tr><td colspan="8" style="text-align:center; padding:20px; color:var(--text-muted);">尚未掃描到符合條件的動能</td></tr>`;
 
             // ==================
             // 3. 情報雷達 (top_catalysts)
@@ -612,7 +567,7 @@
                     
                     let score_html = `<span class="${newsFlashClass}" style="${newsFlashClass ? 'padding:2px 6px; display:inline-block;' : 'color:' + (f_Score>=6?'var(--yellow)':'var(--text-muted)') + '; font-weight:bold;'}">${f_Score}</span>`;
 
-                    h3 += `<tr class="${rowClass}" onclick="loadDetail('${n.Code||n.ticker}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[4]);" ondblclick="openTW('${n.Code||n.ticker}')">
+                    h3 += `<tr class="${rowClass}" onclick="loadDetail('${n.Code||n.ticker}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[3]);" ondblclick="openTW('${n.Code||n.ticker}')">
                         <td class="status-indicator" style="background:${f_Score >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
                         <td style="color:${latest.is_today?'#ffa500':'var(--text-muted)'}; font-size:11px;">${latest.time||'-'}</td>
                         <td class="sym">${n.Code||n.ticker}</td><td>${score_html}</td>
@@ -634,7 +589,6 @@
             
             let trapWarn = d.IsTrap ? `<div class="trap-settled" style="border:1px solid var(--red); color:var(--red); padding:8px; margin-bottom:10px; border-radius:6px; font-weight:bold; font-size:13px;">🩸 致命警告：偵測到毒藥增發或退市風險</div>` : "";
             
-            // 💡 V46: 專屬「利空不跌」警告面板
             if (d.HasSentimentFlip) {
                 trapWarn = `<div style="border:1px solid rgba(255, 215, 0, 0.6); background: rgba(255, 215, 0, 0.1); color:#ffd700; padding:8px; margin-bottom:10px; border-radius:6px; font-weight:bold; font-size:13px; text-shadow: 0 0 5px rgba(255, 215, 0, 0.5); animation: gold-glow 1.5s infinite;">💎 戰術警報：利空不跌！主力強勢承接 (已校正評分)</div>` + trapWarn;
             }
