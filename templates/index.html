@@ -36,6 +36,7 @@
         tr.tr-yellow .status-indicator { background: var(--yellow); } tr.tr-purple .status-indicator { background: var(--purple); }
         tr.tr-blue .status-indicator { background: var(--blue); } tr.tr-green .status-indicator { background: var(--green); }
         tr.tr-red .status-indicator { background: var(--red); } tr.tr-border .status-indicator { background: var(--text-muted); }
+        tr.tr-gray .status-indicator { background: var(--text-muted); }
         tr.tr-vcp { background: rgba(227, 179, 65, 0.08); } 
         
         @keyframes flash-purple {
@@ -53,6 +54,13 @@
             50% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.8); border-color: rgba(255, 215, 0, 1); }
             100% { box-shadow: 0 0 5px rgba(255, 215, 0, 0.4); border-color: rgba(255, 215, 0, 0.4); }
         }
+        /* 💡 V46: 專屬的狙擊點閃爍特效 */
+        @keyframes sniper-pulse {
+            0% { text-shadow: 0 0 5px rgba(57,255,20,0.5); color: var(--neon-green); }
+            50% { text-shadow: 0 0 20px rgba(57,255,20,1); color: #fff; }
+            100% { text-shadow: 0 0 5px rgba(57,255,20,0.5); color: var(--neon-green); }
+        }
+        .sniper-tag { animation: sniper-pulse 1s infinite; font-weight: 900; }
 
         .flash-active-up { animation: flash-purple 0.8s infinite; border-radius: 4px; font-weight: 900 !important; }
         .flash-active-down { animation: flash-red 0.8s infinite; border-radius: 4px; font-weight: 900 !important; }
@@ -109,7 +117,9 @@
         <button id="test-audio-btn" class="ghost-btn" style="border-color:var(--purple); color:var(--purple);" onclick="testAudio()">🎵 測試音效</button>
         
         <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 ETF</button>
-        <button id="draft-btn" class="ghost-btn" style="border-color:var(--neon-green); color:var(--neon-green);" onclick="checkDrafts()">📝 審核 AI 草稿</button>
+        
+        <!-- 💡 V46: 移除草稿按鈕，換上戰略報表 -->
+        <button id="summary-btn" class="ghost-btn" style="border-color:var(--neon-green); color:var(--neon-green);" onclick="fetchSummary()">📊 高勝率詞彙報表</button>
         
         <div style="display:flex; align-items:center; border:1px solid var(--border); border-radius:6px; padding:2px 5px; margin-right:10px; background:rgba(0,0,0,0.2); flex-shrink: 0;">
             <button style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-weight:bold; padding:0 8px; font-size:14px; outline:none;" onclick="changeZoom(-0.1)">-</button>
@@ -117,11 +127,9 @@
             <button style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-weight:bold; padding:0 8px; font-size:14px; outline:none;" onclick="changeZoom(0.1)">+</button>
         </div>
 
-        <button class="ghost-btn" style="border-color:var(--blue); color:var(--blue);" onclick="showAITrends()">🧠 AI 戰果詞庫</button>
         <button id="mode-btn" class="ghost-btn" style="border-color:var(--yellow); color:var(--yellow);" onclick="toggleMode()">📱 切換手機版</button>
         <button class="ghost-btn" onclick="resetLayout()">🔄 重置網格</button>
         
-        <!-- 💡 V46：將匯出舊版 CSV 改為匯出戰略大數據 JSON -->
         <button class="ghost-btn" style="border-color:var(--neon-purple); color:var(--neon-purple);" onclick="exportIntelligence()">📥 匯出戰略情報</button>
         
         <div style="font-size: 13px; color: var(--text-muted); font-family: monospace; margin-left:10px; flex-shrink: 0;">TPE: <span id="sys-clock" style="color: var(--text-main); font-weight: bold;">--:--:--</span></div>
@@ -271,33 +279,6 @@
             sounds.nova.play().then(() => { alert("✅ 音效測試成功！聲音正常播放。"); }).catch(e => { alert("❌ 音效播放失敗！\n\n您的瀏覽器強制封鎖了音效。請點擊網頁空白處後再測試一次。\n錯誤細節：" + e.message); });
         }
 
-        // 💡 V46: 背景輪詢檢查是否有新的 AI 草稿
-        function silentCheckDrafts() {
-            fetch('/api/drafts').then(r => r.json()).then(data => {
-                let btn = document.getElementById('draft-btn');
-                if (Object.keys(data).length > 0) {
-                    btn.classList.add('flash-active-up');
-                    btn.innerText = "📝 新草稿待審!";
-                } else {
-                    btn.classList.remove('flash-active-up');
-                    btn.innerText = "📝 審核 AI 草稿";
-                }
-            }).catch(e => {});
-        }
-        setInterval(silentCheckDrafts, 60000);
-        setTimeout(silentCheckDrafts, 2000);
-
-        function checkDrafts() {
-            fetch('/api/drafts').then(r => r.json()).then(data => {
-                let words = Object.keys(data);
-                if (words.length === 0) { alert("🤖 目前沒有新的 AI 學習草稿。\n系統會在盤中追蹤暴漲單字並自動生成。"); return; }
-                let w = words[0]; let info = data[w];
-                let msg = `🤖 AI 自動學習系統發現高勝率單字！\n\n📌 關鍵字: ${w}\n📊 歷史最高平均漲幅: +${info.avg_impact_pct}%\n🔍 觸發次數: ${info.count} 次\n📝 備註: ${info.note}\n\n您要將此單字加入實戰詞庫 (trends.json) 嗎？`;
-                if (confirm(msg)) { processDraft(w, 'approve'); } else { if(confirm("要將此單字從草稿中刪除嗎？")) { processDraft(w, 'reject'); } }
-            });
-        }
-        function processDraft(word, action) { fetch('/api/approve_draft', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({word: word, action: action}) }).then(() => { silentCheckDrafts(); checkDrafts(); }); }
-
         let wakeLock = null;
         async function requestWakeLock() {
             try {
@@ -356,16 +337,26 @@
             if (Object.keys(brain).length > 0) refreshUI(brain);
         }
 
-        function showAITrends() {
-            if (!brain || !brain.live_trends) return alert("📡 系統尚未載入...");
-            let msg = `🔥 V46 戰果加權 NLP 詞庫：\n📅 更新時間：${brain.trends_date || '即時同步'}\n\n`;
-            Object.keys(brain.live_trends).forEach(k => { 
-                let data = brain.live_trends[k];
-                let score = typeof data === 'object' ? (data.score || 5) : data;
-                let exp = typeof data === 'object' ? (data.avg_impact_pct || 0.0).toFixed(2) : "0.00";
-                msg += `► 【 ${k} 】 (權重: ${score} | 歷史期望: +${exp}%)\n`; 
-            });
-            alert(msg);
+        // 💡 V46: 呼叫後端大數據運算高勝率報表
+        function fetchSummary() {
+            document.getElementById('sys-status').innerText = "⏳ 正在運算高勝率情報...";
+            fetch('/api/intelligence_summary')
+                .then(r => r.json())
+                .then(res => {
+                    if (res.status === "success") {
+                        let msg = "🏆 前 50 大高勝率戰場詞彙報表：\n\n";
+                        res.data.forEach((item, index) => {
+                            msg += `${index+1}. 【 ${item.phrase} 】\n   勝率: ${item.win_rate}% | 平均漲幅: +${item.avg_gain_pct}% | 觸發次數: ${item.occurrences}\n\n`;
+                        });
+                        alert(msg);
+                        document.getElementById('sys-status').innerText = "✅ 報表運算完成";
+                        document.getElementById('sys-status').style.color = "var(--green)";
+                    } else {
+                        alert("❌ 報表運算失敗：" + res.message);
+                        document.getElementById('sys-status').innerText = "⚠️ 運算失敗";
+                    }
+                })
+                .catch(e => alert("網路錯誤，無法獲取情報報表"));
         }
 
         function exportIntelligence() {
@@ -483,10 +474,14 @@
                 let f_price = `<span class="${flashClass}">${r.Price||'-'}</span>`;
                 let f_vol = `<span class="${r.Is100K ? 'vol-100k' : ''} ${flashClass}">${r.Vol}</span>`;
 
-                // 💡 V46: 利空不跌的訊號字體高亮處理
+                let signalDisplay = r.Signal || '-';
                 let signalColor = "inherit";
-                if (r.Signal && r.Signal.includes('💎')) signalColor = "#ffd700; text-shadow: 0 0 5px rgba(255,215,0,0.5);";
-                else if (r.Signal && r.Signal.includes('🎯')) signalColor = "var(--neon-green)";
+                
+                // 💡 V46: 利空不跌與狙擊點的視覺強化
+                if (signalDisplay.includes('💎')) signalColor = "#ffd700; text-shadow: 0 0 5px rgba(255,215,0,0.5);";
+                if (signalDisplay.includes('🎯')) {
+                    signalDisplay = `<span class="sniper-tag">${signalDisplay}</span>`;
+                }
 
                 h1 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                     <td class="status-indicator"></td><td style="color:var(--text-muted);">${r.Time||'-'}</td><td class="sym">${r.Code}${icon}</td>
@@ -494,7 +489,7 @@
                     <td>${formatVolAcc(r.VolAcc)}</td>
                     <td>${f_vol}</td>
                     <td>${deltaTag}</td>
-                    <td style="font-weight:bold; color:${signalColor};">${r.Signal||'-'}</td>
+                    <td style="font-weight:bold; color:${signalColor};">${signalDisplay}</td>
                 </tr>`;
                 
                 if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { 
@@ -562,6 +557,10 @@
                 
                 let vwapColor = r.VWAP_Rating === 'High' ? 'var(--red)' : (r.VWAP_Rating === 'Mid' ? 'var(--yellow)' : 'var(--neon-green)');
                 let vwapGlow = r.VWAP_Rating === 'High' ? 'text-shadow: 0 0 5px rgba(248,81,73,0.4);' : '';
+                
+                let signalDisplay = r.Signal || '';
+                if (signalDisplay.includes('🎯')) signalDisplay = `<span class="sniper-tag">${signalDisplay}</span>`;
+
                 h_vwap += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
                     <td class="status-indicator"></td><td class="sym">${r.Code}${icon}</td>
                     <td style="color:${vwapColor}; font-weight:bold; ${vwapGlow}">${r.VWAP_Dev > 0 ? '+'+r.VWAP_Dev : r.VWAP_Dev}%</td>
@@ -569,7 +568,7 @@
                     <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct}</td>
                     <td><b style="color:var(--yellow);">${r.RelVol}</b></td>
                     <td>${formatVolAcc(r.VolAcc)}</td>
-                    <td style="font-weight:bold; color:${r.Signal.includes('🎯') ? 'var(--neon-green)' : 'inherit'};">${r.Signal}</td>
+                    <td style="font-weight:bold;">${signalDisplay}</td>
                 </tr>`;
             });
             document.getElementById('vwap-list').innerHTML = h_vwap || `<tr><td colspan="8" style="text-align:center; padding:20px; color:var(--text-muted);">尚未掃描到符合條件的動能</td></tr>`;
@@ -656,6 +655,9 @@
             
             let vwapColor = d.VWAP_Rating === 'High' ? 'var(--red)' : (d.VWAP_Rating === 'Mid' ? 'var(--yellow)' : 'var(--neon-green)');
             let vwapGlow = d.VWAP_Rating === 'High' ? 'text-shadow: 0 0 5px rgba(248,81,73,0.4);' : '';
+            
+            let signalDisplay = d.Signal || '掃描中...';
+            if (signalDisplay.includes('🎯')) signalDisplay = `<span class="sniper-tag">${signalDisplay}</span>`;
 
             let html = `<div style="text-align:center;">${trapWarn}
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
@@ -675,7 +677,7 @@
                     <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center; grid-column:span 2;">VWAP 乖離率<br><b style="color:${vwapColor}; font-size:14px; ${vwapGlow}">${d.VWAP_Dev>0?'+'+d.VWAP_Dev:d.VWAP_Dev}%</b></div>
                     <div style="background:rgba(255,255,255,0.02); padding:6px; text-align:center; grid-column:span 2;">催化評分<br><b style="color:var(--yellow); font-size:14px;">${d.CatScore||0}</b></div>
                     <div style="grid-column:span 2; padding-left:4px;">籌碼: <b style="color:var(--text-main);">${d.Float||'-'}</b></div>
-                    <div style="grid-column:span 2; padding-left:4px;">當前狀態: <b style="color:${d.Signal.includes('洗盤')?'var(--text-muted)':'var(--yellow)'};">${d.Signal||'掃描中...'}</b></div>
+                    <div style="grid-column:span 2; padding-left:4px;">當前狀態: <b style="color:${d.Signal.includes('洗盤')?'var(--text-muted)':'var(--yellow)'};">${signalDisplay}</b></div>
                     ${vcpHTML ? `<div style="grid-column:1/-1;">${vcpHTML}</div>` : ''}
                 </div>
                 <h3 style="color:var(--text-muted); font-size:12px; border-bottom:1px solid var(--border); padding-bottom:4px; margin-top:12px; margin-bottom:8px; text-align:left;">🗞️ 情報物理實驗分析</h3>`;
