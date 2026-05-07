@@ -1,12 +1,12 @@
 import os
-# 💡 作業系統級消音器：從根源封殺所有 Python 警告！[cite: 8]
+# 💡 作業系統級消音器：從根源封殺所有 Python 警告！
 os.environ["PYTHONWARNINGS"] = "ignore"
 
 import warnings
 warnings.filterwarnings("ignore")
 
 import logging
-# 💡 封殺第三方套件的底層連線日誌，保持終端機極度乾淨[cite: 8]
+# 💡 封殺第三方套件的底層連線日誌，保持終端機極度乾淨
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
 logging.getLogger('urllib3').setLevel(logging.CRITICAL)
@@ -28,18 +28,18 @@ from collections import Counter
 import concurrent.futures 
 import yfinance as yf  
 
-# 匯入 Alpaca 混合引擎[cite: 8]
+# 匯入 Alpaca 混合引擎
 from alpaca_worker import init_alpaca
-# 💡 匯入 V46 數據收集器[cite: 8]
+# 💡 匯入 V46 數據收集器
 import collector
 
 # ==========================================
-# 💡 必須在這裡初始化 Flask 應用程式！[cite: 8]
+# 💡 必須在這裡初始化 Flask 應用程式！
 # ==========================================
 app = Flask(__name__)
 
 # ==========================================
-# 📡 戰略情報匯出接口 (支援分批與當日過濾)[cite: 8]
+# 📡 戰略情報匯出接口 (支援分批與當日過濾)
 # ==========================================
 @app.route('/api/export_intelligence')
 def export_intelligence():
@@ -54,7 +54,7 @@ def export_intelligence():
     return jsonify({"status": "error", "message": "無符合條件之資料，或資料庫為空"}), 404
 
 # ==========================================
-# 🧠 AI 戰略摘要引擎接口[cite: 8]
+# 🧠 AI 戰略摘要引擎接口
 # ==========================================
 @app.route('/api/intelligence_summary')
 def intelligence_summary():
@@ -633,25 +633,26 @@ def scanner_engine():
                     curr_ema52 = float(df['close'].ewm(span=52, adjust=False).mean().iloc[-1]) if len(df) >= 52 else p_live
                     past_high = float(df['high'].iloc[-11:-1].max()) if len(df) >= 11 else p_live
                     
-                    ratio_3v3 = 1.0; vol_acc_str = "-"; vr_acc = 0.0 
-                    if len(df) >= 6:
-                        vol_A = vol_3m
-                        vol_B = float(df['volume'].iloc[-6:-3].sum())
-                        vol_C = float(df['volume'].iloc[-9:-6].sum()) if len(df) >= 9 else 0.0
+                    # 💡 V46 續航引擎升級：將 3m 區塊改為 5m 區塊 (總監控 15 分鐘)
+                    ratio_5v5 = 1.0; vol_acc_str = "-"; vr_acc = 0.0 
+                    if len(today_df) >= 15:
+                        vol_A = float(today_df['volume'].iloc[-5:].sum())       # 最近 5 分鐘
+                        vol_B = float(today_df['volume'].iloc[-10:-5].sum())    # 前 6-10 分鐘
+                        vol_C = float(today_df['volume'].iloc[-15:-10].sum())   # 前 11-15 分鐘
                         
-                        if vol_B >= 0: vr_acc = float(round(((vol_A - vol_B) / max(vol_B, 0.01)) * 100, 2))
                         if vol_B > 0:
-                            ratio_3v3 = float(vol_A / vol_B)
+                            ratio_5v5 = float(vol_A / vol_B)
                             sym_up, sym_extreme = ("↗", "🔥") if p_live >= p_prev else ("🔻", "🩸")
                             
-                            if len(df) >= 9:
-                                if vol_A > vol_B > vol_C: vol_acc_str = f"{sym_extreme} {ratio_3v3:.2f}x"
-                                elif vol_A > vol_B and vol_B <= vol_C: vol_acc_str = f"{sym_up} {ratio_3v3:.2f}x"
-                                elif vol_A < vol_B < vol_C: vol_acc_str = f"🧊 {ratio_3v3:.2f}x"
-                                elif vol_A < vol_B and vol_B >= vol_C: vol_acc_str = f"↘ {ratio_3v3:.2f}x"
-                                else: vol_acc_str = f"- {ratio_3v3:.2f}x"
+                            # 判定 15 分鐘內的三階梯量能遞增
+                            if vol_A > vol_B > vol_C:
+                                vol_acc_str = f"{sym_extreme} {ratio_5v5:.2f}x"
+                            elif vol_A > vol_B:
+                                vol_acc_str = f"{sym_up} {ratio_5v5:.2f}x"
+                            elif vol_A < vol_B < vol_C:
+                                vol_acc_str = f"🧊 {ratio_5v5:.2f}x"
                             else:
-                                vol_acc_str = f"{sym_up} {ratio_3v3:.2f}x" if vol_A > vol_B else f"↘ {ratio_3v3:.2f}x"
+                                vol_acc_str = f"↘ {ratio_5v5:.2f}x"
 
                     # 💡 V46: 實裝磁吸噴發預警系統 (Magnet Squeeze)
                     ema_max = max(curr_ema9, curr_ema20, curr_ema52)
@@ -659,7 +660,7 @@ def scanner_engine():
                     is_ema_tight = (ema_max - ema_min) / ema_min < 0.02 # 均線密集糾結於 2% 內
 
                     is_vwap_magnet = False
-                    if (p_live < current_vwap) and (vwap_dev >= -1.5) and is_ema_tight and (vr_acc > 0 or ratio_3v3 > 1.0) and float_m <= 50.0:
+                    if (p_live < current_vwap) and (vwap_dev >= -1.5) and is_ema_tight and float_m <= 50.0:
                         is_vwap_magnet = True
                     
                     is_spark = bool(((rel_vol_live >= 2.5 and p_live >= past_high) or (rel_vol_prev >= 2.5 and p_prev >= past_high)) and (real_pct > 3.0))
@@ -688,7 +689,7 @@ def scanner_engine():
                         if v_live > recent_vol_max and v_live >= avg_vol * 3.0 and p_live >= df['open'].iloc[-1]:
                             is_massive_inflow = True
 
-                    base_sn_score = (stat_data.get('float_comp', 0) + real_pct) * (ratio_3v3 if ratio_3v3 > 1.0 else 0.5)
+                    base_sn_score = (stat_data.get('float_comp', 0) + real_pct) * (ratio_5v5 if ratio_5v5 > 1.0 else 0.5)
                     if float_m < 2.0:
                         base_sn_score *= 2.5 
                     elif float_m > 80.0:
@@ -742,195 +743,196 @@ def scanner_engine():
                                 current_signal = f"📦爆量箱子(大量進場){vol_warn}"
                             status_color = "purple"
 
-                    final_vol_text = format_vol(daily_vol)
-                    if is_massive_inflow:
-                        final_vol_text = f'<span style="color: #d942f5; font-weight: 900; text-shadow: 0 0 6px rgba(217, 66, 245, 0.5);">📦 {final_vol_text}</span>'
+                        final_vol_text = format_vol(daily_vol)
+                        if is_massive_inflow:
+                            final_vol_text = f'<span style="color: #d942f5; font-weight: 900; text-shadow: 0 0 6px rgba(217, 66, 245, 0.5);">📦 {final_vol_text}</span>'
 
-                    delta_threshold = 0.03 if p_live < 5.0 else 0.015
-                    last_alert_info = STATE_TRACKER.get(f"{ticker}_last_alert", {"price": p_live, "vol": daily_vol})
-                    last_alert_price = last_alert_info["price"]
-                    last_alert_vol = last_alert_info["vol"]
-                    price_change_ratio = (p_live - last_alert_price) / last_alert_price if last_alert_price > 0 else 0.0
-                    vol_increase = daily_vol - last_alert_vol
-                    
-                    trigger_type = "none"
-                    delta_pct_str = ""
-                    
-                    if price_change_ratio >= delta_threshold:
-                        trigger_type = "up"
-                        delta_pct_str = f"+{(price_change_ratio*100):.1f}% ↗"
-                        STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
-                    elif price_change_ratio <= -delta_threshold:
-                        trigger_type = "down"
-                        delta_pct_str = f"{(price_change_ratio*100):.1f}% ↘"
-                        STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
-                    elif vol_increase > 500000 or (last_alert_vol > 0 and vol_increase / last_alert_vol > 1.0):
-                        trigger_type = "vol_spike"
-                        delta_pct_str = f"📦 大單"
-                        STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
-
-                    with brain_lock:
-                        cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "StickySignal": "", "StickyColor": "green", "StickyTime": 0})
+                        delta_threshold = 0.03 if p_live < 5.0 else 0.015
+                        last_alert_info = STATE_TRACKER.get(f"{ticker}_last_alert", {"price": p_live, "vol": daily_vol})
+                        last_alert_price = last_alert_info["price"]
+                        last_alert_vol = last_alert_info["vol"]
+                        price_change_ratio = (p_live - last_alert_price) / last_alert_price if last_alert_price > 0 else 0.0
+                        vol_increase = daily_vol - last_alert_vol
                         
-                        # 💡 V46 情報物理過濾閘門：第二道防線 (時效性蒸發)
-                        if "NewsList" in cell:
-                            valid_news = []
-                            for n in cell["NewsList"]:
-                                pub_ts = n.get("pub_ts", now_ts)
-                                # 如果超過 120 分鐘且股價已經跌破 EMA20，判定該情報已失效，自動隱藏
-                                if (now_ts - pub_ts > 7200) and (p_live < curr_ema20):
-                                    continue
-                                valid_news.append(n)
-                            cell["NewsList"] = valid_news
-                            cell["HasNews"] = len(valid_news) > 0
-                            if cell["NewsList"]: cell["CatScore"] = max(n['score'] for n in cell["NewsList"])
-                            else: cell["CatScore"] = 0
-
-                        has_sentiment_flip = False
-                        if cell.get("CatScore", 0) < 0 and p_live > current_vwap and curr_ema9 > curr_ema20:
-                            cell["CatScore"] = 60
-                            cell["IsTrap"] = False
-                            has_sentiment_flip = True
-                            if not current_signal: current_signal = "🚀"
-                            current_signal += " [💎 利空不跌]"
-                            status_color = "purple"
+                        trigger_type = "none"
+                        delta_pct_str = ""
                         
-                        if current_signal:
-                            if "⚡" in cell.get("StickySignal", "") and now_ts - cell.get("StickyTime", 0) < 15:
-                                current_signal = current_signal + " [⚡極速]"
+                        if price_change_ratio >= delta_threshold:
+                            trigger_type = "up"
+                            delta_pct_str = f"+{(price_change_ratio*100):.1f}% ↗"
+                            STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
+                        elif price_change_ratio <= -delta_threshold:
+                            trigger_type = "down"
+                            delta_pct_str = f"{(price_change_ratio*100):.1f}% ↘"
+                            STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
+                        elif vol_increase > 500000 or (last_alert_vol > 0 and vol_increase / last_alert_vol > 1.0):
+                            trigger_type = "vol_spike"
+                            delta_pct_str = f"📦 大單"
+                            STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
+
+                        with brain_lock:
+                            cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "StickySignal": "", "StickyColor": "green", "StickyTime": 0})
+                            
+                            # 💡 V46 情報物理過濾閘門：第二道防線 (時效性蒸發)
+                            if "NewsList" in cell:
+                                valid_news = []
+                                for n in cell["NewsList"]:
+                                    pub_ts = n.get("pub_ts", now_ts)
+                                    # 如果超過 120 分鐘且股價已經跌破 EMA20，判定該情報已失效，自動隱藏
+                                    if (now_ts - pub_ts > 7200) and (p_live < curr_ema20):
+                                        continue
+                                    valid_news.append(n)
+                                cell["NewsList"] = valid_news
+                                cell["HasNews"] = len(valid_news) > 0
+                                if cell["NewsList"]: cell["CatScore"] = max(n['score'] for n in cell["NewsList"])
+                                else: cell["CatScore"] = 0
+
+                            has_sentiment_flip = False
+                            if cell.get("CatScore", 0) < 0 and p_live > current_vwap and curr_ema9 > curr_ema20:
+                                cell["CatScore"] = 60
+                                cell["IsTrap"] = False
+                                has_sentiment_flip = True
+                                if not current_signal: current_signal = "🚀"
+                                current_signal += " [💎 利空不跌]"
                                 status_color = "purple"
                             
-                            cell["StickySignal"] = current_signal
-                            cell["StickyColor"] = status_color
-                            cell["StickyTime"] = now_ts
-                        else:
-                            if now_ts - cell.get("StickyTime", 0) < 900: 
-                                current_signal = cell.get("StickySignal", "")
-                                status_color = cell.get("StickyColor", "green")
+                            if current_signal:
+                                if "⚡" in cell.get("StickySignal", "") and now_ts - cell.get("StickyTime", 0) < 15:
+                                    current_signal = current_signal + " [⚡極速]"
+                                    status_color = "purple"
+                                
+                                cell["StickySignal"] = current_signal
+                                cell["StickyColor"] = status_color
+                                cell["StickyTime"] = now_ts
+                            else:
+                                if now_ts - cell.get("StickyTime", 0) < 900: 
+                                    current_signal = cell.get("StickySignal", "")
+                                    status_color = cell.get("StickyColor", "green")
 
-                        stats = {
-                            "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": final_vol_text,
-                            "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, "Signal": current_signal,
-                            "PriceVal": float(p_live), "HighVal": float(df['high'].iloc[-1]), "StopLoss": curr_ema20 * 0.99, 
-                            "Float": float_str, "Type": stat_data.get('type', 'stock'), "VolAcc": vol_acc_str, "Is100K": False, 
-                            "SN_Score": sn_score, "VsaState": 0, "VR_Acc": vr_acc, "VWAP_Dev": vwap_dev, "VWAP_Rating": vwap_rating,
-                            "EMA9": curr_ema9, "EMA52": curr_ema52,
-                            "TriggerType": trigger_type, 
-                            "DeltaStr": delta_pct_str,
-                            "TriggerTS": now_ts if trigger_type != "none" else cell.get("TriggerTS", 0),
-                            "HasSentimentFlip": has_sentiment_flip 
-                        }
-                        
-                        cell.update(stats)
-                        
-                        if is_vwap_magnet or is_ross_match or is_spark or is_dead_bounce or is_massive_inflow or is_vwap_breakout or is_micro_pullback or is_whole_dollar:
-                            last_trigger_time = cooldown_tracker.get(ticker, 0)
-                            last_massive_time = STATE_TRACKER.get(f"{ticker}_massive", 0)
+                            stats = {
+                                "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": final_vol_text,
+                                "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, "Signal": current_signal,
+                                "PriceVal": float(p_live), "HighVal": float(df['high'].iloc[-1]), "StopLoss": curr_ema20 * 0.99, 
+                                "Float": float_str, "Type": stat_data.get('type', 'stock'), "VolAcc": vol_acc_str, "Is100K": False, 
+                                "SN_Score": sn_score, "VsaState": 0, "VR_Acc": vr_acc, "VWAP_Dev": vwap_dev, "VWAP_Rating": vwap_rating,
+                                "EMA9": curr_ema9, "EMA52": curr_ema52,
+                                "TriggerType": trigger_type, 
+                                "DeltaStr": delta_pct_str,
+                                "TriggerTS": now_ts if trigger_type != "none" else cell.get("TriggerTS", 0),
+                                "HasSentimentFlip": has_sentiment_flip 
+                            }
                             
-                            can_trigger = False
-                            if now_ts - last_trigger_time > 60:
-                                can_trigger = True
-                            # 💡 V46 縮短爆量箱子冷卻時間至 30 秒，避免錯失連續加倉機會[cite: 8]
-                            elif is_massive_inflow and (now_ts - last_massive_time > 30):
-                                can_trigger = True
+                            cell.update(stats)
+                            
+                            if is_vwap_magnet or is_ross_match or is_spark or is_dead_bounce or is_massive_inflow or is_vwap_breakout or is_micro_pullback or is_whole_dollar:
+                                last_trigger_time = cooldown_tracker.get(ticker, 0)
+                                last_massive_time = STATE_TRACKER.get(f"{ticker}_massive", 0)
                                 
-                            if can_trigger:
-                                if is_massive_inflow: STATE_TRACKER[f"{ticker}_massive"] = now_ts
-                                cooldown_tracker[ticker] = now_ts 
-                                
-                                is_sec_trap = check_sec_fatal_traps(ticker)
-                                if is_sec_trap and not has_sentiment_flip:
-                                    stats["Signal"] += " 💀(SEC陷阱)"
-                                    cell["IsTrap"] = True
+                                can_trigger = False
+                                if now_ts - last_trigger_time > 60:
+                                    can_trigger = True
+                                # 💡 V46 縮短爆量箱子冷卻時間至 30 秒
+                                elif is_massive_inflow and (now_ts - last_massive_time > 30):
+                                    can_trigger = True
                                     
-                                # 💡 V46 專屬：重要提示音效分級與物理靜音邏輯
-                                alert_audio = None
-
-                                # 1. 物理靜音：陷阱區強制靜音
-                                if "陷阱" in ui_tag or cell.get("IsTrap", False):
+                                if can_trigger:
+                                    if is_massive_inflow: STATE_TRACKER[f"{ticker}_massive"] = now_ts
+                                    cooldown_tracker[ticker] = now_ts 
+                                    
+                                    is_sec_trap = check_sec_fatal_traps(ticker)
+                                    if is_sec_trap and not has_sentiment_flip:
+                                        stats["Signal"] += " 💀(SEC陷阱)"
+                                        cell["IsTrap"] = True
+                                        
+                                    # 💡 V46 專屬：重要提示音效「精確打擊」邏輯
                                     alert_audio = None
-                                # 2. 最高優先級 (nova)
-                                elif "狙擊" in current_signal or has_sentiment_flip:
-                                    alert_audio = "nova"
-                                # 3. 中優先級 (spark)
-                                elif is_vwap_magnet or is_massive_inflow:
-                                    alert_audio = "spark"
 
-                                # 4. 發送警報 (僅當 alert_audio 存在時發出聲音)
-                                if alert_audio:
-                                    MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts, "Audio": alert_audio})
-                                else:
-                                    # 無音效寫入日誌 (保持視覺提醒)
-                                    MASTER_BRAIN["surge_log"].insert(0, {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts})
+                                    # 1. 物理靜音優先：陷阱區或 SEC 警告不發聲
+                                    if "陷阱" in ui_tag or cell.get("IsTrap", False):
+                                        alert_audio = None
+                                    # 2. 核心重要提示 (nova)：狙擊、利空反轉、磁吸、爆量
+                                    elif ("狙擊" in current_signal) or has_sentiment_flip or is_vwap_magnet or is_massive_inflow:
+                                        alert_audio = "nova"
+
+                                    log_entry = {
+                                        **stats, 
+                                        "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), 
+                                        "SignalTS": now_ts
+                                    }
                                     
-                                MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
-                                
-                                if cell.get('NewsList'):
-                                    headline = cell['NewsList'][0].get('raw_title', '')
-                                    collector.log_event(ticker, headline, float_m, float(p_live), volume=daily_vol, change_percent=real_pct)
-                                
-                    threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
-                except Exception as e: return
+                                    # 僅在符合重要條件時加入音效標記
+                                    if alert_audio:
+                                        log_entry["Audio"] = alert_audio
+                                        
+                                    MASTER_BRAIN["surge_log"].insert(0, log_entry)
+                                    MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
+                                    
+                                    if cell.get('NewsList'):
+                                        headline = cell['NewsList'][0].get('raw_title', '')
+                                        collector.log_event(ticker, headline, float_m, float(p_live), volume=daily_vol, change_percent=real_pct)
+                                    
+                        threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
+                    except Exception as e: return
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                list(executor.map(_process_ticker, current_watchlist))
-            
-            with brain_lock:
-                all_items = list(MASTER_BRAIN["details"].values())
-                active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST]
-                MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(x.get('Pct', '0').replace('%', '')), reverse=True)[:20]
+                with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                    list(executor.map(_process_ticker, current_watchlist))
                 
-                vwap_items = [x for x in active_items if x.get("VR_Acc", 0) > 30.0 and x.get("VWAP_Dev", 0) > 0.0]
-                MASTER_BRAIN["vwap_list"] = sorted(vwap_items, key=lambda x: x.get("VWAP_Dev", 0), reverse=True)
-                
-                MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
-            time.sleep(1)
-        except Exception as e: time.sleep(5)
+                with brain_lock:
+                    all_items = list(MASTER_BRAIN["details"].values())
+                    active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST]
+                    MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(x.get('Pct', '0').replace('%', '')), reverse=True)[:20]
+                    
+                    vwap_items = [x for x in active_items if x.get("VR_Acc", 0) > 30.0 and x.get("VWAP_Dev", 0) > 0.0]
+                    MASTER_BRAIN["vwap_list"] = sorted(vwap_items, key=lambda x: x.get("VWAP_Dev", 0), reverse=True)
+                    
+                    MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
+                time.sleep(1)
+            except Exception as e: time.sleep(5)
 
-@app.route('/api/config', methods=['POST'])
-def update_config():
-    global MIN_RELVOL_LIMIT, _last_list_update
-    data = request.json
-    if 'relvol_limit' in data:
-        try: MIN_RELVOL_LIMIT = float(data['relvol_limit'])
-        except: pass
-    _last_list_update = 0 
-    return jsonify({"status": "success", "relvol_limit": MIN_RELVOL_LIMIT})
+    @app.route('/api/config', methods=['POST'])
+    def update_config():
+        global MIN_RELVOL_LIMIT, _last_list_update
+        data = request.json
+        if 'relvol_limit' in data:
+            try: MIN_RELVOL_LIMIT = float(data['relvol_limit'])
+            except: pass
+        _last_list_update = 0 
+        return jsonify({"status": "success", "relvol_limit": MIN_RELVOL_LIMIT})
 
-@app.route('/api/export_news')
-def export_news():
-    rows = []
-    with brain_lock:
-        for ticker_data in MASTER_BRAIN.get('top_catalysts', []):
-            ticker = ticker_data.get('Code') or ticker_data.get('ticker')
-            for n in ticker_data.get('NewsList', []):
-                rows.append({
-                    "發布時間": n.get('time'), "代碼": ticker, "總分": ticker_data.get('CatScore', 0),
-                    "標題": n.get('title'), "價格": ticker_data.get('Price', '-'), "漲幅": ticker_data.get('Pct', '-')
-                })
-    if not rows: return "無數據", 404
-    df = pd.DataFrame(rows); output = io.BytesIO(); df.to_csv(output, index=False, encoding='utf-8-sig'); output.seek(0)
-    return send_file(output, mimetype='text/csv', as_attachment=True, download_name="news.csv")
+    @app.route('/api/export_news')
+    def export_news():
+        rows = []
+        with brain_lock:
+            for ticker_data in MASTER_BRAIN.get('top_catalysts', []):
+                ticker = ticker_data.get('Code') or ticker_data.get('ticker')
+                for n in ticker_data.get('NewsList', []):
+                    rows.append({
+                        "發布時間": n.get('time'), "代碼": ticker, "總分": ticker_data.get('CatScore', 0),
+                        "標題": n.get('title'), "價格": ticker_data.get('Price', '-'), "漲幅": ticker_data.get('Pct', '-')
+                    })
+        if not rows: return "無數據", 404
+        df = pd.DataFrame(rows); output = io.BytesIO(); df.to_csv(output, index=False, encoding='utf-8-sig'); output.seek(0)
+        return send_file(output, mimetype='text/csv', as_attachment=True, download_name="news.csv")
 
-@app.route('/')
-def index(): return render_template('index.html')
+    @app.route('/')
+    def index(): return render_template('index.html')
 
-@app.route('/data')
-def data():
-    with brain_lock: 
-        safe_brain = copy.deepcopy(MASTER_BRAIN)
-        safe_brain["live_trends"] = get_live_trends()
-        safe_brain["current_relvol"] = MIN_RELVOL_LIMIT 
-    return jsonify(safe_brain)
+    @app.route('/data')
+    def data():
+        with brain_lock: 
+            safe_brain = copy.deepcopy(MASTER_BRAIN)
+            safe_brain["live_trends"] = get_live_trends()
+            safe_brain["current_relvol"] = MIN_RELVOL_LIMIT 
+        return jsonify(safe_brain)
 
-if __name__ == '__main__':
-    collector.init_db() 
-    load_float_cache()
-    load_intraday_state()
-    threading.Thread(target=state_auto_save_worker, daemon=True).start()
-    threading.Thread(target=scanner_engine, daemon=True).start()
-    threading.Thread(target=finnhub_news_monitor_worker, daemon=True).start()
-    
-    init_alpaca(MASTER_BRAIN, DYNAMIC_WATCHLIST, brain_lock)
-    
-    app.run(host='0.0.0.0', port=PORT, use_reloader=False)
+    if __name__ == '__main__':
+        collector.init_db() 
+        load_float_cache()
+        load_intraday_state()
+        threading.Thread(target=state_auto_save_worker, daemon=True).start()
+        threading.Thread(target=scanner_engine, daemon=True).start()
+        threading.Thread(target=finnhub_news_monitor_worker, daemon=True).start()
+        
+        init_alpaca(MASTER_BRAIN, DYNAMIC_WATCHLIST, brain_lock)
+        
+        app.run(host='0.0.0.0', port=PORT, use_reloader=False)

@@ -9,7 +9,7 @@ from datetime import datetime
 _MASTER_BRAIN = None
 _DYNAMIC_WATCHLIST = None
 _brain_lock = None
-_alpaca_cooldown = {} # 💡 新增：毫秒級防洪閘門紀錄器
+_alpaca_cooldown = {} # 💡 毫秒級防洪閘門紀錄器
 TZ_TW = pytz.timezone('Asia/Taipei')
 
 def init_alpaca(master_brain, watchlist, lock):
@@ -37,6 +37,7 @@ def _alpaca_thread():
         price_history[ticker].append((now_ts, price))
         price_history[ticker] = [x for x in price_history[ticker] if now_ts - x[0] <= 10]
         
+        # 💡 秒速點火偵測 (5 秒區塊)
         past_5s = [x for x in price_history[ticker] if 4.0 <= now_ts - x[0] <= 6.0]
         is_velocity_spike = False
         if past_5s:
@@ -50,6 +51,7 @@ def _alpaca_thread():
             with _brain_lock:
                 if ticker in _MASTER_BRAIN["details"]:
                     cell = _MASTER_BRAIN["details"][ticker]
+                    
                     # 先取出原有的訊號，並做基礎清理，避免包含舊的極速或撞擊字眼
                     raw_signal = cell.get("Signal", "").replace("⚡極速拉升(+0.5%/5s)", "").replace(f"🧲即將撞擊(${math.ceil(price):.2f})", "").strip()
                     
@@ -80,11 +82,13 @@ def _alpaca_thread():
                         if now_ts - last_a_time > 30:
                             _alpaca_cooldown[ticker] = now_ts
                             stats_copy = {k: v for k, v in cell.items() if k not in ["NewsList", "CatScore", "IsTrap", "StickySignal", "StickyColor", "StickyTime"]}
+                            
+                            # 💡 V46：Alpaca 單獨觸發的訊號 (極速/撞擊) 改為靜音，僅在日誌顯示
                             _MASTER_BRAIN["surge_log"].insert(0, {
                                 **stats_copy, 
                                 "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), 
                                 "SignalTS": now_ts, 
-                                "Audio": "nova"
+                                "Audio": None # 🔇 取消聲音，避免干擾
                             })
                             _MASTER_BRAIN["surge_log"] = _MASTER_BRAIN["surge_log"][:1000]
 
@@ -106,9 +110,16 @@ def _alpaca_thread():
 
     threading.Thread(target=watch_subscriptions, daemon=True).start()
     
+    # 💡 加入斷線重連防洪機制，避免 connection limit exceeded 崩潰
     while True:
         try:
             print("🚀 Alpaca 毫秒級火控雷達連線中...")
             stream.run()
+        except ValueError as e:
+            if "connection limit exceeded" in str(e).lower():
+                print("🚨 Alpaca 連線數超載！冷卻 10 秒後重試...")
+                time.sleep(10)
+            else:
+                time.sleep(5)
         except Exception:
             time.sleep(30)
