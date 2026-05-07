@@ -55,10 +55,8 @@
         tr.tr-red .status-indicator { background: var(--red); } tr.tr-green .status-indicator { background: var(--green); }
         tr.tr-gray .status-indicator { background: var(--text-muted); }
         
-        /* 💡 護眼優化：調低新訊號高亮透明度 (0.08) */
         .new-alert-row { background-color: rgba(88, 166, 255, 0.08) !important; }
         
-        /* 💡 護眼優化：調低霓虹與發光強度 */
         @keyframes sniper-pulse { 0% { color: var(--green); text-shadow: none; } 50% { color: #56d364; text-shadow: 0 0 3px rgba(86,211,100,0.4); } 100% { color: var(--green); text-shadow: none; } }
         .sniper-tag { animation: sniper-pulse 2s infinite; font-weight: 900; }
         @keyframes gold-glow { 0% { box-shadow: 0 0 2px rgba(255, 215, 0, 0.1); border-color: rgba(255, 215, 0, 0.2); } 50% { box-shadow: 0 0 8px rgba(255, 215, 0, 0.3); border-color: rgba(255, 215, 0, 0.5); } 100% { box-shadow: 0 0 2px rgba(255, 215, 0, 0.1); border-color: rgba(255, 215, 0, 0.2); } }
@@ -171,9 +169,13 @@
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
 
-        // 💡 渲染計數器記憶體，精確鎖定 5 次高亮
         let alertRenderCount = {};
         let currentZoom = parseFloat(localStorage.getItem('sniper_zoom')) || 1.0;
+        
+        // 💡 修正 1：防止 localStorage 卡在極端數值 (如截圖中的 25%)
+        if (currentZoom < 0.5) currentZoom = 0.5;
+        if (currentZoom > 2.0) currentZoom = 2.0;
+
         function applyZoom() { 
             document.getElementById('main-body').style.zoom = currentZoom; 
             document.getElementById('zoom-label').innerText = Math.round(currentZoom * 100) + '%';
@@ -232,7 +234,6 @@
             if (typeof val === 'string' && val.includes('N/A')) return -999999;
             if (col === 'Code' || col === 'time') return val.toString();
             let str = val.toString(); let num = parseFloat(str.replace(/[^0-9.-]/g, '')) || 0;
-            // 💡 支援 Vol 與 Float 的單位轉換計算
             if (col === 'Float' || col === 'Vol') { if (str.includes('M')) return num * 1000000; if (str.includes('K')) return num * 1000; }
             if (col === 'RelVol' || col === 'Pct' || col === 'VolAcc') return parseFloat(str.replace(/[^0-9.-]/g, '')) || 0;
             return num;
@@ -272,12 +273,11 @@
             
             let currentSigIds = new Set();
             
-            // 1. 日誌渲染 (阻擋 undefined 保護機制)
+            // 1. 日誌渲染 (阻擋 undefined 保護機制 + 秒速 V 擷取)
             let h1 = "";
             (d.surge_log || []).forEach(r => {
                 if (r.Type === 'fund' && !showETF) return; 
                 
-                // 🔥 安全回退：確保 Code 不為 undefined
                 let f_Code = r.Code || r.ticker || "N/A";
                 let sigId = f_Code + "_" + r.SignalTS;
                 
@@ -289,8 +289,12 @@
                 if (isNew) rowClass += " new-alert-row";
                 
                 let sig = r.Signal || '-';
+                
+                // 💡 修正 2：優先尋找 Signal 中的極速文字，若無則使用後端傳來的 r.V 或 r.Velocity 數值
                 let velMatch = sig.match(/⚡極速拉升\((.*?)\)/);
-                let velStr = velMatch ? `<b style="color:var(--neon-purple);">${velMatch[1]}</b>` : `<span style="color:var(--text-muted);">-</span>`;
+                let velVal = velMatch ? velMatch[1] : (r.V || r.Velocity || '-');
+                let velStr = velVal !== '-' ? `<b style="color:var(--neon-purple);">${velVal}</b>` : `<span style="color:var(--text-muted);">-</span>`;
+                
                 sig = sig.replace(/⚡極速拉升\(.*?\)\s*/, '');
                 if (sig.includes('🎯')) sig = `<span class="sniper-tag">${sig}</span>`;
 
@@ -301,10 +305,10 @@
                     <td>${r.Price}</td>
                     <td><b style="color:var(--yellow);">${r.RelVol}</b></td>
                     <td>${r.Type==='fund'?'N/A':(r.Float||'-')}</td>
-                    <td>${r.Vol}</td>
+                    <td>${r.Vol||'-'}</td>
                     <td>${velStr}</td>
                     <td>${formatVolAcc(r.VolAcc)}</td>
-                    <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct}</td>
+                    <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'}</td>
                     <td style="font-weight:bold;">${sig}</td>
                 </tr>`;
                 
@@ -312,7 +316,6 @@
             });
             document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="11" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
 
-            // 💡 清理不再顯示的舊訊號記憶體，避免記憶體洩漏
             for (let key in alertRenderCount) {
                 if (!currentSigIds.has(key)) delete alertRenderCount[key];
             }
@@ -325,9 +328,7 @@
                 return (vA < vB) ? (rankCfg.asc ? -1 : 1) : (vA > vB ? (rankCfg.asc ? 1 : -1) : 0);
             });
             rankData.forEach(r => {
-                // 🔥 安全回退：確保 Code 不為 undefined
                 let f_Code = r.Code || r.ticker || "N/A";
-                
                 h2 += `<tr onclick="loadDetail('${f_Code}')" ondblclick="openTW('${f_Code}')">
                     <td class="status-indicator"></td>
                     <td class="sym">${f_Code}</td>
@@ -341,7 +342,7 @@
             });
             document.getElementById('rank-list').innerHTML = h2;
 
-            // 3. 情報渲染 (阻擋 undefined 保護機制)
+            // 3. 情報渲染 (阻擋 undefined 保護機制 + 加入 symbol 備援)
             let h3 = "", newsData = [...(d.top_catalysts || [])].filter(n => !(n?.Type === 'fund' && !showETF) && n?.NewsList && n.NewsList.length > 0);
             newsData.sort((a, b) => {
                 let vA = parseValue((newsCfg.col==='time'?a.NewsList[0]?.time:(newsCfg.col==='CatScore'?(a.CatScore!==undefined?a.CatScore:a.score):a[newsCfg.col])), newsCfg.col);
@@ -352,8 +353,8 @@
                 let latest = n.NewsList[0]; 
                 let f_Score = n.CatScore !== undefined ? n.CatScore : (n.score || 0);
                 
-                // 🔥 安全回退：確保 Code 不為 undefined
-                let f_Code = n.Code || n.ticker || "N/A";
+                // 💡 修正 3：安全回退確保 Code 不為 undefined，補上 n.symbol
+                let f_Code = n.Code || n.ticker || n.symbol || "N/A";
                 
                 let hl_text = highlightElites(latest.title==="⏳ 翻譯中..."?latest.raw_title:latest.title, latest.elites, d.live_trends);
                 h3 += `<tr onclick="loadDetail('${f_Code}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[3]);" ondblclick="openTW('${f_Code}')">
@@ -369,7 +370,7 @@
 
         // 4. 深度分析極致濃縮
         function loadDetail(sym) {
-            if (sym === "N/A") return; // 防止點擊空資料
+            if (sym === "N/A") return; 
             activeSym = sym;
             let d = (brain.details && brain.details[sym]) ? brain.details[sym] : null; 
             let rankData = brain.leaderboard ? brain.leaderboard.find(x => (x.Code||x.ticker) === sym) : null;
