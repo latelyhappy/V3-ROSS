@@ -170,7 +170,6 @@
         let alertRenderCount = {};
         let currentZoom = parseFloat(localStorage.getItem('sniper_zoom')) || 1.0;
         
-        // 💡 修正 1：啟動時檢查縮放範圍
         if (currentZoom < 0.5) currentZoom = 0.5;
         if (currentZoom > 2.0) currentZoom = 2.0;
 
@@ -257,7 +256,6 @@
             document.getElementById('sys-status').style.color = "var(--green)";
             let currentSigIds = new Set();
             
-            // 1. 日誌渲染 (強化秒速擷取)
             let h1 = "";
             (d.surge_log || []).forEach(r => {
                 if (r.Type === 'fund' && !showETF) return; 
@@ -269,7 +267,6 @@
                 let rowClass = r.Status ? `tr-${r.Status}` : ""; if (isNew) rowClass += " new-alert-row";
                 let sig = r.Signal || '-';
                 
-                // 💡 修正 2：強化秒速 (V) 獲取
                 let velMatch = sig.match(/⚡極速拉升\((.*?)\)/);
                 let velVal = velMatch ? velMatch[1] : (r.V || r.Velocity || '-');
                 let velStr = velVal !== '-' ? `<b style="color:var(--neon-purple);">${velVal}</b>` : `<span style="color:var(--text-muted);">-</span>`;
@@ -298,7 +295,6 @@
                 if (!currentSigIds.has(key)) delete alertRenderCount[key];
             }
 
-            // 2. 排行渲染
             let h2 = "", rankData = [...(d.leaderboard || [])].filter(r => !(r?.Type === 'fund' && !showETF));
             rankData.sort((a, b) => {
                 let vA = parseValue((rankCfg.col==='Float'?a.Float:(rankCfg.col==='RelVol'?a.RelVol:a[rankCfg.col])), rankCfg.col);
@@ -320,7 +316,6 @@
             });
             document.getElementById('rank-list').innerHTML = h2;
 
-            // 3. 情報渲染 (💡 修正 3：加入過濾器，隱藏無代碼的新聞雜訊)
             let h3 = "", newsData = [...(d.top_catalysts || [])].filter(n => {
                 let code = n.Code || n.ticker || n.symbol;
                 let isValid = code && code !== "undefined" && code !== "null" && code !== "N/A";
@@ -363,6 +358,8 @@
             let sig = (d.Signal || '掃描中...').replace(/⚡極速拉升\(.*?\)\s*/, '');
             if (sig.includes('🎯')) sig = `<span class="sniper-tag">${sig}</span>`;
             let gaugeHTML = `<svg width="70" height="40" viewBox="0 0 120 70" style="overflow:visible;"><path d="M 15 60 A 45 45 0 0 1 105 60" fill="none" stroke="var(--border)" stroke-width="12" stroke-linecap="round" /><path d="M 15 60 A 45 45 0 0 1 105 60" fill="none" stroke="${snColor}" stroke-width="12" stroke-linecap="round" stroke-dasharray="141" stroke-dashoffset="${141*(1-Math.min(snScore/600,1))}" style="transition: stroke-dashoffset 1s ease-out;" /><text x="60" y="55" text-anchor="middle" fill="${snColor}" font-size="28" font-weight="900">${snScore}</text></svg>`;
+            
+            // 💡 修正 1 & 2：將當日新聞時間轉為橘色
             let html = `<div style="text-align:left;">${trapWarn}
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">
                     <div style="flex:1;"><h2 style="font-size:24px; margin:0; display:inline-block; cursor:pointer;" onclick="openTW('${sym}')">${sym} <span style="font-size:12px; text-decoration:underline; color:var(--blue); font-weight:normal;">[TV圖表]</span></h2><span style="font-size:18px; color:var(--text-muted); margin-left:8px;">${d.Price||'-'}</span><div style="margin-top:2px; font-size:12px;"><span style="color:${vsaState > 0 ? 'var(--red)' : 'var(--green)'}; font-weight:bold;">${vsaState > 0 ? '🚨量價背離' : '✅量價健康'}</span><span style="margin-left:8px; color:var(--text-main);">🛡️守線: <b style="color:var(--red);">$${(d.StopLoss||0).toFixed(2)}</b></span></div></div><div style="margin-right: -10px;">${gaugeHTML}</div>
@@ -370,7 +367,12 @@
                 <div style="display:flex; flex-wrap:wrap; gap:4px; padding:6px; background:rgba(0,0,0,0.3); border-radius:6px; font-size:12px; margin-bottom:8px;"><div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Vol: <b>${d.Vol||'-'}</b></div><div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Rel: <b style="color:var(--yellow);">${d.RelVol||'-'}</b></div><div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Acc(5m): ${formatVolAcc(d.VolAcc)}</div><div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">VWAP: <b style="color:${vwapColor};">${d.VWAP_Dev>0?'+'+d.VWAP_Dev:d.VWAP_Dev}%</b></div><div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Cat: <b style="color:var(--yellow);">${d.CatScore||0}</b></div><div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Float: <b>${d.Float||'-'}</b></div><div style="background:rgba(163, 113, 247, 0.1); padding:3px 8px; border-radius:4px; flex:1; text-align:center;">狀態: <b>${sig}</b></div></div>
                 <h3 style="color:var(--text-muted); font-size:11px; border-bottom:1px solid var(--border); padding-bottom:3px; margin-top:5px; margin-bottom:5px;">🗞️ 情報分析 (近3日)</h3>`;
             if (!d.NewsList || d.NewsList.length === 0) html += `<div style="font-size:12px; color:var(--text-muted);">無新聞。</div>`;
-            else d.NewsList.forEach(n => { let t = highlightElites(n.title==="⏳ 翻譯中..."?n.raw_title:n.title, n.elites, brain.live_trends); html += `<div style="margin-bottom:3px; padding:4px 6px; background:rgba(255,255,255,0.01); border-radius:4px; border-left:2px solid ${n.is_today?'#ffa500':'var(--border)'}; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><span style="color:var(--text-muted); font-size:10px; margin-right:5px;">${n.time}</span><a href="${n.link}" target="_blank" style="text-decoration:none; color:var(--text-main);">${t}</a></div>`; });
+            else d.NewsList.forEach(n => { 
+                let t = highlightElites(n.title==="⏳ 翻譯中..."?n.raw_title:n.title, n.elites, brain.live_trends); 
+                html += `<div style="margin-bottom:3px; padding:4px 6px; background:rgba(255,255,255,0.01); border-radius:4px; border-left:2px solid ${n.is_today?'#ffa500':'var(--border)'}; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                    <span style="color:${n.is_today ? '#ffa500' : 'var(--text-muted)'}; font-size:10px; margin-right:5px;">${n.time}</span>
+                    <a href="${n.link}" target="_blank" style="text-decoration:none; color:var(--text-main);">${t}</a></div>`; 
+            });
             document.getElementById('detail-list').innerHTML = html + `</div>`;
         }
 
