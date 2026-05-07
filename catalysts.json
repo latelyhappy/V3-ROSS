@@ -22,11 +22,16 @@
     "OFFER TO": 80,
     "PURCHASE AGREEMENT": 75,
     "INTENT TO ACQUIRE": 75,
+    "LIFTS FULL-YEAR GUIDANCE": 30,
+    "RAISES GUIDANCE": 25,
+    "TURNS PROFITABLE": 20,
+    "SMASHES ESTIMATES": 20,
     "Q1 EARNINGS": 15,
     "第一季財報": 15,
     "FINANCIAL RESULTS": 15,
     "RECORD REVENUE": 15,
-    "BEATS ESTIMATES": 15
+    "BEATS ESTIMATES": 15,
+    "SALES BEAT": 15
   },
   "DEFENSE_PREMIUM": {
     "_註記": "V46 實戰數據發現：最高期望值 E=19.59 之軍工詞彙",
@@ -48,7 +53,8 @@
     "MET PRIMARY ENDPOINT": 75,
     "ORPHAN DRUG DESIGNATION": 60,
     "PDUFA": 50,
-    "FDA": 40
+    "FDA": 40,
+    "REGULATORY UPDATE": 20
   },
   "THEMATIC_TRENDS": {
     "_註記": "市場熱點單字 (疊加加分用)",
@@ -68,7 +74,15 @@
   "COMPLIANCE_WINS": {
     "_註記": "合規與專利除雷",
     "PATENT GRANTED": 45,
-    "NASDAQ COMPLIANCE": 40
+    "NASDAQ COMPLIANCE": 40,
+    "REGAINED COMPLIANCE": 40,
+    "MINIMUM BID PRICE": 30
+  },
+  "MANAGEMENT_CHANGES": {
+    "_註記": "高階管理層異動",
+    "APPOINTS CEO": 15,
+    "APPOINTS CFO": 10,
+    "CHIEF STRATEGY OFFICER": 5
   },
   "TOXIC_OFFERINGS": {
     "_註記": "增資毒藥鎖 (直接負分)",
@@ -94,7 +108,11 @@
     "交易中走勢": 0,
     "WHAT TO KNOW": 0,
     "POST-MARKET MOVEMENTS": 0,
-    "BEFORE THE BELL": 0
+    "BEFORE THE BELL": 0,
+    "STOCKS ARE MOVING": 0,
+    "PRE-MARKET SESSION": 0,
+    "WHAT'S GOING ON": 0,
+    "TODAY'S SESSION": 0
   },
   "CLASS_ACTION_SPAM": {
     "_註記": "訴訟農場垃圾桶 (強制歸零)",
