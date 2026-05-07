@@ -870,69 +870,70 @@ def scanner_engine():
                                     if cell.get('NewsList'):
                                         headline = cell['NewsList'][0].get('raw_title', '')
                                         collector.log_event(ticker, headline, float_m, float(p_live), volume=daily_vol, change_percent=real_pct)
-                                    
-                        threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
-                    except Exception as e: return
+                                        
+                    # 👇 修正了這裡的縮排，確保語法完全正確
+                    threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
+                except Exception as e: return
 
-                with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                    list(executor.map(_process_ticker, current_watchlist))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                list(executor.map(_process_ticker, current_watchlist))
+            
+            with brain_lock:
+                all_items = list(MASTER_BRAIN["details"].values())
+                active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST]
+                MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(x.get('Pct', '0').replace('%', '')), reverse=True)[:20]
                 
-                with brain_lock:
-                    all_items = list(MASTER_BRAIN["details"].values())
-                    active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST]
-                    MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(x.get('Pct', '0').replace('%', '')), reverse=True)[:20]
-                    
-                    vwap_items = [x for x in active_items if x.get("VR_Acc", 0) > 30.0 and x.get("VWAP_Dev", 0) > 0.0]
-                    MASTER_BRAIN["vwap_list"] = sorted(vwap_items, key=lambda x: x.get("VWAP_Dev", 0), reverse=True)
-                    
-                    MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
-                time.sleep(1)
-            except Exception as e: time.sleep(5)
+                vwap_items = [x for x in active_items if x.get("VR_Acc", 0) > 30.0 and x.get("VWAP_Dev", 0) > 0.0]
+                MASTER_BRAIN["vwap_list"] = sorted(vwap_items, key=lambda x: x.get("VWAP_Dev", 0), reverse=True)
+                
+                MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
+            time.sleep(1)
+        except Exception as e: time.sleep(5)
 
-    @app.route('/api/config', methods=['POST'])
-    def update_config():
-        global MIN_RELVOL_LIMIT, _last_list_update
-        data = request.json
-        if 'relvol_limit' in data:
-            try: MIN_RELVOL_LIMIT = float(data['relvol_limit'])
-            except: pass
-        _last_list_update = 0 
-        return jsonify({"status": "success", "relvol_limit": MIN_RELVOL_LIMIT})
+@app.route('/api/config', methods=['POST'])
+def update_config():
+    global MIN_RELVOL_LIMIT, _last_list_update
+    data = request.json
+    if 'relvol_limit' in data:
+        try: MIN_RELVOL_LIMIT = float(data['relvol_limit'])
+        except: pass
+    _last_list_update = 0 
+    return jsonify({"status": "success", "relvol_limit": MIN_RELVOL_LIMIT})
 
-    @app.route('/api/export_news')
-    def export_news():
-        rows = []
-        with brain_lock:
-            for ticker_data in MASTER_BRAIN.get('top_catalysts', []):
-                ticker = ticker_data.get('Code') or ticker_data.get('ticker')
-                for n in ticker_data.get('NewsList', []):
-                    rows.append({
-                        "發布時間": n.get('time'), "代碼": ticker, "總分": ticker_data.get('CatScore', 0),
-                        "標題": n.get('title'), "價格": ticker_data.get('Price', '-'), "漲幅": ticker_data.get('Pct', '-')
-                    })
-        if not rows: return "無數據", 404
-        df = pd.DataFrame(rows); output = io.BytesIO(); df.to_csv(output, index=False, encoding='utf-8-sig'); output.seek(0)
-        return send_file(output, mimetype='text/csv', as_attachment=True, download_name="news.csv")
+@app.route('/api/export_news')
+def export_news():
+    rows = []
+    with brain_lock:
+        for ticker_data in MASTER_BRAIN.get('top_catalysts', []):
+            ticker = ticker_data.get('Code') or ticker_data.get('ticker')
+            for n in ticker_data.get('NewsList', []):
+                rows.append({
+                    "發布時間": n.get('time'), "代碼": ticker, "總分": ticker_data.get('CatScore', 0),
+                    "標題": n.get('title'), "價格": ticker_data.get('Price', '-'), "漲幅": ticker_data.get('Pct', '-')
+                })
+    if not rows: return "無數據", 404
+    df = pd.DataFrame(rows); output = io.BytesIO(); df.to_csv(output, index=False, encoding='utf-8-sig'); output.seek(0)
+    return send_file(output, mimetype='text/csv', as_attachment=True, download_name="news.csv")
 
-    @app.route('/')
-    def index(): return render_template('index.html')
+@app.route('/')
+def index(): return render_template('index.html')
 
-    @app.route('/data')
-    def data():
-        with brain_lock: 
-            safe_brain = copy.deepcopy(MASTER_BRAIN)
-            safe_brain["live_trends"] = get_live_trends()
-            safe_brain["current_relvol"] = MIN_RELVOL_LIMIT 
-        return jsonify(safe_brain)
+@app.route('/data')
+def data():
+    with brain_lock: 
+        safe_brain = copy.deepcopy(MASTER_BRAIN)
+        safe_brain["live_trends"] = get_live_trends()
+        safe_brain["current_relvol"] = MIN_RELVOL_LIMIT 
+    return jsonify(safe_brain)
 
-    if __name__ == '__main__':
-        collector.init_db() 
-        load_float_cache()
-        load_intraday_state()
-        threading.Thread(target=state_auto_save_worker, daemon=True).start()
-        threading.Thread(target=scanner_engine, daemon=True).start()
-        threading.Thread(target=finnhub_news_monitor_worker, daemon=True).start()
-        
-        init_alpaca(MASTER_BRAIN, DYNAMIC_WATCHLIST, brain_lock)
-        
-        app.run(host='0.0.0.0', port=PORT, use_reloader=False)
+if __name__ == '__main__':
+    collector.init_db() 
+    load_float_cache()
+    load_intraday_state()
+    threading.Thread(target=state_auto_save_worker, daemon=True).start()
+    threading.Thread(target=scanner_engine, daemon=True).start()
+    threading.Thread(target=finnhub_news_monitor_worker, daemon=True).start()
+    
+    init_alpaca(MASTER_BRAIN, DYNAMIC_WATCHLIST, brain_lock)
+    
+    app.run(host='0.0.0.0', port=PORT, use_reloader=False)
