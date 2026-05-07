@@ -56,7 +56,6 @@
         tr.tr-gray .status-indicator { background: var(--text-muted); }
         
         .new-alert-row { background-color: rgba(88, 166, 255, 0.08) !important; }
-        
         @keyframes sniper-pulse { 0% { color: var(--green); text-shadow: none; } 50% { color: #56d364; text-shadow: 0 0 3px rgba(86,211,100,0.4); } 100% { color: var(--green); text-shadow: none; } }
         .sniper-tag { animation: sniper-pulse 2s infinite; font-weight: 900; }
         @keyframes gold-glow { 0% { box-shadow: 0 0 2px rgba(255, 215, 0, 0.1); border-color: rgba(255, 215, 0, 0.2); } 50% { box-shadow: 0 0 8px rgba(255, 215, 0, 0.3); border-color: rgba(255, 215, 0, 0.5); } 100% { box-shadow: 0 0 2px rgba(255, 215, 0, 0.1); border-color: rgba(255, 215, 0, 0.2); } }
@@ -74,7 +73,6 @@
         body.mobile-mode #workspace { display: block; overflow: hidden; height: auto; padding: 5px; width: 100vw; box-sizing: border-box; }
         body.mobile-mode .window-panel { position: static !important; width: 100% !important; height: auto !important; min-height: 85vh; margin-bottom: 15px; display: none; border-radius: 0; border: none; }
         body.mobile-mode .window-panel.active-tab { display: flex !important; }
-        body.mobile-mode table { font-size: 12px; min-width: max-content; }
     </style>
 </head>
 <body id="main-body">
@@ -139,7 +137,7 @@
         </div>
 
         <div id="win-news" class="window-panel">
-            <div class="panel-header">🗞️ 情報雷達</div>
+            <div class="panel-header">🗞️ 情報雷達 (代碼強制過濾版)</div>
             <div class="panel-content">
                 <table>
                     <thead><tr>
@@ -172,7 +170,7 @@
         let alertRenderCount = {};
         let currentZoom = parseFloat(localStorage.getItem('sniper_zoom')) || 1.0;
         
-        // 💡 修正 1：防止 localStorage 卡在極端數值 (如截圖中的 25%)
+        // 💡 修正 1：啟動時檢查縮放範圍
         if (currentZoom < 0.5) currentZoom = 0.5;
         if (currentZoom > 2.0) currentZoom = 2.0;
 
@@ -211,21 +209,8 @@
         }
 
         function testAudio() { initAudioContext(); sounds.nova.currentTime = 0; sounds.nova.volume = 1.0; sounds.nova.play().then(() => { alert("✅ 音效測試成功！"); }).catch(e => { alert("請點擊網頁空白處解鎖音效！"); }); }
-
-        function toggleMode() {
-            isMobileMode = !isMobileMode;
-            let btn = document.getElementById('mode-btn');
-            if (isMobileMode) { document.body.classList.add('mobile-mode'); btn.innerText = "💻 切換電腦版"; switchTab('win-rank', document.querySelectorAll('.tab-btn')[0]); } 
-            else { document.body.classList.remove('mobile-mode'); btn.innerText = "📱 切換手機版"; document.querySelectorAll('.window-panel').forEach(el => el.classList.remove('active-tab')); }
-        }
-
-        function switchTab(tabId, btn) {
-            document.querySelectorAll('.window-panel').forEach(el => el.classList.remove('active-tab'));
-            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-            document.getElementById(tabId).classList.add('active-tab');
-            btn.classList.add('active');
-        }
-
+        function toggleMode() { isMobileMode = !isMobileMode; let btn = document.getElementById('mode-btn'); if (isMobileMode) { document.body.classList.add('mobile-mode'); btn.innerText = "💻 切換電腦版"; switchTab('win-rank', document.querySelectorAll('.tab-btn')[0]); } else { document.body.classList.remove('mobile-mode'); btn.innerText = "📱 切換手機版"; document.querySelectorAll('.window-panel').forEach(el => el.classList.remove('active-tab')); } }
+        function switchTab(tabId, btn) { document.querySelectorAll('.window-panel').forEach(el => el.classList.remove('active-tab')); document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active')); document.getElementById(tabId).classList.add('active-tab'); btn.classList.add('active'); }
         function toggleETF() { showETF = !showETF; let btn = document.getElementById('etf-btn'); if (showETF) { btn.innerText = "🔘 隱藏 ETF"; btn.style.borderColor = "var(--red)"; btn.style.color = "var(--red)"; } else { btn.innerText = "🔘 ETF"; btn.style.borderColor = "var(--border)"; btn.style.color = "var(--text-main)"; } if (Object.keys(brain).length > 0) refreshUI(brain); }
         function openTW(s) { window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank'); }
 
@@ -270,27 +255,21 @@
             if (!d) return;
             document.getElementById('sys-status').innerText = `📡 數據更新: ${d.last_update || '--:--:--'}`;
             document.getElementById('sys-status').style.color = "var(--green)";
-            
             let currentSigIds = new Set();
             
-            // 1. 日誌渲染 (阻擋 undefined 保護機制 + 秒速 V 擷取)
+            // 1. 日誌渲染 (強化秒速擷取)
             let h1 = "";
             (d.surge_log || []).forEach(r => {
                 if (r.Type === 'fund' && !showETF) return; 
-                
                 let f_Code = r.Code || r.ticker || "N/A";
                 let sigId = f_Code + "_" + r.SignalTS;
-                
                 currentSigIds.add(sigId);
                 alertRenderCount[sigId] = (alertRenderCount[sigId] || 0) + 1;
-                
                 let isNew = alertRenderCount[sigId] <= 5;
-                let rowClass = r.Status ? `tr-${r.Status}` : ""; 
-                if (isNew) rowClass += " new-alert-row";
-                
+                let rowClass = r.Status ? `tr-${r.Status}` : ""; if (isNew) rowClass += " new-alert-row";
                 let sig = r.Signal || '-';
                 
-                // 💡 修正 2：優先尋找 Signal 中的極速文字，若無則使用後端傳來的 r.V 或 r.Velocity 數值
+                // 💡 修正 2：強化秒速 (V) 獲取
                 let velMatch = sig.match(/⚡極速拉升\((.*?)\)/);
                 let velVal = velMatch ? velMatch[1] : (r.V || r.Velocity || '-');
                 let velStr = velVal !== '-' ? `<b style="color:var(--neon-purple);">${velVal}</b>` : `<span style="color:var(--text-muted);">-</span>`;
@@ -311,7 +290,6 @@
                     <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'}</td>
                     <td style="font-weight:bold;">${sig}</td>
                 </tr>`;
-                
                 if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { played[r.SignalTS] = r.SignalTS; sounds.nova.play().catch(e=>{}); }
             });
             document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="11" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
@@ -320,7 +298,7 @@
                 if (!currentSigIds.has(key)) delete alertRenderCount[key];
             }
 
-            // 2. 排行渲染 (阻擋 undefined 保護機制)
+            // 2. 排行渲染
             let h2 = "", rankData = [...(d.leaderboard || [])].filter(r => !(r?.Type === 'fund' && !showETF));
             rankData.sort((a, b) => {
                 let vA = parseValue((rankCfg.col==='Float'?a.Float:(rankCfg.col==='RelVol'?a.RelVol:a[rankCfg.col])), rankCfg.col);
@@ -342,8 +320,12 @@
             });
             document.getElementById('rank-list').innerHTML = h2;
 
-            // 3. 情報渲染 (阻擋 undefined 保護機制 + 加入 symbol 備援)
-            let h3 = "", newsData = [...(d.top_catalysts || [])].filter(n => !(n?.Type === 'fund' && !showETF) && n?.NewsList && n.NewsList.length > 0);
+            // 3. 情報渲染 (💡 修正 3：加入過濾器，隱藏無代碼的新聞雜訊)
+            let h3 = "", newsData = [...(d.top_catalysts || [])].filter(n => {
+                let code = n.Code || n.ticker || n.symbol;
+                let isValid = code && code !== "undefined" && code !== "null" && code !== "N/A";
+                return isValid && !(n?.Type === 'fund' && !showETF) && n?.NewsList && n.NewsList.length > 0;
+            });
             newsData.sort((a, b) => {
                 let vA = parseValue((newsCfg.col==='time'?a.NewsList[0]?.time:(newsCfg.col==='CatScore'?(a.CatScore!==undefined?a.CatScore:a.score):a[newsCfg.col])), newsCfg.col);
                 let vB = parseValue((newsCfg.col==='time'?b.NewsList[0]?.time:(newsCfg.col==='CatScore'?(b.CatScore!==undefined?b.CatScore:b.score):b[newsCfg.col])), newsCfg.col);
@@ -352,10 +334,7 @@
             newsData.forEach(n => {
                 let latest = n.NewsList[0]; 
                 let f_Score = n.CatScore !== undefined ? n.CatScore : (n.score || 0);
-                
-                // 💡 修正 3：安全回退確保 Code 不為 undefined，補上 n.symbol
-                let f_Code = n.Code || n.ticker || n.symbol || "N/A";
-                
+                let f_Code = n.Code || n.ticker || n.symbol;
                 let hl_text = highlightElites(latest.title==="⏳ 翻譯中..."?latest.raw_title:latest.title, latest.elites, d.live_trends);
                 h3 += `<tr onclick="loadDetail('${f_Code}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[3]);" ondblclick="openTW('${f_Code}')">
                     <td class="status-indicator" style="background:${f_Score >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
@@ -368,9 +347,8 @@
             if(activeSym) loadDetail(activeSym);
         }
 
-        // 4. 深度分析極致濃縮
         function loadDetail(sym) {
-            if (sym === "N/A") return; 
+            if (sym === "N/A" || !sym) return; 
             activeSym = sym;
             let d = (brain.details && brain.details[sym]) ? brain.details[sym] : null; 
             let rankData = brain.leaderboard ? brain.leaderboard.find(x => (x.Code||x.ticker) === sym) : null;
@@ -379,55 +357,20 @@
             
             let trapWarn = d.IsTrap ? `<div style="border:1px solid var(--red); color:var(--red); padding:4px; margin-bottom:5px; border-radius:4px; font-size:12px; font-weight:bold;">🩸 偵測到毒藥/退市風險</div>` : "";
             if (d.HasSentimentFlip) trapWarn = `<div style="border:1px solid rgba(255,215,0,0.6); background: rgba(255,215,0,0.05); color:#ffd700; padding:4px; margin-bottom:5px; border-radius:4px; font-size:12px; font-weight:bold; animation: gold-glow 2s infinite;">💎 戰術警報：利空不跌！主力強勢承接</div>` + trapWarn;
-
-            let snScore = d.SN_Score || 0; let vsaState = d.VsaState || 0; let snColor = "var(--text-muted)";
-            if (snScore >= 400) snColor = "var(--neon-green)"; else if (snScore >= 200) snColor = "var(--yellow)";
+            let snScore = d.SN_Score || 0; let vsaState = d.VsaState || 0; let snColor = snScore >= 400 ? "var(--neon-green)" : (snScore >= 200 ? "var(--yellow)" : "var(--text-muted)");
             if (vsaState > 0) snColor = "var(--red)";
-
             let vwapColor = d.VWAP_Rating === 'High' ? 'var(--red)' : (d.VWAP_Rating === 'Mid' ? 'var(--yellow)' : 'var(--neon-green)');
-            let signalDisplay = d.Signal || '掃描中...';
-            signalDisplay = signalDisplay.replace(/⚡極速拉升\(.*?\)\s*/, '');
-            if (signalDisplay.includes('🎯')) signalDisplay = `<span class="sniper-tag">${signalDisplay}</span>`;
-
-            let gaugeHTML = `<svg width="70" height="40" viewBox="0 0 120 70" style="overflow:visible;">
-                <path d="M 15 60 A 45 45 0 0 1 105 60" fill="none" stroke="var(--border)" stroke-width="12" stroke-linecap="round" />
-                <path d="M 15 60 A 45 45 0 0 1 105 60" fill="none" stroke="${snColor}" stroke-width="12" stroke-linecap="round" stroke-dasharray="141" stroke-dashoffset="${141*(1-Math.min(snScore/600,1))}" style="transition: stroke-dashoffset 1s ease-out;" />
-                <text x="60" y="55" text-anchor="middle" fill="${snColor}" font-size="28" font-weight="900">${snScore}</text>
-            </svg>`;
-
+            let sig = (d.Signal || '掃描中...').replace(/⚡極速拉升\(.*?\)\s*/, '');
+            if (sig.includes('🎯')) sig = `<span class="sniper-tag">${sig}</span>`;
+            let gaugeHTML = `<svg width="70" height="40" viewBox="0 0 120 70" style="overflow:visible;"><path d="M 15 60 A 45 45 0 0 1 105 60" fill="none" stroke="var(--border)" stroke-width="12" stroke-linecap="round" /><path d="M 15 60 A 45 45 0 0 1 105 60" fill="none" stroke="${snColor}" stroke-width="12" stroke-linecap="round" stroke-dasharray="141" stroke-dashoffset="${141*(1-Math.min(snScore/600,1))}" style="transition: stroke-dashoffset 1s ease-out;" /><text x="60" y="55" text-anchor="middle" fill="${snColor}" font-size="28" font-weight="900">${snScore}</text></svg>`;
             let html = `<div style="text-align:left;">${trapWarn}
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">
-                    <div style="flex:1;">
-                        <h2 style="font-size:24px; margin:0; display:inline-block; cursor:pointer;" onclick="openTW('${sym}')">${sym} <span style="font-size:12px; text-decoration:underline; color:var(--blue); font-weight:normal;">[TV圖表]</span></h2>
-                        <span style="font-size:18px; color:var(--text-muted); margin-left:8px;">${d.Price||'-'}</span>
-                        <div style="margin-top:2px; font-size:12px;">
-                            <span style="color:${vsaState > 0 ? 'var(--red)' : 'var(--green)'}; font-weight:bold;">${vsaState > 0 ? '🚨量價背離' : '✅量價健康'}</span>
-                            <span style="margin-left:8px; color:var(--text-main);">🛡️守線: <b style="color:var(--red);">$${(d.StopLoss||0).toFixed(2)}</b></span>
-                        </div>
-                    </div>
-                    <div style="margin-right: -10px;">${gaugeHTML}</div>
+                    <div style="flex:1;"><h2 style="font-size:24px; margin:0; display:inline-block; cursor:pointer;" onclick="openTW('${sym}')">${sym} <span style="font-size:12px; text-decoration:underline; color:var(--blue); font-weight:normal;">[TV圖表]</span></h2><span style="font-size:18px; color:var(--text-muted); margin-left:8px;">${d.Price||'-'}</span><div style="margin-top:2px; font-size:12px;"><span style="color:${vsaState > 0 ? 'var(--red)' : 'var(--green)'}; font-weight:bold;">${vsaState > 0 ? '🚨量價背離' : '✅量價健康'}</span><span style="margin-left:8px; color:var(--text-main);">🛡️守線: <b style="color:var(--red);">$${(d.StopLoss||0).toFixed(2)}</b></span></div></div><div style="margin-right: -10px;">${gaugeHTML}</div>
                 </div>
-                
-                <div style="display:flex; flex-wrap:wrap; gap:4px; padding:6px; background:rgba(0,0,0,0.3); border-radius:6px; font-size:12px; margin-bottom:8px;">
-                    <div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Vol: <b>${d.Vol||'-'}</b></div>
-                    <div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Rel: <b style="color:var(--yellow);">${d.RelVol||'-'}</b></div>
-                    <div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Acc(5m): ${formatVolAcc(d.VolAcc)}</div>
-                    <div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">VWAP: <b style="color:${vwapColor};">${d.VWAP_Dev>0?'+'+d.VWAP_Dev:d.VWAP_Dev}%</b></div>
-                    <div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Cat: <b style="color:var(--yellow);">${d.CatScore||0}</b></div>
-                    <div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Float: <b>${d.Float||'-'}</b></div>
-                    <div style="background:rgba(163, 113, 247, 0.1); padding:3px 8px; border-radius:4px; flex:1; text-align:center;">狀態: <b>${signalDisplay}</b></div>
-                </div>
-
+                <div style="display:flex; flex-wrap:wrap; gap:4px; padding:6px; background:rgba(0,0,0,0.3); border-radius:6px; font-size:12px; margin-bottom:8px;"><div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Vol: <b>${d.Vol||'-'}</b></div><div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Rel: <b style="color:var(--yellow);">${d.RelVol||'-'}</b></div><div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Acc(5m): ${formatVolAcc(d.VolAcc)}</div><div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">VWAP: <b style="color:${vwapColor};">${d.VWAP_Dev>0?'+'+d.VWAP_Dev:d.VWAP_Dev}%</b></div><div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Cat: <b style="color:var(--yellow);">${d.CatScore||0}</b></div><div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Float: <b>${d.Float||'-'}</b></div><div style="background:rgba(163, 113, 247, 0.1); padding:3px 8px; border-radius:4px; flex:1; text-align:center;">狀態: <b>${sig}</b></div></div>
                 <h3 style="color:var(--text-muted); font-size:11px; border-bottom:1px solid var(--border); padding-bottom:3px; margin-top:5px; margin-bottom:5px;">🗞️ 情報分析 (近3日)</h3>`;
-            
             if (!d.NewsList || d.NewsList.length === 0) html += `<div style="font-size:12px; color:var(--text-muted);">無新聞。</div>`;
-            else d.NewsList.forEach(n => { 
-                let d_title = highlightElites(n.title==="⏳ 翻譯中..."?n.raw_title:n.title, n.elites, brain.live_trends);
-                html += `<div style="margin-bottom:3px; padding:4px 6px; background:rgba(255,255,255,0.01); border-radius:4px; border-left:2px solid ${n.is_today?'#ffa500':'var(--border)'}; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                    <span style="color:var(--text-muted); font-size:10px; margin-right:5px;">${n.time}</span>
-                    <a href="${n.link}" target="_blank" style="text-decoration:none; color:var(--text-main);">${d_title}</a>
-                </div>`; 
-            });
+            else d.NewsList.forEach(n => { let t = highlightElites(n.title==="⏳ 翻譯中..."?n.raw_title:n.title, n.elites, brain.live_trends); html += `<div style="margin-bottom:3px; padding:4px 6px; background:rgba(255,255,255,0.01); border-radius:4px; border-left:2px solid ${n.is_today?'#ffa500':'var(--border)'}; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><span style="color:var(--text-muted); font-size:10px; margin-right:5px;">${n.time}</span><a href="${n.link}" target="_blank" style="text-decoration:none; color:var(--text-main);">${t}</a></div>`; });
             document.getElementById('detail-list').innerHTML = html + `</div>`;
         }
 
