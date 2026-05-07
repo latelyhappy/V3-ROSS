@@ -55,7 +55,7 @@
         tr.tr-red .status-indicator { background: var(--red); } tr.tr-green .status-indicator { background: var(--green); }
         tr.tr-gray .status-indicator { background: var(--text-muted); }
         
-        /* 💡 護眼優化：調低新訊號高亮透明度 */
+        /* 💡 護眼優化：調低新訊號高亮透明度 (0.08) */
         .new-alert-row { background-color: rgba(88, 166, 255, 0.08) !important; }
         
         /* 💡 護眼優化：調低霓虹與發光強度 */
@@ -106,10 +106,10 @@
             <div class="panel-content">
                 <table id="surge-log-table">
                     <thead><tr>
-                        <th class="status-indicator"></th><th>時間</th><th>代碼</th><th>價格</th><th>量比</th>
-                        <th>秒速 (V)</th><th>續航 (5m)</th><th>戰術訊號</th>
+                        <th class="status-indicator"></th><th>時間</th><th>代碼</th><th>股價</th><th>量比</th>
+                        <th>流通股</th><th>成交量</th><th>秒速 (V)</th><th>續航 (5m)</th><th>漲幅</th><th>戰術訊號</th>
                     </tr></thead>
-                    <tbody id="surge-log-body"><tr><td colspan="8" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr></tbody>
+                    <tbody id="surge-log-body"><tr><td colspan="11" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -128,9 +128,11 @@
                     <thead><tr>
                         <th class="status-indicator"></th>
                         <th onclick="setSort('rank', 'Code')">代碼 <span id="sort-rank-Code"></span></th>
-                        <th onclick="setSort('rank', 'Float')">流通股 <span id="sort-rank-Float"></span></th>
-                        <th onclick="setSort('rank', 'Price')">價格 <span id="sort-rank-Price"></span></th>
+                        <th onclick="setSort('rank', 'Price')">股價 <span id="sort-rank-Price"></span></th>
                         <th onclick="setSort('rank', 'RelVol')">量比 <span id="sort-rank-RelVol"></span></th>
+                        <th onclick="setSort('rank', 'Float')">流通股 <span id="sort-rank-Float"></span></th>
+                        <th onclick="setSort('rank', 'Vol')">成交量 <span id="sort-rank-Vol"></span></th>
+                        <th onclick="setSort('rank', 'VolAcc')">續航 <span id="sort-rank-VolAcc"></span></th>
                         <th onclick="setSort('rank', 'Pct')">漲幅 <span id="sort-rank-Pct">▼</span></th>
                     </tr></thead>
                     <tbody id="rank-list"></tbody>
@@ -233,8 +235,9 @@
             if (typeof val === 'string' && val.includes('N/A')) return -999999;
             if (col === 'Code' || col === 'time') return val.toString();
             let str = val.toString(); let num = parseFloat(str.replace(/[^0-9.-]/g, '')) || 0;
-            if (col === 'Float') { if (str.includes('M')) return num * 1000000; if (str.includes('K')) return num * 1000; }
-            if (col === 'RelVol' || col === 'Pct') return parseFloat(str.replace(/[^0-9.-]/g, '')) || 0;
+            // 💡 更新：支援 Vol 與 Float 的單位轉換計算
+            if (col === 'Float' || col === 'Vol') { if (str.includes('M')) return num * 1000000; if (str.includes('K')) return num * 1000; }
+            if (col === 'RelVol' || col === 'Pct' || col === 'VolAcc') return parseFloat(str.replace(/[^0-9.-]/g, '')) || 0;
             return num;
         }
 
@@ -272,7 +275,7 @@
             
             let currentSigIds = new Set();
 
-            // 1. 日誌渲染 (渲染計數器修正)
+            // 1. 日誌渲染 
             let h1 = "";
             (d.surge_log || []).forEach(r => {
                 if (r.Type === 'fund' && !showETF) return; 
@@ -293,15 +296,22 @@
                 if (sig.includes('🎯')) sig = `<span class="sniper-tag">${sig}</span>`;
 
                 h1 += `<tr class="${rowClass}" onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
-                    <td class="status-indicator"></td><td style="color:var(--text-muted);">${r.Time}</td><td class="sym">${r.Code}</td>
-                    <td>${r.Price}</td><td><b style="color:var(--yellow);">${r.RelVol}</b></td>
-                    <td>${velStr}</td><td>${formatVolAcc(r.VolAcc)}</td>
+                    <td class="status-indicator"></td>
+                    <td style="color:var(--text-muted);">${r.Time}</td>
+                    <td class="sym">${r.Code}</td>
+                    <td>${r.Price}</td>
+                    <td><b style="color:var(--yellow);">${r.RelVol}</b></td>
+                    <td>${r.Type==='fund'?'N/A':(r.Float||'-')}</td>
+                    <td>${r.Vol}</td>
+                    <td>${velStr}</td>
+                    <td>${formatVolAcc(r.VolAcc)}</td>
+                    <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct}</td>
                     <td style="font-weight:bold;">${sig}</td>
                 </tr>`;
                 
                 if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { played[r.SignalTS] = r.SignalTS; sounds.nova.play().catch(e=>{}); }
             });
-            document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="8" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
+            document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="11" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
 
             // 💡 清理不再顯示的舊訊號記憶體，避免記憶體洩漏
             for (let key in alertRenderCount) {
@@ -317,8 +327,14 @@
             });
             rankData.forEach(r => {
                 h2 += `<tr onclick="loadDetail('${r.Code}')" ondblclick="openTW('${r.Code}')">
-                    <td class="status-indicator"></td><td class="sym">${r.Code}</td><td>${r.Type==='fund'?'N/A':(r.Float||"-")}</td>
-                    <td>${r.Price}</td><td><b style="color:var(--yellow);">${r.RelVol||'-'}</b></td><td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'}</td>
+                    <td class="status-indicator"></td>
+                    <td class="sym">${r.Code}</td>
+                    <td>${r.Price}</td>
+                    <td><b style="color:var(--yellow);">${r.RelVol||'-'}</b></td>
+                    <td>${r.Type==='fund'?'N/A':(r.Float||"-")}</td>
+                    <td>${r.Vol||'-'}</td>
+                    <td>${formatVolAcc(r.VolAcc)}</td>
+                    <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'}</td>
                 </tr>`;
             });
             document.getElementById('rank-list').innerHTML = h2;
