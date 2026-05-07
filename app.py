@@ -831,7 +831,7 @@ def scanner_engine():
                                 can_trigger = False
                                 if now_ts - last_trigger_time > 60:
                                     can_trigger = True
-                                # 💡 V46 縮短爆量箱子冷卻時間至 30 秒
+                                # 💡 V46 縮短爆量箱子冷卻時間至 30 秒，避免錯失連續加倉機會
                                 elif is_massive_inflow and (now_ts - last_massive_time > 30):
                                     can_trigger = True
                                     
@@ -844,13 +844,13 @@ def scanner_engine():
                                         stats["Signal"] += " 💀(SEC陷阱)"
                                         cell["IsTrap"] = True
                                         
-                                    # 💡 V46 專屬：重要提示音效「精確打擊」邏輯
+                                    # 💡 V46 專屬：重要提示音效「精確打擊」統一使用 nova
                                     alert_audio = None
 
                                     # 1. 物理靜音優先：陷阱區或 SEC 警告不發聲
                                     if "陷阱" in ui_tag or cell.get("IsTrap", False):
                                         alert_audio = None
-                                    # 2. 核心重要提示 (nova)：狙擊、利空反轉、磁吸、爆量
+                                    # 2. 核心重要提示 (統一發出 nova 音效)：狙擊、利空反轉、磁吸預警、爆量箱子
                                     elif ("狙擊" in current_signal) or has_sentiment_flip or is_vwap_magnet or is_massive_inflow:
                                         alert_audio = "nova"
 
