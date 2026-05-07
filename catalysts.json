@@ -13,6 +13,8 @@
     "_註記": "核彈級併購、正式協議與財報突破 (V46 數據驅動版)",
     "DEFINITIVE AGREEMENT": 95,
     "CASH ACQUISITION": 95,
+    "ALL-CASH TRANSACTION": 95,
+    "TO BE ACQUIRED": 90,
     "TENDER OFFER": 90,
     "ACQUISITION": 85,
     "BUYOUT": 85,
@@ -24,14 +26,18 @@
     "INTENT TO ACQUIRE": 75,
     "LIFTS FULL-YEAR GUIDANCE": 30,
     "RAISES GUIDANCE": 25,
+    "PROFITABILITY SURPRISE": 20,
     "TURNS PROFITABLE": 20,
     "SMASHES ESTIMATES": 20,
+    "SURPASS ESTIMATES": 15,
+    "TOPS REVENUE ESTIMATES": 15,
+    "REVENUE BEAT": 15,
+    "BEATS ESTIMATES": 15,
+    "SALES BEAT": 15,
     "Q1 EARNINGS": 15,
     "第一季財報": 15,
     "FINANCIAL RESULTS": 15,
-    "RECORD REVENUE": 15,
-    "BEATS ESTIMATES": 15,
-    "SALES BEAT": 15
+    "RECORD REVENUE": 15
   },
   "DEFENSE_PREMIUM": {
     "_註記": "V46 實戰數據發現：最高期望值 E=19.59 之軍工詞彙",
@@ -62,7 +68,11 @@
     "SMR": 15,
     "NUCLEAR": 12,
     "QUANTUM": 12,
+    "AI-DRIVEN": 10,
+    "AI-ENABLED": 10,
     "HBM": 8,
+    "PALANTIR": 8,
+    "PLTR": 8,
     "NVIDIA": 6,
     "NVDA": 6,
     "GLP-1": 6,
@@ -80,9 +90,16 @@
   },
   "MANAGEMENT_CHANGES": {
     "_註記": "高階管理層異動",
+    "APPOINTS PRESIDENT": 15,
     "APPOINTS CEO": 15,
     "APPOINTS CFO": 10,
     "CHIEF STRATEGY OFFICER": 5
+  },
+  "EARNINGS_MISS": {
+    "_註記": "財報爆雷 (負分抵銷)",
+    "REVENUE MISS": -20,
+    "MISSES ESTIMATES": -20,
+    "EARNINGS MISS": -20
   },
   "TOXIC_OFFERINGS": {
     "_註記": "增資毒藥鎖 (直接負分)",
@@ -112,7 +129,10 @@
     "STOCKS ARE MOVING": 0,
     "PRE-MARKET SESSION": 0,
     "WHAT'S GOING ON": 0,
-    "TODAY'S SESSION": 0
+    "TODAY'S SESSION": 0,
+    "STOCK JUMPS": 0,
+    "UNUSUAL VOLUME": 0,
+    "PRE-MARKET SINKS": 0
   },
   "CLASS_ACTION_SPAM": {
     "_註記": "訴訟農場垃圾桶 (強制歸零)",
@@ -137,11 +157,15 @@
     "META": 0
   },
   "EARNINGS_PREVIEW": {
-    "_註記": "法說會預告過濾 (只預告沒數字的歸零)",
+    "_註記": "法說會預告與純紀錄過濾 (強制歸零)",
     "TO REPORT": 0,
     "TO ANNOUNCE": 0,
     "CONFERENCE CALL AND WEBCAST": 0,
-    "HOST WEBINAR": 0
+    "HOST WEBINAR": 0,
+    "EARNINGS CALL TRANSCRIPT": 0,
+    "EARNINGS CALL HIGHLIGHTS": 0,
+    "EARNINGS EXPECTED TO GROW": 0,
+    "AHEAD OF NEXT WEEK": 0
   },
   "_V46_STRATEGY_NOTES": {
     "FLOAT_REDLINE": "Float > 55M 時，自動視為低動能標的",
