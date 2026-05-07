@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V46 - Chimera Matrix 2.0</title>
+    <title>Sniper V46 - Chimera Matrix 2.0 (👑 皇冠主力偵蒐版)</title>
     <style>
         :root { 
             --yellow: #e3b341; --purple: #a371f7; --green: #3fb950; --red: #f85149; --blue: #58a6ff;
@@ -19,29 +19,10 @@
         .ghost-btn { background: transparent; border: 1px solid var(--border); color: var(--text-main); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; transition: all 0.2s ease; margin-right: 8px; flex-shrink: 0;}
         .ghost-btn:hover { background: rgba(163, 113, 247, 0.2); border-color: var(--purple); }
         
-        #workspace { 
-            display: grid; 
-            grid-template-columns: 1fr 1fr; 
-            grid-template-rows: 1fr 1fr; 
-            gap: 8px; 
-            padding: 8px; 
-            flex: 1; 
-            box-sizing: border-box;
-            background: #000;
-            overflow: hidden;
-        }
-        
+        #workspace { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 8px; padding: 8px; flex: 1; box-sizing: border-box; background: #000; overflow: hidden; }
         .window-panel { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; position: relative; }
         .panel-header { background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border); padding: 8px 12px; font-size: 13px; font-weight: bold; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
-        
-        .panel-content { 
-            flex: 1; 
-            overflow-y: auto; 
-            overflow-x: hidden; 
-            padding: 0;
-            scrollbar-width: none; 
-            -ms-overflow-style: none; 
-        }
+        .panel-content { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 0; scrollbar-width: none; -ms-overflow-style: none; }
         .panel-content::-webkit-scrollbar { display: none; } 
         
         table { width: 100%; border-collapse: collapse; }
@@ -64,6 +45,16 @@
         .up { color: var(--green); font-weight: bold; } .down { color: var(--red); font-weight: bold; }
         .neon-word { color: var(--neon-green); font-weight: 900; }
 
+        /* 主力標籤特效 */
+        .crown-icon { color: #ffd700; font-size: 14px; margin-right: 4px; text-shadow: 0 0 5px rgba(255, 215, 0, 0.5); }
+        .crown-row { background: rgba(255, 215, 0, 0.04) !important; }
+        @keyframes row-pulse { 0% { background: rgba(163, 113, 247, 0.05); } 50% { background: rgba(163, 113, 247, 0.15); } 100% { background: rgba(163, 113, 247, 0.05); } }
+        .main-force-row { animation: row-pulse 3s infinite !important; border-left: 2px solid var(--purple) !important; }
+        .badge { font-size: 10px; padding: 1px 4px; border-radius: 3px; font-weight: bold; margin-right: 3px; display: inline-block; }
+        .badge-hot { background: var(--red); color: white; }
+        .badge-news { background: var(--blue); color: white; }
+        .badge-light { background: var(--green); color: black; }
+
         #mobile-tabs { display: none; }
         body.mobile-mode { overflow-y: auto !important; overflow-x: hidden !important; height: auto; padding-bottom: 60px; }
         body.mobile-mode #tactical-bar { overflow-x: auto; white-space: nowrap; padding-right: 20px; }
@@ -73,12 +64,12 @@
         body.mobile-mode #workspace { display: block; overflow: hidden; height: auto; padding: 5px; width: 100vw; box-sizing: border-box; }
         body.mobile-mode .window-panel { position: static !important; width: 100% !important; height: auto !important; min-height: 85vh; margin-bottom: 15px; display: none; border-radius: 0; border: none; }
         body.mobile-mode .window-panel.active-tab { display: flex !important; }
+        body.mobile-mode table { font-size: 12px; min-width: max-content; }
     </style>
 </head>
 <body id="main-body">
     <div id="tactical-bar">
         <button id="audio-btn" class="ghost-btn" style="border-color:var(--green); color:var(--green);" onclick="toggleAudio()">🔊 核心警報</button>
-        <button id="test-audio-btn" class="ghost-btn" style="border-color:var(--purple); color:var(--purple);" onclick="testAudio()">🎵 測試</button>
         <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 ETF</button>
         <button id="summary-btn" class="ghost-btn" style="border-color:var(--neon-green); color:var(--neon-green);" onclick="fetchSummary()">📊 高勝率戰報</button>
         
@@ -118,17 +109,16 @@
         </div>
 
         <div id="win-rank" class="window-panel">
-            <div class="panel-header">🏆 超新星排行</div>
+            <div class="panel-header">🏆 超新星排行 (👑 代表主力在場)</div>
             <div class="panel-content">
                 <table>
                     <thead><tr>
                         <th class="status-indicator"></th>
                         <th onclick="setSort('rank', 'Code')">代碼 <span id="sort-rank-Code"></span></th>
-                        <th onclick="setSort('rank', 'Price')">股價 <span id="sort-rank-Price"></span></th>
+                        <th>屬性標籤</th>
                         <th onclick="setSort('rank', 'RelVol')">量比 <span id="sort-rank-RelVol"></span></th>
                         <th onclick="setSort('rank', 'Float')">流通股 <span id="sort-rank-Float"></span></th>
                         <th onclick="setSort('rank', 'Vol')">成交量 <span id="sort-rank-Vol"></span></th>
-                        <th onclick="setSort('rank', 'VolAcc')">續航 <span id="sort-rank-VolAcc"></span></th>
                         <th onclick="setSort('rank', 'Pct')">漲幅 <span id="sort-rank-Pct">▼</span></th>
                     </tr></thead>
                     <tbody id="rank-list"></tbody>
@@ -137,7 +127,7 @@
         </div>
 
         <div id="win-news" class="window-panel">
-            <div class="panel-header">🗞️ 情報雷達 (代碼強制過濾版)</div>
+            <div class="panel-header">🗞️ 情報雷達 (過濾雜訊版)</div>
             <div class="panel-content">
                 <table>
                     <thead><tr>
@@ -170,6 +160,7 @@
         let alertRenderCount = {};
         let currentZoom = parseFloat(localStorage.getItem('sniper_zoom')) || 1.0;
         
+        // 🛡️ 防當機：縮放鎖定
         if (currentZoom < 0.5) currentZoom = 0.5;
         if (currentZoom > 2.0) currentZoom = 2.0;
 
@@ -207,7 +198,6 @@
             else { btn.style.borderColor="var(--red)"; btn.style.color="var(--red)"; btn.innerText="🔇 音效 (已靜音)"; }
         }
 
-        function testAudio() { initAudioContext(); sounds.nova.currentTime = 0; sounds.nova.volume = 1.0; sounds.nova.play().then(() => { alert("✅ 音效測試成功！"); }).catch(e => { alert("請點擊網頁空白處解鎖音效！"); }); }
         function toggleMode() { isMobileMode = !isMobileMode; let btn = document.getElementById('mode-btn'); if (isMobileMode) { document.body.classList.add('mobile-mode'); btn.innerText = "💻 切換電腦版"; switchTab('win-rank', document.querySelectorAll('.tab-btn')[0]); } else { document.body.classList.remove('mobile-mode'); btn.innerText = "📱 切換手機版"; document.querySelectorAll('.window-panel').forEach(el => el.classList.remove('active-tab')); } }
         function switchTab(tabId, btn) { document.querySelectorAll('.window-panel').forEach(el => el.classList.remove('active-tab')); document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active')); document.getElementById(tabId).classList.add('active-tab'); btn.classList.add('active'); }
         function toggleETF() { showETF = !showETF; let btn = document.getElementById('etf-btn'); if (showETF) { btn.innerText = "🔘 隱藏 ETF"; btn.style.borderColor = "var(--red)"; btn.style.color = "var(--red)"; } else { btn.innerText = "🔘 ETF"; btn.style.borderColor = "var(--border)"; btn.style.color = "var(--text-main)"; } if (Object.keys(brain).length > 0) refreshUI(brain); }
@@ -254,8 +244,14 @@
             if (!d) return;
             document.getElementById('sys-status').innerText = `📡 數據更新: ${d.last_update || '--:--:--'}`;
             document.getElementById('sys-status').style.color = "var(--green)";
+            
+            // 建立情報評分快取
+            let newsScoreMap = {};
+            (d.top_catalysts || []).forEach(n => { newsScoreMap[n.Code || n.ticker || n.symbol] = n.CatScore || n.score || 0; });
+
             let currentSigIds = new Set();
             
+            // 1. 日誌渲染 (秒速防缺保護)
             let h1 = "";
             (d.surge_log || []).forEach(r => {
                 if (r.Type === 'fund' && !showETF) return; 
@@ -291,10 +287,9 @@
             });
             document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="11" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
 
-            for (let key in alertRenderCount) {
-                if (!currentSigIds.has(key)) delete alertRenderCount[key];
-            }
+            for (let key in alertRenderCount) { if (!currentSigIds.has(key)) delete alertRenderCount[key]; }
 
+            // 2. 超新星排行 (👑 主力與屬性標籤)
             let h2 = "", rankData = [...(d.leaderboard || [])].filter(r => !(r?.Type === 'fund' && !showETF));
             rankData.sort((a, b) => {
                 let vA = parseValue((rankCfg.col==='Float'?a.Float:(rankCfg.col==='RelVol'?a.RelVol:a[rankCfg.col])), rankCfg.col);
@@ -303,19 +298,34 @@
             });
             rankData.forEach(r => {
                 let f_Code = r.Code || r.ticker || "N/A";
-                h2 += `<tr onclick="loadDetail('${f_Code}')" ondblclick="openTW('${f_Code}')">
+                let newsScore = newsScoreMap[f_Code] || 0;
+                let floatVal = parseFloat(r.Float) || 0;
+                let relVolVal = parseFloat(r.RelVol) || 0;
+
+                // 👑 主力在場判定
+                let isMainForce = (relVolVal > 3.0 && newsScore > 70); 
+                let crown = isMainForce ? `<span class="crown-icon crown-active">👑</span>` : "";
+                let rowClass = isMainForce ? "main-force-row" : "";
+                
+                // 屬性標籤
+                let badges = "";
+                if (relVolVal > 5.0) badges += `<span class="badge badge-hot">☢️ 爆量</span>`;
+                if (newsScore > 70) badges += `<span class="badge badge-news">🗞️ 利多</span>`;
+                if (floatVal > 0 && floatVal <= 15) badges += `<span class="badge badge-light">🐎 輕盤</span>`;
+
+                h2 += `<tr class="${rowClass}" onclick="loadDetail('${f_Code}')" ondblclick="openTW('${f_Code}')">
                     <td class="status-indicator"></td>
-                    <td class="sym">${f_Code}</td>
-                    <td>${r.Price}</td>
+                    <td class="sym">${crown}${f_Code}</td>
+                    <td>${badges || '<span style="color:var(--border)">-</span>'}</td>
                     <td><b style="color:var(--yellow);">${r.RelVol||'-'}</b></td>
                     <td>${r.Type==='fund'?'N/A':(r.Float||"-")}</td>
                     <td>${r.Vol||'-'}</td>
-                    <td>${formatVolAcc(r.VolAcc)}</td>
                     <td class="${parseFloat(r.Pct||0)>0?'up':'down'}">${r.Pct||'-'}</td>
                 </tr>`;
             });
             document.getElementById('rank-list').innerHTML = h2;
 
+            // 3. 情報渲染 (過濾雜訊代碼 N/A)
             let h3 = "", newsData = [...(d.top_catalysts || [])].filter(n => {
                 let code = n.Code || n.ticker || n.symbol;
                 let isValid = code && code !== "undefined" && code !== "null" && code !== "N/A";
@@ -359,7 +369,6 @@
             if (sig.includes('🎯')) sig = `<span class="sniper-tag">${sig}</span>`;
             let gaugeHTML = `<svg width="70" height="40" viewBox="0 0 120 70" style="overflow:visible;"><path d="M 15 60 A 45 45 0 0 1 105 60" fill="none" stroke="var(--border)" stroke-width="12" stroke-linecap="round" /><path d="M 15 60 A 45 45 0 0 1 105 60" fill="none" stroke="${snColor}" stroke-width="12" stroke-linecap="round" stroke-dasharray="141" stroke-dashoffset="${141*(1-Math.min(snScore/600,1))}" style="transition: stroke-dashoffset 1s ease-out;" /><text x="60" y="55" text-anchor="middle" fill="${snColor}" font-size="28" font-weight="900">${snScore}</text></svg>`;
             
-            // 💡 修正 1 & 2：將當日新聞時間轉為橘色
             let html = `<div style="text-align:left;">${trapWarn}
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">
                     <div style="flex:1;"><h2 style="font-size:24px; margin:0; display:inline-block; cursor:pointer;" onclick="openTW('${sym}')">${sym} <span style="font-size:12px; text-decoration:underline; color:var(--blue); font-weight:normal;">[TV圖表]</span></h2><span style="font-size:18px; color:var(--text-muted); margin-left:8px;">${d.Price||'-'}</span><div style="margin-top:2px; font-size:12px;"><span style="color:${vsaState > 0 ? 'var(--red)' : 'var(--green)'}; font-weight:bold;">${vsaState > 0 ? '🚨量價背離' : '✅量價健康'}</span><span style="margin-left:8px; color:var(--text-main);">🛡️守線: <b style="color:var(--red);">$${(d.StopLoss||0).toFixed(2)}</b></span></div></div><div style="margin-right: -10px;">${gaugeHTML}</div>
