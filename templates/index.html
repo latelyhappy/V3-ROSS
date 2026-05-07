@@ -11,7 +11,6 @@
             --bg-base: #0d1117; --bg-surface: #161b22; --border: #30363d; 
             --text-main: #c9d1d9; --text-muted: #8b949e; 
         }
-        /* 💡 鎖定 body 大小，確保內容完全由內部的 Grid 控制 */
         body { margin: 0; background: var(--bg-base); color: var(--text-main); font-family: -apple-system, sans-serif; height: 100vh; width: 100vw; display: flex; flex-direction: column; overflow: hidden; user-select: none; }
         
         #tactical-bar { height: 50px; background: rgba(13, 17, 23, 0.95); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 15px; box-sizing: border-box; flex-shrink: 0; z-index: 100; overflow-x: auto; white-space: nowrap; }
@@ -20,7 +19,6 @@
         .ghost-btn { background: transparent; border: 1px solid var(--border); color: var(--text-main); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; transition: all 0.2s ease; margin-right: 8px; flex-shrink: 0;}
         .ghost-btn:hover { background: rgba(163, 113, 247, 0.2); border-color: var(--purple); }
         
-        /* 💡 2x2 固定矩陣，自動適應當前視窗 */
         #workspace { 
             display: grid; 
             grid-template-columns: 1fr 1fr; 
@@ -36,20 +34,20 @@
         .window-panel { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; position: relative; }
         .panel-header { background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border); padding: 8px 12px; font-size: 13px; font-weight: bold; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
         
-        /* 💡 無邊條下捲核心：隱藏滾動條但保留功能 */
         .panel-content { 
             flex: 1; 
             overflow-y: auto; 
             overflow-x: hidden; 
             padding: 0;
-            scrollbar-width: none; /* Firefox */
-            -ms-overflow-style: none; /* IE/Edge */
+            scrollbar-width: none; 
+            -ms-overflow-style: none; 
         }
-        .panel-content::-webkit-scrollbar { display: none; } /* Chrome/Safari */
+        .panel-content::-webkit-scrollbar { display: none; } 
         
         table { width: 100%; border-collapse: collapse; }
         th { background: #161b22; color: var(--text-muted); font-size: 12px; position: sticky; top: 0; z-index: 10; padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--border); cursor: pointer; }
         td { padding: 8px; border-bottom: 1px solid rgba(48, 54, 61, 0.3); font-size: 13px; }
+        tr { transition: background-color 0.5s ease; } /* 💡 柔和過渡 */
         tr:hover { background: rgba(255,255,255,0.05); cursor: pointer; }
         
         .status-indicator { width: 4px; padding: 0 !important; }
@@ -57,16 +55,18 @@
         tr.tr-red .status-indicator { background: var(--red); } tr.tr-green .status-indicator { background: var(--green); }
         tr.tr-gray .status-indicator { background: var(--text-muted); }
         
-        .new-alert-row { background-color: rgba(88, 166, 255, 0.15) !important; }
-        @keyframes sniper-pulse { 0% { color: var(--green); } 50% { color: var(--neon-green); text-shadow: 0 0 8px var(--neon-green); } 100% { color: var(--green); } }
-        .sniper-tag { animation: sniper-pulse 1.5s infinite; font-weight: 900; }
-        @keyframes gold-glow { 0% { box-shadow: 0 0 5px rgba(255, 215, 0, 0.4); border-color: rgba(255, 215, 0, 0.4); } 50% { box-shadow: 0 0 15px rgba(255, 215, 0, 0.8); border-color: rgba(255, 215, 0, 1); } 100% { box-shadow: 0 0 5px rgba(255, 215, 0, 0.4); border-color: rgba(255, 215, 0, 0.4); } }
+        /* 💡 護眼優化：調低新訊號高亮透明度 */
+        .new-alert-row { background-color: rgba(88, 166, 255, 0.08) !important; }
+        
+        /* 💡 護眼優化：調低霓虹與發光強度 */
+        @keyframes sniper-pulse { 0% { color: var(--green); text-shadow: none; } 50% { color: #56d364; text-shadow: 0 0 3px rgba(86,211,100,0.4); } 100% { color: var(--green); text-shadow: none; } }
+        .sniper-tag { animation: sniper-pulse 2s infinite; font-weight: 900; }
+        @keyframes gold-glow { 0% { box-shadow: 0 0 2px rgba(255, 215, 0, 0.1); border-color: rgba(255, 215, 0, 0.2); } 50% { box-shadow: 0 0 8px rgba(255, 215, 0, 0.3); border-color: rgba(255, 215, 0, 0.5); } 100% { box-shadow: 0 0 2px rgba(255, 215, 0, 0.1); border-color: rgba(255, 215, 0, 0.2); } }
         
         .sym { font-weight: bold; font-size: 15px; }
         .up { color: var(--green); font-weight: bold; } .down { color: var(--red); font-weight: bold; }
         .neon-word { color: var(--neon-green); font-weight: 900; }
 
-        /* 💡 手機模式設定 */
         #mobile-tabs { display: none; }
         body.mobile-mode { overflow-y: auto !important; overflow-x: hidden !important; height: auto; padding-bottom: 60px; }
         body.mobile-mode #tactical-bar { overflow-x: auto; white-space: nowrap; padding-right: 20px; }
@@ -170,7 +170,9 @@
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
 
-        // 💡 全域縮放功能
+        // 💡 渲染計數器記憶體，精確鎖定 5 次高亮
+        let alertRenderCount = {};
+
         let currentZoom = parseFloat(localStorage.getItem('sniper_zoom')) || 1.0;
         function applyZoom() { 
             document.getElementById('main-body').style.zoom = currentZoom; 
@@ -267,14 +269,22 @@
             if (!d) return;
             document.getElementById('sys-status').innerText = `📡 數據更新: ${d.last_update || '--:--:--'}`;
             document.getElementById('sys-status').style.color = "var(--green)";
-            const nowSec = Date.now() / 1000;
+            
+            let currentSigIds = new Set();
 
-            // 1. 日誌渲染 (雙加速分離)
+            // 1. 日誌渲染 (渲染計數器修正)
             let h1 = "";
             (d.surge_log || []).forEach(r => {
                 if (r.Type === 'fund' && !showETF) return; 
-                let isNew = r.SignalTS && (nowSec - r.SignalTS < 5);
-                let rowClass = r.Status ? `tr-${r.Status}` : ""; if (isNew) rowClass += " new-alert-row";
+                
+                // 💡 計算渲染次數，確保剛好亮起 5 次
+                let sigId = r.Code + "_" + r.SignalTS;
+                currentSigIds.add(sigId);
+                alertRenderCount[sigId] = (alertRenderCount[sigId] || 0) + 1;
+                
+                let isNew = alertRenderCount[sigId] <= 5;
+                let rowClass = r.Status ? `tr-${r.Status}` : ""; 
+                if (isNew) rowClass += " new-alert-row";
                 
                 let sig = r.Signal || '-';
                 let velMatch = sig.match(/⚡極速拉升\((.*?)\)/);
@@ -292,6 +302,11 @@
                 if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { played[r.SignalTS] = r.SignalTS; sounds.nova.play().catch(e=>{}); }
             });
             document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="8" style="text-align:center; padding: 40px; color: var(--text-muted);">等待極端動能訊號觸發</td></tr>`;
+
+            // 💡 清理不再顯示的舊訊號記憶體，避免記憶體洩漏
+            for (let key in alertRenderCount) {
+                if (!currentSigIds.has(key)) delete alertRenderCount[key];
+            }
 
             // 2. 排行渲染
             let h2 = "", rankData = [...(d.leaderboard || [])].filter(r => !(r?.Type === 'fund' && !showETF));
@@ -329,7 +344,7 @@
             if(activeSym) loadDetail(activeSym);
         }
 
-        // 💡 4. 深度分析極致濃縮
+        // 4. 深度分析極致濃縮
         function loadDetail(sym) {
             activeSym = sym;
             let d = (brain.details && brain.details[sym]) ? brain.details[sym] : null; 
@@ -338,7 +353,7 @@
             if (!d && rankData) d = { Price:rankData.Price, Pct:rankData.Pct, Vol:rankData.Vol, RelVol:"-", Float:rankData.Type==='fund'?"N/A(ETF)":(rankData.Float||"-"), StopLoss:0, CatScore:0, IsTrap:false, NewsList:[], VolAcc:"-", Is100K:false, SN_Score:0, VsaState:0, VR_Acc:0, VWAP_Dev:0, VWAP_Rating:"Low", HasSentimentFlip:false };
             
             let trapWarn = d.IsTrap ? `<div style="border:1px solid var(--red); color:var(--red); padding:4px; margin-bottom:5px; border-radius:4px; font-size:12px; font-weight:bold;">🩸 偵測到毒藥/退市風險</div>` : "";
-            if (d.HasSentimentFlip) trapWarn = `<div style="border:1px solid #ffd700; background: rgba(255,215,0,0.1); color:#ffd700; padding:4px; margin-bottom:5px; border-radius:4px; font-size:12px; font-weight:bold; animation: gold-glow 1.5s infinite;">💎 戰術警報：利空不跌！主力強勢承接</div>` + trapWarn;
+            if (d.HasSentimentFlip) trapWarn = `<div style="border:1px solid rgba(255,215,0,0.6); background: rgba(255,215,0,0.05); color:#ffd700; padding:4px; margin-bottom:5px; border-radius:4px; font-size:12px; font-weight:bold; animation: gold-glow 2s infinite;">💎 戰術警報：利空不跌！主力強勢承接</div>` + trapWarn;
 
             let snScore = d.SN_Score || 0; let vsaState = d.VsaState || 0; let snColor = "var(--text-muted)";
             if (snScore >= 400) snColor = "var(--neon-green)"; else if (snScore >= 200) snColor = "var(--yellow)";
