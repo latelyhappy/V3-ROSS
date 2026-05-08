@@ -28,19 +28,11 @@ from collections import Counter
 import concurrent.futures 
 import yfinance as yf  
 
-# 匯入 Alpaca 混合引擎
 from alpaca_worker import init_alpaca
-# 💡 匯入 V46 數據收集器
 import collector
 
-# ==========================================
-# 💡 必須在這裡初始化 Flask 應用程式！
-# ==========================================
 app = Flask(__name__)
 
-# ==========================================
-# 📡 戰略情報匯出接口 (支援分批與當日過濾)
-# ==========================================
 @app.route('/api/export_intelligence')
 def export_intelligence():
     limit = request.args.get('limit', default=None, type=int)
@@ -53,9 +45,6 @@ def export_intelligence():
         
     return jsonify({"status": "error", "message": "無符合條件之資料，或資料庫為空"}), 404
 
-# ==========================================
-# 🧠 AI 戰略摘要引擎接口
-# ==========================================
 @app.route('/api/intelligence_summary')
 def intelligence_summary():
     result = collector.generate_intelligence_summary()
@@ -83,9 +72,18 @@ TW_USERNAME = os.getenv('TW_USERNAME', 'guest')
 TW_PASSWORD = os.getenv('TW_PASSWORD', 'guest')
 PORT = int(os.getenv('PORT', 8080))
 TZ_TW = pytz.timezone('Asia/Taipei')
-TZ_NY = pytz.timezone('America/New_York')
+TZ_NY = pytz.timezone('America/New_York') # 💡 美東時區綁定 (支援夏冬令自動切換)
 MIN_RELVOL_LIMIT = 3.0 
 FLOAT_CACHE = {}
+
+# 💡 核心修正：動態計算當前「交易日」(精準判定 04:00 AM NY 換日)
+def get_current_trading_date():
+    now_ny = datetime.now(TZ_NY)
+    if now_ny.hour < 4:
+        return (now_ny - timedelta(days=1)).strftime("%Y-%m-%d")
+    return now_ny.strftime("%Y-%m-%d")
+
+_current_session_date = get_current_trading_date()
 
 CATALYST_ARMORY = {}
 armory_path = os.path.join(os.path.dirname(__file__), 'catalysts.json')
@@ -150,8 +148,8 @@ def load_intraday_state():
         if os.path.exists(SESSION_BACKUP_PATH):
             with open(SESSION_BACKUP_PATH, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            current_date = datetime.now(TZ_NY).strftime("%Y-%m-%d")
-            if data.get("date") == current_date:
+            # 💡 修正：嚴格比對真實的交易日，不讓幽靈殘留
+            if data.get("date") == get_current_trading_date():
                 with brain_lock:
                     MASTER_BRAIN = data.get("MASTER_BRAIN", MASTER_BRAIN)
                     DYNAMIC_WATCHLIST = data.get("DYNAMIC_WATCHLIST", [])
@@ -166,7 +164,7 @@ def state_auto_save_worker():
         try:
             with brain_lock:
                 backup_data = {
-                    "date": datetime.now(TZ_NY).strftime("%Y-%m-%d"),
+                    "date": get_current_trading_date(), # 💡 修正：以真實交易日覆蓋
                     "MASTER_BRAIN": MASTER_BRAIN,
                     "DYNAMIC_WATCHLIST": DYNAMIC_WATCHLIST,
                     "STATS_MAP": STATS_MAP,
@@ -219,19 +217,14 @@ def is_news_echo(new_title, new_dt_tpe, existing_news_list):
     return False
 
 def calculate_hft_score(headline, ticker=""):
-    """
-    💡 V46 情報物理過濾閘門：第一道防線 (Lexical Blacklist)
-    """
     text = (headline or "").upper()
     total_score = 0
     elite_hits = []
 
-    # 🚫 第一防線：垃圾廣告與法律訴訟物理阻斷 (回傳 -1 代表直接丟棄)
     HARD_TRASH = ["WHY IT'S MOVING", "INVESTOR ALERT", "LAWSUIT", "CLASS ACTION", "INVESTIGATION", "DEADLINE", "TOP STOCK TO BUY", "IS A BUY", "IS THIS STOCK A BUY", "HAGENS BERMAN", "POMERANTZ", "KESSLER TOPAZ", "GLANCY PRONGAY", "BRONSTEIN"]
     if any(trash in text for trash in HARD_TRASH) or "?" in text or all(x in text for x in ["WHY", "IS"]):
         return -1, False, []
 
-    # 💎 核心情報置頂：捕捉到黑馬詞彙直接賦予壓倒性高分
     CORE_WORDS = ["WOLFPACK", "AFRL", "MARINE CORPS", "FDA APPROVAL", "FAST TRACK", "DEPARTMENT OF DEFENSE", "DOD"]
     is_core = False
     for kw in CORE_WORDS:
@@ -344,13 +337,10 @@ def fetch_and_score_news(ticker, cell, force=False):
                 else:
                     score, is_trap, elites = calculate_hft_score(raw_t, ticker)
                 
-                # 🚫 拋棄垃圾新聞
                 if score == -1: continue
-
                 if is_trap: has_trap = True
                 all_elites.update(elites)
                 
-                # 💡 V46 新增置頂標示
                 if any("💎" in e for e in elites):
                     raw_t = "[💎 核心情報] " + raw_t
 
@@ -358,7 +348,7 @@ def fetch_and_score_news(ticker, cell, force=False):
                 articles.append({
                     "ticker": ticker, "title": "⏳ 翻譯中...", "raw_title": raw_t,
                     "link": item.find('link').text, "time": dt_tpe.strftime("%m-%d %H:%M"),
-                    "pub_ts": dt_tpe.timestamp(), # 💡 新增真實時間戳記供時效過濾使用
+                    "pub_ts": dt_tpe.timestamp(),
                     "is_today": (dt_tpe.date() == now_tpe.date()), 
                     "score": score, "elites": list(elites), "source": "Yahoo",
                     "p_news": p_news, "max_p_15m": p_news, "fetch_time_ts": time.time()
@@ -392,7 +382,8 @@ def finnhub_news_monitor_worker():
             with brain_lock: current_watchlist = DYNAMIC_WATCHLIST.copy()
             if not current_watchlist: time.sleep(10); continue
             now_ny = datetime.now(TZ_NY)
-            end_date = now_ny.strftime('%Y-%m-%d'); start_date = (now_ny - timedelta(days=3)).strftime('%Y-%m-%d')
+            end_date = now_ny.strftime('%Y-%m-%d')
+            start_date = (now_ny - timedelta(days=3)).strftime('%Y-%m-%d')
 
             for ticker in current_watchlist:
                 try:
@@ -400,9 +391,11 @@ def finnhub_news_monitor_worker():
                     res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
                     if res.status_code == 200:
                         for art in res.json()[:5]:
-                            art_url = art.get('url', ''); art_headline = art.get('headline', '')
+                            art_url = art.get('url', '')
+                            art_headline = art.get('headline', '')
                             if not art_url or not art_headline or art_url in seen_news_urls: continue
                             dt_tpe = datetime.fromtimestamp(art.get('datetime', time.time()), pytz.UTC).astimezone(TZ_TW)
+                           
                             with brain_lock:
                                 cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": []})
                                 if is_news_echo(art_headline, dt_tpe, cell.get('NewsList', [])):
@@ -411,10 +404,8 @@ def finnhub_news_monitor_worker():
                                 else:
                                     score, is_trap, elites = calculate_hft_score(art_headline, ticker)
 
-                                # 🚫 拋棄垃圾新聞
                                 if score == -1: continue
 
-                                # 💡 V46 新增置頂標示與來源權重加乘 (+20%)
                                 score = int(score * 1.2)
                                 if any("💎" in e for e in elites):
                                     art_headline = "[💎 核心情報] " + art_headline
@@ -536,7 +527,7 @@ def scanner_engine():
             if now_ts - _last_list_update > 300: 
                 update_dynamic_watchlist()
                 _last_list_update = now_ts
-                
+                 
             if not DYNAMIC_WATCHLIST: time.sleep(5); continue
             current_watchlist = DYNAMIC_WATCHLIST.copy()
 
@@ -627,24 +618,21 @@ def scanner_engine():
                     else:
                         float_str = "未知"
 
-                    # 💡 V46: 實裝 EMA 9-20-50 階梯均線系統
                     curr_ema9 = float(df['close'].ewm(span=9, adjust=False).mean().iloc[-1]) if len(df) >= 9 else p_live
                     curr_ema20 = float(df['close'].ewm(span=20, adjust=False).mean().iloc[-1]) if len(df) >= 20 else p_live
                     curr_ema52 = float(df['close'].ewm(span=52, adjust=False).mean().iloc[-1]) if len(df) >= 52 else p_live
                     past_high = float(df['high'].iloc[-11:-1].max()) if len(df) >= 11 else p_live
                     
-                    # 💡 V46 續航引擎升級：將 3m 區塊改為 5m 區塊 (總監控 15 分鐘)
                     ratio_5v5 = 1.0; vol_acc_str = "-"; vr_acc = 0.0 
                     if len(today_df) >= 15:
-                        vol_A = float(today_df['volume'].iloc[-5:].sum())       # 最近 5 分鐘
-                        vol_B = float(today_df['volume'].iloc[-10:-5].sum())    # 前 6-10 分鐘
-                        vol_C = float(today_df['volume'].iloc[-15:-10].sum())   # 前 11-15 分鐘
+                        vol_A = float(today_df['volume'].iloc[-5:].sum())
+                        vol_B = float(today_df['volume'].iloc[-10:-5].sum())
+                        vol_C = float(today_df['volume'].iloc[-15:-10].sum())
                         
                         if vol_B > 0:
                             ratio_5v5 = float(vol_A / vol_B)
                             sym_up, sym_extreme = ("↗", "🔥") if p_live >= p_prev else ("🔻", "🩸")
                             
-                            # 判定 15 分鐘內的三階梯量能遞增
                             if vol_A > vol_B > vol_C:
                                 vol_acc_str = f"{sym_extreme} {ratio_5v5:.2f}x"
                             elif vol_A > vol_B:
@@ -654,10 +642,9 @@ def scanner_engine():
                             else:
                                 vol_acc_str = f"↘ {ratio_5v5:.2f}x"
 
-                    # 💡 V46: 實裝磁吸噴發預警系統 (Magnet Squeeze)
                     ema_max = max(curr_ema9, curr_ema20, curr_ema52)
                     ema_min = min(curr_ema9, curr_ema20, curr_ema52)
-                    is_ema_tight = (ema_max - ema_min) / ema_min < 0.02 # 均線密集糾結於 2% 內
+                    is_ema_tight = (ema_max - ema_min) / ema_min < 0.02
 
                     is_vwap_magnet = False
                     if (p_live < current_vwap) and (vwap_dev >= -1.5) and is_ema_tight and float_m <= 50.0:
@@ -713,7 +700,6 @@ def scanner_engine():
                             current_signal = "🎯 建議狙擊 "
                             status_color = "red"
                         
-                        # 💡 V46 導入磁吸信號優先級
                         if is_vwap_magnet:
                             current_signal += f"🧲 磁吸噴發預警{vol_warn}"
                             if status_color == "green": status_color = "purple"
@@ -773,12 +759,10 @@ def scanner_engine():
                         with brain_lock:
                             cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "StickySignal": "", "StickyColor": "green", "StickyTime": 0})
                             
-                            # 💡 V46 情報物理過濾閘門：第二道防線 (時效性蒸發)
                             if "NewsList" in cell:
                                 valid_news = []
                                 for n in cell["NewsList"]:
                                     pub_ts = n.get("pub_ts", now_ts)
-                                    # 如果超過 120 分鐘且股價已經跌破 EMA20，判定該情報已失效，自動隱藏
                                     if (now_ts - pub_ts > 7200) and (p_live < curr_ema20):
                                         continue
                                     valid_news.append(n)
@@ -800,7 +784,6 @@ def scanner_engine():
                                 if "⚡" in cell.get("StickySignal", "") and now_ts - cell.get("StickyTime", 0) < 15:
                                     current_signal = current_signal + " [⚡極速]"
                                     status_color = "purple"
-                                
                                 cell["StickySignal"] = current_signal
                                 cell["StickyColor"] = status_color
                                 cell["StickyTime"] = now_ts
@@ -831,7 +814,6 @@ def scanner_engine():
                                 can_trigger = False
                                 if now_ts - last_trigger_time > 60:
                                     can_trigger = True
-                                # 💡 V46 縮短爆量箱子冷卻時間至 30 秒，避免錯失連續加倉機會
                                 elif is_massive_inflow and (now_ts - last_massive_time > 30):
                                     can_trigger = True
                                     
@@ -844,13 +826,9 @@ def scanner_engine():
                                         stats["Signal"] += " 💀(SEC陷阱)"
                                         cell["IsTrap"] = True
                                         
-                                    # 💡 V46 專屬：重要提示音效「精確打擊」統一使用 nova
                                     alert_audio = None
-
-                                    # 1. 物理靜音優先：陷阱區或 SEC 警告不發聲
                                     if "陷阱" in ui_tag or cell.get("IsTrap", False):
                                         alert_audio = None
-                                    # 2. 核心重要提示 (統一發出 nova 音效)：狙擊、利空反轉、磁吸預警、爆量箱子
                                     elif ("狙擊" in current_signal) or has_sentiment_flip or is_vwap_magnet or is_massive_inflow:
                                         alert_audio = "nova"
 
@@ -860,7 +838,6 @@ def scanner_engine():
                                         "SignalTS": now_ts
                                     }
                                     
-                                    # 僅在符合重要條件時加入音效標記
                                     if alert_audio:
                                         log_entry["Audio"] = alert_audio
                                         
@@ -871,7 +848,6 @@ def scanner_engine():
                                         headline = cell['NewsList'][0].get('raw_title', '')
                                         collector.log_event(ticker, headline, float_m, float(p_live), volume=daily_vol, change_percent=real_pct)
                                         
-                    # 👇 修正了這裡的縮排，確保語法完全正確
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
                 except Exception as e: return
 
@@ -889,6 +865,32 @@ def scanner_engine():
                 MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
             time.sleep(1)
         except Exception as e: time.sleep(5)
+
+# 💡 核心修正：跨日大清洗引擎 (Daily Flush Worker)
+def daily_flush_worker():
+    global _current_session_date, MASTER_BRAIN, DYNAMIC_WATCHLIST, STATS_MAP, cooldown_tracker, STATE_TRACKER
+    while True:
+        time.sleep(10)
+        # 每 10 秒檢查一次紐約時間，一旦跨越凌晨 04:00 就視為新交易日
+        new_session_date = get_current_trading_date()
+        
+        if new_session_date != _current_session_date:
+            with brain_lock:
+                # 執行無情清洗
+                MASTER_BRAIN["surge_log"] = []
+                MASTER_BRAIN["details"] = {}
+                MASTER_BRAIN["leaderboard"] = []
+                MASTER_BRAIN["vwap_list"] = []
+                MASTER_BRAIN["top_catalysts"] = []
+                DYNAMIC_WATCHLIST.clear()
+                STATS_MAP.clear()
+                cooldown_tracker.clear()
+                STATE_TRACKER.clear()
+                
+                # 更新狀態，避免重複清洗
+                _current_session_date = new_session_date
+                now_ny_str = datetime.now(TZ_NY).strftime('%Y-%m-%d %H:%M:%S')
+                print(f"🔄 [SYSTEM] 執行跨日大清洗！迎接全新交易日 (NY Time: {now_ny_str})")
 
 @app.route('/api/config', methods=['POST'])
 def update_config():
@@ -933,6 +935,9 @@ if __name__ == '__main__':
     threading.Thread(target=state_auto_save_worker, daemon=True).start()
     threading.Thread(target=scanner_engine, daemon=True).start()
     threading.Thread(target=finnhub_news_monitor_worker, daemon=True).start()
+    
+    # 💡 啟動防呆清零機器人
+    threading.Thread(target=daily_flush_worker, daemon=True).start()
     
     init_alpaca(MASTER_BRAIN, DYNAMIC_WATCHLIST, brain_lock)
     

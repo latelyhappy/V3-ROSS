@@ -102,9 +102,12 @@ def _alpaca_thread():
                 to_add = target_subs - current_subs
                 to_remove = current_subs - target_subs
                 if to_add: stream.subscribe_trades(trade_callback, *to_add)
+                
                 if to_remove: 
                     stream.unsubscribe_trades(*to_remove)
-                    for sym in to_remove: price_history.pop(sym, None)
+                    for sym in to_remove: 
+                        price_history.pop(sym, None)
+                        _alpaca_cooldown.pop(sym, None) # 💡 聯動清空：徹底移除舊的冷卻記憶，完美防洪洗白！
                 current_subs = target_subs
             except: pass
 
