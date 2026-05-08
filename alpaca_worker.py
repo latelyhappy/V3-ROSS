@@ -52,13 +52,13 @@ def _alpaca_thread():
                 if ticker in _MASTER_BRAIN["details"]:
                     cell = _MASTER_BRAIN["details"][ticker]
                     
-                    # 先取出原有的訊號，並做基礎清理，避免包含舊的極速或撞擊字眼
+                    # 基礎清理，避免無限疊加
                     raw_signal = cell.get("Signal", "").replace("⚡極速拉升(+0.5%/5s)", "").replace(f"🧲即將撞擊(${math.ceil(price):.2f})", "").strip()
                     
                     signal_triggered = False
                     new_tag = ""
                     
-                    # 💡 核心修復：使用乾淨的標籤覆蓋，不無限疊加
+                    # 💡 核心修復：使用乾淨的標籤覆蓋
                     if is_velocity_spike:
                         new_tag = "⚡極速拉升(+0.5%/5s) "
                         cell["Status"] = "purple"
@@ -73,7 +73,6 @@ def _alpaca_thread():
                         signal_triggered = True
 
                     if signal_triggered:
-                        # 將新標籤與清理過的原有訊號結合，保證乾淨俐落
                         cell["Signal"] = new_tag + raw_signal
                         cell["StickySignal"] = cell["Signal"]
                         cell["StickyTime"] = now_ts
@@ -83,12 +82,12 @@ def _alpaca_thread():
                             _alpaca_cooldown[ticker] = now_ts
                             stats_copy = {k: v for k, v in cell.items() if k not in ["NewsList", "CatScore", "IsTrap", "StickySignal", "StickyColor", "StickyTime"]}
                             
-                            # 💡 V46：Alpaca 單獨觸發的訊號 (極速/撞擊) 改為靜音，僅在日誌顯示
+                            # Alpaca 單獨觸發的訊號改為靜音
                             _MASTER_BRAIN["surge_log"].insert(0, {
                                 **stats_copy, 
                                 "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), 
                                 "SignalTS": now_ts, 
-                                "Audio": None # 🔇 取消聲音，避免干擾
+                                "Audio": None
                             })
                             _MASTER_BRAIN["surge_log"] = _MASTER_BRAIN["surge_log"][:1000]
 
@@ -107,13 +106,12 @@ def _alpaca_thread():
                     stream.unsubscribe_trades(*to_remove)
                     for sym in to_remove: 
                         price_history.pop(sym, None)
-                        _alpaca_cooldown.pop(sym, None) # 💡 聯動清空：徹底移除舊的冷卻記憶，完美防洪洗白！
+                        _alpaca_cooldown.pop(sym, None) # 💡 聯動清空：徹底移除舊的冷卻記憶！
                 current_subs = target_subs
             except: pass
 
     threading.Thread(target=watch_subscriptions, daemon=True).start()
     
-    # 💡 加入斷線重連防洪機制，避免 connection limit exceeded 崩潰
     while True:
         try:
             print("🚀 Alpaca 毫秒級火控雷達連線中...")

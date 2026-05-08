@@ -448,19 +448,21 @@ def update_dynamic_watchlist():
         now_ny = datetime.now(TZ_NY)
         is_premarket = now_ny.time() < datetime.strptime("09:30", "%H:%M").time()
 
+        # 💡 核心修正：盤前時段使用 premarket_close 進行過濾，盤中使用 close
+        price_col = "premarket_close" if is_premarket else "close"
         chg_col = "premarket_change" if is_premarket else "change"
         vol_col = "premarket_volume" if is_premarket else "volume"
 
         payload = {
             "filter": [
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, 
-                {"left": "close", "operation": "in_range", "right": [1, 50]}, 
+                {"left": price_col, "operation": "in_range", "right": [0.5, 50]}, # 💡 解封：下限降至 0.5，且智能切換盤前報價
                 {"left": chg_col, "operation": "egreater", "right": 2.0}, 
-                {"left": vol_col, "operation": "egreater", "right": 10000} 
+                {"left": vol_col, "operation": "egreater", "right": 5000} # 💡 解封：初期成交量門檻降為 5,000 股
             ], 
             "columns": ["name", "close", "change", "volume", "premarket_close", "premarket_change", "premarket_volume", "market_cap_basic", "type"], 
             "sort": {"sortBy": chg_col, "sortOrder": "desc"}, 
-            "range": [0, 40]
+            "range": [0, 100] # 💡 擴增彈匣：掃描前 100 名，避免被仙股擠掉
         }
 
         res = requests.post(url, json=payload, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
@@ -495,7 +497,7 @@ def update_dynamic_watchlist():
         
         with brain_lock:
             DYNAMIC_WATCHLIST.clear()
-            DYNAMIC_WATCHLIST.extend(new_watchlist[:40]) 
+            DYNAMIC_WATCHLIST.extend(new_watchlist[:100]) # 💡 支援 100 檔觀察名單
             STATS_MAP.update(temp_stats)
     except: pass
 
@@ -524,7 +526,8 @@ def scanner_engine():
                     _last_spy_update = now_ts
                 except: pass
 
-            if now_ts - _last_list_update > 300: 
+            # 💡 核心修正：雷達轉速從 5 分鐘縮短為 1 分鐘 (60秒)
+            if now_ts - _last_list_update > 60: 
                 update_dynamic_watchlist()
                 _last_list_update = now_ts
                  
@@ -583,7 +586,7 @@ def scanner_engine():
                     rel_vol_prev = float(round(v_prev / avg_vol, 2))
                     rel_vol_display = max(rel_vol_live, rel_vol_prev)
                     
-                    if daily_vol < 50000:
+                    if daily_vol < 5000: # 配合放寬的 5000 門檻
                         rel_vol_display = 0.0
 
                     vol_3m = float(df['volume'].iloc[-3:].sum()) if len(df) >= 3 else v_live

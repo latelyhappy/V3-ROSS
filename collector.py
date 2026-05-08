@@ -7,7 +7,7 @@ import pytz
 
 # 💡 定義時區
 tpe_tz = pytz.timezone('Asia/Taipei')
-ny_tz = pytz.timezone('America/New_York')
+ny_tz = pytz.timezone('America/New_York') # 💡 導入美東時區
 
 # 💡 資料庫檔案名稱
 DB_PATH = os.path.join(os.path.dirname(__file__), 'sniper_intelligence.db')
@@ -42,199 +42,232 @@ def init_db():
 
 def cleanup_old_records():
     """清理超過 7 天的舊數據，避免 DB 過於肥大"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    seven_days_ago_ts = time.time() - (7 * 24 * 3600)
-    cursor.execute("DELETE FROM momentum_events WHERE timestamp_sec < ?", (seven_days_ago_ts,))
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=5.0)
+        cursor = conn.cursor()
+        seven_days_ago = time.time() - (7 * 24 * 60 * 60)
+        
+        cursor.execute('''
+            DELETE FROM momentum_events 
+            WHERE timestamp_sec < ?
+        ''', (seven_days_ago,))
+        
+        deleted_count = cursor.rowcount
+        conn.commit()
+        conn.close()
+        if deleted_count > 0:
+            print(f"🧹 資料庫清理：已刪除 {deleted_count} 筆 7 天前的過期戰報。")
+    except Exception as e:
+        print(f"⚠️ 清理舊資料失敗: {e}")
 
-def log_event(ticker, headline, float_m, price_initial, volume, change_percent):
+def log_event(ticker, headline, float_m, price_initial, volume=0, change_percent=0.0):
     """
-    當偵測到有效情報與動能爆發時，寫入 DB。
+    記錄一次新的動能爆發事件 (起漲點)。
     """
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    now_ts = time.time()
-    now_dt_str = datetime.now(tpe_tz).strftime('%Y-%m-%d %H:%M:%S')
-    
-    cursor.execute('''
-        INSERT INTO momentum_events 
-        (timestamp_sec, date_time, ticker, headline, float_m, price_initial, price_max_15m, is_closed)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 0)
-    ''', (now_ts, now_dt_str, ticker, headline, float_m, price_initial, price_initial))
-    
-    conn.commit()
-    conn.close()
+    # 🚫 物理紅線 1：拒絕紀錄超級大盤股的雜訊 (除非漲幅 > 5% 展現極端異動)
+    if float_m and float_m > 100.0 and change_percent < 5.0:
+        return
+        
+    # 🚫 物理紅線 2：成交量低於 5K 不予紀錄 (配合最新解封參數)
+    if volume < 5000:
+        return
+        
+    # 🚫 物理紅線 3：漲幅過小不予紀錄 (低迷震盪盤整)
+    if change_percent < 2.0:
+        return
+
+    # 🚫 物理紅線 4：情報垃圾防波堤
+    HARD_TRASH = ["WHY IT'S MOVING", "INVESTOR ALERT", "LAWSUIT", "CLASS ACTION", "INVESTIGATION", "DEADLINE", "TOP STOCK TO BUY", "HAGENS BERMAN", "POMERANTZ"]
+    if headline and any(trash in headline.upper() for trash in HARD_TRASH):
+        return
+
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=5.0)
+        cursor = conn.cursor()
+        
+        now_sec = time.time()
+        dt_str = datetime.now(tpe_tz).strftime("%Y-%m-%d %H:%M:%S")
+        
+        cursor.execute('''
+            INSERT INTO momentum_events 
+            (timestamp_sec, date_time, ticker, headline, float_m, price_initial, price_max_15m, is_closed)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (now_sec, dt_str, ticker, headline, float_m, price_initial, price_initial, 0))
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ Collector 寫入失敗: {e}")
+
+def evaluate_sniper_tags(ticker, float_m, volume, rvol, change_percent, is_above_vwap=True):
+    """前端狀態標籤引擎"""
+    # 1. 💀 陷阱區過濾 (門檻降為 5000 股)
+    if volume < 5000 or (float_m and float_m > 100.0):
+        return "💀 陷阱/無量"
+        
+    # 2. 🎯 狙擊點判定
+    if rvol > 2.0 and (float_m and float_m < 5.0) and change_percent > 2.0 and is_above_vwap:
+        return "🎯 建議狙擊"
+        
+    # 3. 🔥 發酵中判定
+    if rvol > 1.0 and change_percent > 2.0:
+        return "🔥 發酵中"
+        
+    # 4. 其他狀態
+    if float_m and float_m > 55.0:
+        return "⚠️ 低動能區"
+        
+    return "⌛ 監測中"
 
 def update_max_price(ticker, current_price):
-    """
-    在股價更新時呼叫，更新過去 15 分鐘內觸發之事件的最高價。
-    超過 15 分鐘的事件則標記為已結算 (is_closed=1)。
-    """
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    now_ts = time.time()
-    fifteen_mins_ago = now_ts - 900
-    
-    # 更新尚未結算，且在 15 分鐘內的事件最高價
-    cursor.execute('''
-        UPDATE momentum_events 
-        SET price_max_15m = MAX(price_max_15m, ?)
-        WHERE ticker = ? AND is_closed = 0 AND timestamp_sec >= ?
-    ''', (current_price, ticker, fifteen_mins_ago))
-    
-    # 結算超過 15 分鐘的事件
-    cursor.execute('''
-        UPDATE momentum_events 
-        SET is_closed = 1
-        WHERE is_closed = 0 AND timestamp_sec < ?
-    ''', (fifteen_mins_ago,))
-    
-    conn.commit()
-    conn.close()
+    """更新 15 分鐘內的最高價"""
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=5.0)
+        cursor = conn.cursor()
+        
+        now_sec = time.time()
+        fifteen_mins_ago = now_sec - (15 * 60)
+        
+        # 1. 將超過 15 分鐘的紀錄結案
+        cursor.execute('''
+            UPDATE momentum_events 
+            SET is_closed = 1 
+            WHERE is_closed = 0 AND timestamp_sec < ?
+        ''', (fifteen_mins_ago,))
+        
+        # 2. 找出該代碼目前仍在監控期內的紀錄
+        cursor.execute('''
+            SELECT id, price_max_15m FROM momentum_events 
+            WHERE ticker = ? AND is_closed = 0
+        ''', (ticker,))
+        
+        active_records = cursor.fetchall()
+        
+        # 3. 更新最高價
+        for record_id, max_price in active_records:
+            if current_price > max_price:
+                cursor.execute('''
+                    UPDATE momentum_events 
+                    SET price_max_15m = ? 
+                    WHERE id = ?
+                ''', (current_price, record_id))
+                
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        pass 
 
-def export_to_json(limit=None, today_only=False):
+def export_to_json(output_filename="sniper_intelligence_export.json", limit=None, today_only=False):
     """
-    將 DB 數據匯出為 JSON。
-    支援 `today_only` (僅限美股當前交易日) 以及 `limit` 筆數限制。
+    將結案的紀錄匯出為 JSON。
     """
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    
-    query = "SELECT * FROM momentum_events"
-    params = ()
-    
-    # 💡 核心修正：使用紐約時間 04:00 AM 作為今日切割點，取代原本的台北時間切換
-    if today_only:
-        now_ny = datetime.now(ny_tz)
-        if now_ny.hour < 4:
-            session_start_ny = now_ny.replace(hour=4, minute=0, second=0, microsecond=0) - timedelta(days=1)
-        else:
-            session_start_ny = now_ny.replace(hour=4, minute=0, second=0, microsecond=0)
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row 
+        cursor = conn.cursor()
         
-        session_start_ts = session_start_ny.timestamp()
+        query = 'SELECT * FROM momentum_events WHERE is_closed = 1'
+        params = []
+
+        if today_only:
+            # 💡 核心修正：使用紐約時間 04:00 AM 作為今日切割點
+            now_ny = datetime.now(ny_tz)
+            if now_ny.hour < 4:
+                session_start_ny = now_ny.replace(hour=4, minute=0, second=0, microsecond=0) - timedelta(days=1)
+            else:
+                session_start_ny = now_ny.replace(hour=4, minute=0, second=0, microsecond=0)
+            
+            session_start_ts = session_start_ny.timestamp()
+            
+            query += ' AND timestamp_sec >= ?'
+            params.append(session_start_ts)
+
+        query += ' ORDER BY id DESC'
+
+        if limit:
+            query += ' LIMIT ?'
+            params.append(limit)
+            
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
         
-        query += " WHERE timestamp_sec >= ?"
-        params = (session_start_ts,)
+        data = []
+        for row in rows:
+            record = dict(row)
+            initial = record['price_initial']
+            max_p = record['price_max_15m']
+            record['max_gain_pct'] = round(((max_p - initial) / initial) * 100, 2) if initial > 0 else 0.0
+            data.append(record)
+            
+        conn.close()
         
-    query += " ORDER BY timestamp_sec DESC"
-    
-    if limit is not None:
-        query += f" LIMIT {limit}"
+        export_path = os.path.join(os.path.dirname(__file__), output_filename)
+        with open(export_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+            
+        return export_path
         
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    conn.close()
-    
-    result_list = []
-    for row in rows:
-        data = dict(row)
-        # 計算最大漲幅 %
-        p_init = data['price_initial']
-        p_max = data['price_max_15m']
-        gain_pct = round(((p_max - p_init) / p_init) * 100, 2) if p_init and p_init > 0 else 0.0
-        data['max_gain_pct'] = gain_pct
-        result_list.append(data)
-        
-    if not result_list:
+    except Exception as e:
+        print(f"⚠️ 匯出失敗: {e}")
         return None
-        
-    export_filename = "sniper_intel_export.json"
-    export_path = os.path.join(os.path.dirname(__file__), export_filename)
-    
-    with open(export_path, 'w', encoding='utf-8') as f:
-        json.dump(result_list, f, ensure_ascii=False, indent=4)
-        
-    return export_path
-
-def evaluate_sniper_tags(ticker, float_m, daily_vol, rel_vol, real_pct, price_above_vwap):
-    """前線評估雷達標籤"""
-    if daily_vol < 50000:
-        return ["💀 無量陷阱"]
-        
-    tags = []
-    if float_m < 20.0:
-        tags.append("🐎 輕量級")
-    elif float_m > 100.0:
-        tags.append("🐢 重型車")
-        
-    if rel_vol > 3.0:
-        tags.append("🔥 爆量")
-        
-    if real_pct > 10.0 and price_above_vwap:
-        tags.append("🚀 強勢多頭")
-        
-    if rel_vol > 2.0 and float_m < 50.0 and price_above_vwap:
-        tags.append("🎯 適合狙擊")
-        
-    return tags
 
 def generate_intelligence_summary():
-    """
-    分析歷史情報，計算哪些關鍵字組合 (N-Grams) 帶來的平均漲幅最高。
-    """
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    
-    # 僅分析已結算且有漲幅數據的事件
-    cursor.execute('''
-        SELECT headline, price_initial, price_max_15m 
-        FROM momentum_events 
-        WHERE is_closed = 1 AND price_max_15m IS NOT NULL
-    ''')
-    rows = cursor.fetchall()
-    conn.close()
-    
-    if not rows:
-        return {"status": "error", "message": "資料庫資料不足以生成戰報。"}
-        
-    stats = {}
-    stop_words = {"THE", "A", "AN", "IN", "ON", "FOR", "OF", "TO", "AND", "WITH", "AT", "BY", "FROM", "IS", "ARE"}
-    
     import re
-    for row in rows:
-        hl = row['headline']
-        p_init = row['price_initial']
-        p_max = row['price_max_15m']
+    from collections import Counter
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row 
+        cursor = conn.cursor()
         
-        # 清除 ECHO 標籤與特珠符號，轉大寫
-        clean_hl = re.sub(r'\[.*?\]', '', hl)
-        clean_hl = re.sub(r'[^A-Za-z0-9\s]', '', clean_hl).upper()
-        words = clean_hl.split()
+        three_days_ago = time.time() - (3 * 24 * 60 * 60)
+        cursor.execute('''
+            SELECT headline, price_initial, price_max_15m 
+            FROM momentum_events 
+            WHERE is_closed = 1 AND timestamp_sec > ?
+        ''', (three_days_ago,))
         
-        gain = round(((p_max - p_init) / p_init) * 100, 2) if p_init > 0 else 0.0
-        
-        # 提取三字組 Trigrams
-        ngrams = [" ".join(words[i:i+3]) for i in range(len(words)-2)]
-        for gram in ngrams:
-            if any(word in stop_words for word in gram.split()): continue
-            if gram not in stats:
-                stats[gram] = {'total_gain': 0.0, 'win_count': 0, 'occurrences': 0}
-            
-            stats[gram]['occurrences'] += 1
-            stats[gram]['total_gain'] += gain
-            if gain > 1.0:
-                stats[gram]['win_count'] += 1
+        rows = cursor.fetchall()
+        conn.close()
 
-    summary = []
-    for gram, data in stats.items():
-        if data['occurrences'] >= 2: # 至少出現過2次才具備統計意義
-            avg_gain = data['total_gain'] / data['occurrences']
-            win_rate = data['win_count'] / data['occurrences']
-            if avg_gain > 0:
-                summary.append({
-                    "phrase": gram,
-                    "avg_gain_pct": round(avg_gain, 2),
-                    "win_rate": round(win_rate * 100, 2),
-                    "occurrences": data['occurrences']
-                })
-    
-    # 依據平均漲幅排序，取前 50 名
-    summary = sorted(summary, key=lambda x: x['avg_gain_pct'], reverse=True)[:50]
-    
-    return {"status": "success", "data": summary}
+        stop_words = {'WITH', 'THAT', 'THIS', 'FROM', 'THEIR', 'WILL', 'HAVE', 'BEEN', 'WERE', 'AFTER', 'OVER', 'MORE', 'THAN', 'ABOUT', 'INC', 'CORP', 'LTD', 'THE', 'AND', 'FOR', 'WHY', 'MOVING', 'ALERT', 'INVESTOR', 'TODAY', 'STOCK', 'SHARES', 'ANNOUNCES', 'REPORTS'}
+        stats = {}
+
+        for row in rows:
+            headline = re.sub(r'\[Echo\]|\[💎 核心情報\]', '', row['headline']).upper()
+            words = re.findall(r'\b[A-Z]{3,}\b', headline)
+            initial = row['price_initial']
+            max_p = row['price_max_15m']
+            gain = round(((max_p - initial) / initial) * 100, 2) if initial > 0 else 0.0
+            
+            ngrams = [" ".join(words[i:i+3]) for i in range(len(words)-2)]
+            for gram in ngrams:
+                if any(word in stop_words for word in gram.split()): continue
+                if gram not in stats:
+                    stats[gram] = {'total_gain': 0.0, 'win_count': 0, 'occurrences': 0}
+                
+                stats[gram]['occurrences'] += 1
+                stats[gram]['total_gain'] += gain
+                if gain > 1.0:
+                    stats[gram]['win_count'] += 1
+
+        summary = []
+        for gram, data in stats.items():
+            if data['occurrences'] >= 2: 
+                avg_gain = data['total_gain'] / data['occurrences']
+                win_rate = data['win_count'] / data['occurrences']
+                if avg_gain > 0:
+                    summary.append({
+                        "phrase": gram,
+                        "avg_gain_pct": round(avg_gain, 2),
+                        "win_rate": round(win_rate * 100, 2),
+                        "occurrences": data['occurrences']
+                    })
+        
+        summary = sorted(summary, key=lambda x: x['avg_gain_pct'], reverse=True)[:50]
+        return {"status": "success", "data": summary}
+
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+if __name__ == '__main__':
+    init_db()
