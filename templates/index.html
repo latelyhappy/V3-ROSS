@@ -50,6 +50,7 @@
         .crown-row { background: rgba(255, 215, 0, 0.04) !important; }
         @keyframes row-pulse { 0% { background: rgba(163, 113, 247, 0.05); } 50% { background: rgba(163, 113, 247, 0.15); } 100% { background: rgba(163, 113, 247, 0.05); } }
         .main-force-row { animation: row-pulse 3s infinite !important; border-left: 2px solid var(--purple) !important; }
+        .badge { font-size: 10px; padding: 2px 5px; border-radius: 4px; font-weight: bold; margin-right: 4px; display: inline-block; vertical-align: text-bottom; }
 
         #mobile-tabs { display: none; }
         body.mobile-mode { overflow-y: auto !important; overflow-x: hidden !important; height: auto; padding-bottom: 60px; }
@@ -112,6 +113,7 @@
                         <th class="status-indicator"></th>
                         <th onclick="setSort('rank', 'Code')">代碼 <span id="sort-rank-Code"></span></th>
                         <th onclick="setSort('rank', 'Price')">股價 <span id="sort-rank-Price"></span></th>
+                        <th onclick="setSort('rank', 'GapPct')">缺口 <span id="sort-rank-GapPct"></span></th>
                         <th onclick="setSort('rank', 'RelVol')">量比 <span id="sort-rank-RelVol"></span></th>
                         <th onclick="setSort('rank', 'Float')">流通股 <span id="sort-rank-Float"></span></th>
                         <th onclick="setSort('rank', 'Vol')">成交量 <span id="sort-rank-Vol"></span></th>
@@ -130,6 +132,7 @@
                         <th class="status-indicator"></th>
                         <th onclick="setSort('news', 'time')">時間 <span id="sort-news-time"></span></th>
                         <th onclick="setSort('news', 'Code')">代碼 <span id="sort-news-Code"></span></th>
+                        <th onclick="setSort('news', 'GapPct')">缺口 <span id="sort-news-GapPct"></span></th>
                         <th onclick="setSort('news', 'CatScore')">評分 <span id="sort-news-CatScore">▼</span></th>
                         <th>情報摘要</th>
                     </tr></thead>
@@ -205,7 +208,7 @@
             if (col === 'Code' || col === 'time') return val.toString();
             let str = val.toString(); let num = parseFloat(str.replace(/[^0-9.-]/g, '')) || 0;
             if (col === 'Float' || col === 'Vol') { if (str.includes('M')) return num * 1000000; if (str.includes('K')) return num * 1000; }
-            if (col === 'RelVol' || col === 'Pct' || col === 'VolAcc') return parseFloat(str.replace(/[^0-9.-]/g, '')) || 0;
+            if (col === 'RelVol' || col === 'Pct' || col === 'GapPct' || col === 'VolAcc') return parseFloat(str.replace(/[^0-9.-]/g, '')) || 0;
             return num;
         }
 
@@ -285,11 +288,11 @@
 
             for (let key in alertRenderCount) { if (!currentSigIds.has(key)) delete alertRenderCount[key]; }
 
-            // 2. 超新星排行 (👑 主力與純圖示屬性標籤)
+            // 2. 超新星排行 (👑 主力與純圖示屬性標籤 + 🪂 巨幅跳空徽章)
             let h2 = "", rankData = [...(d.leaderboard || [])].filter(r => !(r?.Type === 'fund' && !showETF));
             rankData.sort((a, b) => {
-                let vA = parseValue((rankCfg.col==='Float'?a.Float:(rankCfg.col==='RelVol'?a.RelVol:a[rankCfg.col])), rankCfg.col);
-                let vB = parseValue((rankCfg.col==='Float'?b.Float:(rankCfg.col==='RelVol'?b.RelVol:b[rankCfg.col])), rankCfg.col);
+                let vA = parseValue((rankCfg.col==='Float'?a.Float:(rankCfg.col==='RelVol'?a.RelVol:(rankCfg.col==='GapPct'?a.GapPct:a[rankCfg.col]))), rankCfg.col);
+                let vB = parseValue((rankCfg.col==='Float'?b.Float:(rankCfg.col==='RelVol'?b.RelVol:(rankCfg.col==='GapPct'?b.GapPct:b[rankCfg.col]))), rankCfg.col);
                 return (vA < vB) ? (rankCfg.asc ? -1 : 1) : (vA > vB ? (rankCfg.asc ? 1 : -1) : 0);
             });
             rankData.forEach(r => {
@@ -297,14 +300,22 @@
                 let newsScore = newsScoreMap[f_Code] || 0;
                 let floatVal = parseFloat(r.Float) || 0;
                 let relVolVal = parseFloat(r.RelVol) || 0;
+                let gapPctVal = parseFloat(r.GapPct) || 0;
+
+                // 缺口顯示邏輯
+                let gapStr = gapPctVal > 0 ? `+${gapPctVal.toFixed(2)}%` : `${gapPctVal.toFixed(2)}%`;
+                let gapColor = gapPctVal > 10 ? 'var(--neon-green)' : (gapPctVal > 0 ? 'var(--green)' : 'var(--text-muted)');
 
                 // 👑 主力在場判定
                 let isMainForce = (relVolVal > 3.0 && newsScore > 70); 
                 let crown = isMainForce ? `<span class="crown-icon crown-active">👑</span>` : "";
                 let rowClass = isMainForce ? "main-force-row" : "";
                 
-                // 屬性標籤 (圖示化：🔥爆量、🗞️利多、🐎輕盤)
+                // 屬性標籤 (圖示化：🔥爆量、🗞️利多、🐎輕盤、🪂巨幅跳空)
                 let badges = "";
+                if (gapPctVal > 10.0 && relVolVal >= 1.0) {
+                    badges += `<span class="badge" style="background:#ff9800; color:#000;" title="Gap and Go 潛力股">🪂 巨幅跳空</span>`;
+                }
                 if (relVolVal > 5.0) badges += `<span title="爆量">🔥</span>`;
                 if (newsScore > 70) badges += `<span title="利多">🗞️</span>`;
                 if (floatVal > 0 && floatVal <= 15) badges += `<span title="輕盤">🐎</span>`;
@@ -315,6 +326,7 @@
                     <td class="status-indicator"></td>
                     <td class="sym" style="white-space:nowrap;">${badgesHtml}${crown}${f_Code}</td>
                     <td>${r.Price||'-'}</td>
+                    <td><b style="color:${gapColor};">${gapStr}</b></td>
                     <td><b style="color:var(--yellow);">${r.RelVol||'-'}</b></td>
                     <td>${r.Type==='fund'?'N/A':(r.Float||"-")}</td>
                     <td>${r.Vol||'-'}</td>
@@ -330,19 +342,28 @@
                 return isValid && !(n?.Type === 'fund' && !showETF) && n?.NewsList && n.NewsList.length > 0;
             });
             newsData.sort((a, b) => {
-                let vA = parseValue((newsCfg.col==='time'?a.NewsList[0]?.time:(newsCfg.col==='CatScore'?(a.CatScore!==undefined?a.CatScore:a.score):a[newsCfg.col])), newsCfg.col);
-                let vB = parseValue((newsCfg.col==='time'?b.NewsList[0]?.time:(newsCfg.col==='CatScore'?(b.CatScore!==undefined?b.CatScore:b.score):b[newsCfg.col])), newsCfg.col);
+                let vA = parseValue((newsCfg.col==='time'?a.NewsList[0]?.time:(newsCfg.col==='CatScore'?(a.CatScore!==undefined?a.CatScore:a.score):(newsCfg.col==='GapPct'?a.GapPct:a[newsCfg.col]))), newsCfg.col);
+                let vB = parseValue((newsCfg.col==='time'?b.NewsList[0]?.time:(newsCfg.col==='CatScore'?(b.CatScore!==undefined?b.CatScore:b.score):(newsCfg.col==='GapPct'?b.GapPct:b[newsCfg.col]))), newsCfg.col);
                 return (vA < vB) ? (newsCfg.asc ? -1 : 1) : (vA > vB ? (newsCfg.asc ? 1 : -1) : 0);
             });
             newsData.forEach(n => {
                 let latest = n.NewsList[0]; 
                 let f_Score = n.CatScore !== undefined ? n.CatScore : (n.score || 0);
                 let f_Code = n.Code || n.ticker || n.symbol;
+                
+                // 缺口顯示
+                let gapPctVal = parseFloat(n.GapPct) || 0;
+                let gapStr = gapPctVal > 0 ? `+${gapPctVal.toFixed(2)}%` : `${gapPctVal.toFixed(2)}%`;
+                let gapColor = gapPctVal > 10 ? 'var(--neon-green)' : (gapPctVal > 0 ? 'var(--green)' : 'var(--text-muted)');
+
                 let hl_text = highlightElites(latest.title==="⏳ 翻譯中..."?latest.raw_title:latest.title, latest.elites, d.live_trends);
+                
                 h3 += `<tr onclick="loadDetail('${f_Code}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[3]);" ondblclick="openTW('${f_Code}')">
                     <td class="status-indicator" style="background:${f_Score >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
                     <td style="color:${latest.is_today?'#ffa500':'var(--text-muted)'}; font-size:11px;">${latest.time}</td>
-                    <td class="sym">${f_Code}</td><td style="font-weight:bold; color:${f_Score>=6?'var(--yellow)':'var(--text-muted)'};">${f_Score}</td>
+                    <td class="sym">${f_Code}</td>
+                    <td style="color:${gapColor}; font-weight:bold;">${gapStr}</td>
+                    <td style="font-weight:bold; color:${f_Score>=6?'var(--yellow)':'var(--text-muted)'};">${f_Score}</td>
                     <td style="font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:250px;">${hl_text}</td>
                 </tr>`;
             });
@@ -356,13 +377,19 @@
             let d = (brain.details && brain.details[sym]) ? brain.details[sym] : null; 
             let rankData = brain.leaderboard ? brain.leaderboard.find(x => (x.Code||x.ticker) === sym) : null;
             if (!d && !rankData) return;
-            if (!d && rankData) d = { Price:rankData.Price, Pct:rankData.Pct, Vol:rankData.Vol, RelVol:"-", Float:rankData.Type==='fund'?"N/A(ETF)":(rankData.Float||"-"), StopLoss:0, CatScore:0, IsTrap:false, NewsList:[], VolAcc:"-", Is100K:false, SN_Score:0, VsaState:0, VR_Acc:0, VWAP_Dev:0, VWAP_Rating:"Low", HasSentimentFlip:false };
+            if (!d && rankData) d = { Price:rankData.Price, Pct:rankData.Pct, Vol:rankData.Vol, RelVol:"-", Float:rankData.Type==='fund'?"N/A(ETF)":(rankData.Float||"-"), StopLoss:0, CatScore:0, IsTrap:false, NewsList:[], VolAcc:"-", Is100K:false, SN_Score:0, VsaState:0, VR_Acc:0, VWAP_Dev:0, VWAP_Rating:"Low", HasSentimentFlip:false, GapPct: rankData.GapPct||0 };
             
             let trapWarn = d.IsTrap ? `<div style="border:1px solid var(--red); color:var(--red); padding:4px; margin-bottom:5px; border-radius:4px; font-size:12px; font-weight:bold;">🩸 偵測到毒藥/退市風險</div>` : "";
             if (d.HasSentimentFlip) trapWarn = `<div style="border:1px solid rgba(255,215,0,0.6); background: rgba(255,215,0,0.05); color:#ffd700; padding:4px; margin-bottom:5px; border-radius:4px; font-size:12px; font-weight:bold; animation: gold-glow 2s infinite;">💎 戰術警報：利空不跌！主力強勢承接</div>` + trapWarn;
             let snScore = d.SN_Score || 0; let vsaState = d.VsaState || 0; let snColor = snScore >= 400 ? "var(--neon-green)" : (snScore >= 200 ? "var(--yellow)" : "var(--text-muted)");
             if (vsaState > 0) snColor = "var(--red)";
             let vwapColor = d.VWAP_Rating === 'High' ? 'var(--red)' : (d.VWAP_Rating === 'Mid' ? 'var(--yellow)' : 'var(--neon-green)');
+            
+            // 缺口顯示
+            let gapPctVal = parseFloat(d.GapPct) || 0;
+            let gapStr = gapPctVal > 0 ? `+${gapPctVal.toFixed(2)}%` : `${gapPctVal.toFixed(2)}%`;
+            let gapColor = gapPctVal > 10 ? 'var(--neon-green)' : (gapPctVal > 0 ? 'var(--green)' : 'var(--text-muted)');
+
             let sig = (d.Signal || '掃描中...').replace(/⚡極速拉升\(.*?\)\s*/, '');
             if (sig.includes('🎯')) sig = `<span class="sniper-tag">${sig}</span>`;
             let gaugeHTML = `<svg width="70" height="40" viewBox="0 0 120 70" style="overflow:visible;"><path d="M 15 60 A 45 45 0 0 1 105 60" fill="none" stroke="var(--border)" stroke-width="12" stroke-linecap="round" /><path d="M 15 60 A 45 45 0 0 1 105 60" fill="none" stroke="${snColor}" stroke-width="12" stroke-linecap="round" stroke-dasharray="141" stroke-dashoffset="${141*(1-Math.min(snScore/600,1))}" style="transition: stroke-dashoffset 1s ease-out;" /><text x="60" y="55" text-anchor="middle" fill="${snColor}" font-size="28" font-weight="900">${snScore}</text></svg>`;
@@ -371,7 +398,16 @@
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">
                     <div style="flex:1;"><h2 style="font-size:24px; margin:0; display:inline-block; cursor:pointer;" onclick="openTW('${sym}')">${sym} <span style="font-size:12px; text-decoration:underline; color:var(--blue); font-weight:normal;">[TV圖表]</span></h2><span style="font-size:18px; color:var(--text-muted); margin-left:8px;">${d.Price||'-'}</span><div style="margin-top:2px; font-size:12px;"><span style="color:${vsaState > 0 ? 'var(--red)' : 'var(--green)'}; font-weight:bold;">${vsaState > 0 ? '🚨量價背離' : '✅量價健康'}</span><span style="margin-left:8px; color:var(--text-main);">🛡️守線: <b style="color:var(--red);">$${(d.StopLoss||0).toFixed(2)}</b></span></div></div><div style="margin-right: -10px;">${gaugeHTML}</div>
                 </div>
-                <div style="display:flex; flex-wrap:wrap; gap:4px; padding:6px; background:rgba(0,0,0,0.3); border-radius:6px; font-size:12px; margin-bottom:8px;"><div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Vol: <b>${d.Vol||'-'}</b></div><div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Rel: <b style="color:var(--yellow);">${d.RelVol||'-'}</b></div><div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Acc(5m): ${formatVolAcc(d.VolAcc)}</div><div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">VWAP: <b style="color:${vwapColor};">${d.VWAP_Dev>0?'+'+d.VWAP_Dev:d.VWAP_Dev}%</b></div><div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Cat: <b style="color:var(--yellow);">${d.CatScore||0}</b></div><div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Float: <b>${d.Float||'-'}</b></div><div style="background:rgba(163, 113, 247, 0.1); padding:3px 8px; border-radius:4px; flex:1; text-align:center;">狀態: <b>${sig}</b></div></div>
+                <div style="display:flex; flex-wrap:wrap; gap:4px; padding:6px; background:rgba(0,0,0,0.3); border-radius:6px; font-size:12px; margin-bottom:8px;">
+                    <div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Gap: <b style="color:${gapColor};">${gapStr}</b></div>
+                    <div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Vol: <b>${d.Vol||'-'}</b></div>
+                    <div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Rel: <b style="color:var(--yellow);">${d.RelVol||'-'}</b></div>
+                    <div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Acc(5m): ${formatVolAcc(d.VolAcc)}</div>
+                    <div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">VWAP: <b style="color:${vwapColor};">${d.VWAP_Dev>0?'+'+d.VWAP_Dev:d.VWAP_Dev}%</b></div>
+                    <div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Cat: <b style="color:var(--yellow);">${d.CatScore||0}</b></div>
+                    <div style="background:rgba(255,255,255,0.05); padding:3px 8px; border-radius:4px;">Float: <b>${d.Float||'-'}</b></div>
+                    <div style="background:rgba(163, 113, 247, 0.1); padding:3px 8px; border-radius:4px; flex:1; text-align:center;">狀態: <b>${sig}</b></div>
+                </div>
                 <h3 style="color:var(--text-muted); font-size:11px; border-bottom:1px solid var(--border); padding-bottom:3px; margin-top:5px; margin-bottom:5px;">🗞️ 情報分析 (近3日)</h3>`;
             if (!d.NewsList || d.NewsList.length === 0) html += `<div style="font-size:12px; color:var(--text-muted);">無新聞。</div>`;
             else d.NewsList.forEach(n => { 

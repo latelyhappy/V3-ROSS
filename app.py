@@ -611,6 +611,25 @@ def scanner_engine():
                     prev_close = true_prev_close if true_prev_close > 0 else (float(stat_data['prev']) if stat_data['prev'] > 0 else float(df['low'].min()))
                     real_pct = float(((p_live - prev_close) / prev_close) * 100) if prev_close > 0 else 0.0
                     
+                    # 💡 新增：精準跳空缺口 (Gap %) 運算引擎
+                    now_ny = datetime.now(TZ_NY)
+                    is_premarket = now_ny.time() < datetime.strptime("09:30", "%H:%M").time()
+                    
+                    if is_premarket:
+                        gap_pct = real_pct
+                    else:
+                        try:
+                            # 將 UTC 轉換為紐約時間，抓取 09:30 開盤價來計算真實跳空
+                            ny_index = today_df.index.tz_localize('UTC').tz_convert('America/New_York')
+                            reg_df = today_df[ny_index.time >= datetime.strptime("09:30", "%H:%M").time()]
+                            if not reg_df.empty:
+                                reg_open = float(reg_df['open'].iloc[0])
+                                gap_pct = float(((reg_open - prev_close) / prev_close) * 100) if prev_close > 0 else 0.0
+                            else:
+                                gap_pct = real_pct
+                        except:
+                            gap_pct = real_pct
+
                     real_float = get_real_float(ticker)
                     float_m = real_float / 1_000_000 if real_float > 0 else 999.0
                     
@@ -805,7 +824,8 @@ def scanner_engine():
                                 "TriggerType": trigger_type, 
                                 "DeltaStr": delta_pct_str,
                                 "TriggerTS": now_ts if trigger_type != "none" else cell.get("TriggerTS", 0),
-                                "HasSentimentFlip": has_sentiment_flip 
+                                "HasSentimentFlip": has_sentiment_flip,
+                                "GapPct": gap_pct # 💡 傳遞給前端，用於顯示與跳空徽章
                             }
                             
                             cell.update(stats)
