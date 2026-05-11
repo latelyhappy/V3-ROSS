@@ -2,24 +2,24 @@ import sqlite3
 import time
 import json
 import os
+import csv
+import re
 from datetime import datetime, timedelta
 import pytz
 
 # 💡 定義時區
 tpe_tz = pytz.timezone('Asia/Taipei')
-ny_tz = pytz.timezone('America/New_York') # 💡 導入美東時區
+ny_tz = pytz.timezone('America/New_York')
 
-# 💡 資料庫檔案名稱
+# 💡 檔案路徑
 DB_PATH = os.path.join(os.path.dirname(__file__), 'sniper_intelligence.db')
+CATALYST_PATH = os.path.join(os.path.dirname(__file__), 'catalysts.json')
 
 def init_db():
-    """
-    初始化戰地數據庫。若檔案與資料表不存在則自動建立。
-    """
+    """初始化戰地數據庫。"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # 建立動能事件表 (Momentum Events)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS momentum_events (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,10 +35,11 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
-    print("✅ Sniper Intelligence DB (collector) 初始化完成 (跨時區支援)。")
+    print("✅ Sniper Intelligence DB (NLP 進化版) 初始化完成。")
     
-    # 啟動時順便執行資料庫減肥 (清理 7 天前舊資料)
     cleanup_old_records()
+    # 💡 啟動時執行一次 NLP 自動進化
+    auto_evolve_nlp()
 
 def cleanup_old_records():
     """清理超過 7 天的舊數據，避免 DB 過於肥大"""
@@ -47,39 +48,24 @@ def cleanup_old_records():
         cursor = conn.cursor()
         seven_days_ago = time.time() - (7 * 24 * 60 * 60)
         
-        cursor.execute('''
-            DELETE FROM momentum_events 
-            WHERE timestamp_sec < ?
-        ''', (seven_days_ago,))
+        cursor.execute('DELETE FROM momentum_events WHERE timestamp_sec < ?', (seven_days_ago,))
         
         deleted_count = cursor.rowcount
         conn.commit()
         conn.close()
         if deleted_count > 0:
-            print(f"🧹 資料庫清理：已刪除 {deleted_count} 筆 7 天前的過期戰報。")
+            print(f"🧹 資料庫清理：已刪除 {deleted_count} 筆過期戰報。")
     except Exception as e:
         print(f"⚠️ 清理舊資料失敗: {e}")
 
 def log_event(ticker, headline, float_m, price_initial, volume=0, change_percent=0.0):
-    """
-    記錄一次新的動能爆發事件 (起漲點)。
-    """
-    # 🚫 物理紅線 1：拒絕紀錄超級大盤股的雜訊 (除非漲幅 > 5% 展現極端異動)
-    if float_m and float_m > 100.0 and change_percent < 5.0:
-        return
-        
-    # 🚫 物理紅線 2：成交量低於 5K 不予紀錄 (配合最新解封參數)
-    if volume < 5000:
-        return
-        
-    # 🚫 物理紅線 3：漲幅過小不予紀錄 (低迷震盪盤整)
-    if change_percent < 2.0:
-        return
+    """記錄一次新的動能爆發事件 (起漲點)。"""
+    if float_m and float_m > 100.0 and change_percent < 5.0: return
+    if volume < 5000: return
+    if change_percent < 2.0: return
 
-    # 🚫 物理紅線 4：情報垃圾防波堤
     HARD_TRASH = ["WHY IT'S MOVING", "INVESTOR ALERT", "LAWSUIT", "CLASS ACTION", "INVESTIGATION", "DEADLINE", "TOP STOCK TO BUY", "HAGENS BERMAN", "POMERANTZ"]
-    if headline and any(trash in headline.upper() for trash in HARD_TRASH):
-        return
+    if headline and any(trash in headline.upper() for trash in HARD_TRASH): return
 
     try:
         conn = sqlite3.connect(DB_PATH, timeout=5.0)
@@ -97,26 +83,14 @@ def log_event(ticker, headline, float_m, price_initial, volume=0, change_percent
         conn.commit()
         conn.close()
     except Exception as e:
-        print(f"⚠️ Collector 寫入失敗: {e}")
+        pass
 
 def evaluate_sniper_tags(ticker, float_m, volume, rvol, change_percent, is_above_vwap=True):
     """前端狀態標籤引擎"""
-    # 1. 💀 陷阱區過濾 (門檻降為 5000 股)
-    if volume < 5000 or (float_m and float_m > 100.0):
-        return "💀 陷阱/無量"
-        
-    # 2. 🎯 狙擊點判定
-    if rvol > 2.0 and (float_m and float_m < 5.0) and change_percent > 2.0 and is_above_vwap:
-        return "🎯 建議狙擊"
-        
-    # 3. 🔥 發酵中判定
-    if rvol > 1.0 and change_percent > 2.0:
-        return "🔥 發酵中"
-        
-    # 4. 其他狀態
-    if float_m and float_m > 55.0:
-        return "⚠️ 低動能區"
-        
+    if volume < 5000 or (float_m and float_m > 100.0): return "💀 陷阱/無量"
+    if rvol > 2.0 and (float_m and float_m < 5.0) and change_percent > 2.0 and is_above_vwap: return "🎯 建議狙擊"
+    if rvol > 1.0 and change_percent > 2.0: return "🔥 發酵中"
+    if float_m and float_m > 55.0: return "⚠️ 低動能區"
     return "⌛ 監測中"
 
 def update_max_price(ticker, current_price):
@@ -128,39 +102,21 @@ def update_max_price(ticker, current_price):
         now_sec = time.time()
         fifteen_mins_ago = now_sec - (15 * 60)
         
-        # 1. 將超過 15 分鐘的紀錄結案
-        cursor.execute('''
-            UPDATE momentum_events 
-            SET is_closed = 1 
-            WHERE is_closed = 0 AND timestamp_sec < ?
-        ''', (fifteen_mins_ago,))
-        
-        # 2. 找出該代碼目前仍在監控期內的紀錄
-        cursor.execute('''
-            SELECT id, price_max_15m FROM momentum_events 
-            WHERE ticker = ? AND is_closed = 0
-        ''', (ticker,))
+        cursor.execute('UPDATE momentum_events SET is_closed = 1 WHERE is_closed = 0 AND timestamp_sec < ?', (fifteen_mins_ago,))
+        cursor.execute('SELECT id, price_max_15m FROM momentum_events WHERE ticker = ? AND is_closed = 0', (ticker,))
         
         active_records = cursor.fetchall()
-        
-        # 3. 更新最高價
         for record_id, max_price in active_records:
             if current_price > max_price:
-                cursor.execute('''
-                    UPDATE momentum_events 
-                    SET price_max_15m = ? 
-                    WHERE id = ?
-                ''', (current_price, record_id))
+                cursor.execute('UPDATE momentum_events SET price_max_15m = ? WHERE id = ?', (current_price, record_id))
                 
         conn.commit()
         conn.close()
-    except Exception as e:
-        pass 
+    except: pass 
 
-def export_to_json(output_filename="sniper_intelligence_export.json", limit=None, today_only=False):
-    """
-    將結案的紀錄匯出為 JSON。
-    """
+# 💡 新增：輸出人類與 AI 皆可讀的 CSV 語料庫
+def export_corpus_csv(output_filename="sniper_corpus_export.csv", limit=None, today_only=False):
+    """將戰報輸出為 NLP 校正專用的 CSV 檔案"""
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row 
@@ -170,20 +126,55 @@ def export_to_json(output_filename="sniper_intelligence_export.json", limit=None
         params = []
 
         if today_only:
-            # 💡 核心修正：使用紐約時間 04:00 AM 作為今日切割點
             now_ny = datetime.now(ny_tz)
-            if now_ny.hour < 4:
-                session_start_ny = now_ny.replace(hour=4, minute=0, second=0, microsecond=0) - timedelta(days=1)
-            else:
-                session_start_ny = now_ny.replace(hour=4, minute=0, second=0, microsecond=0)
-            
-            session_start_ts = session_start_ny.timestamp()
-            
+            session_start_ny = now_ny.replace(hour=4, minute=0, second=0, microsecond=0)
+            if now_ny.hour < 4: session_start_ny -= timedelta(days=1)
             query += ' AND timestamp_sec >= ?'
-            params.append(session_start_ts)
+            params.append(session_start_ny.timestamp())
 
         query += ' ORDER BY id DESC'
+        if limit:
+            query += ' LIMIT ?'
+            params.append(limit)
+            
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        export_path = os.path.join(os.path.dirname(__file__), output_filename)
+        with open(export_path, 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f)
+            writer.writerow(['紀錄時間', '代碼', '流通股(M)', '情報標題', '起漲價', '最高價', '最高漲幅(%)'])
+            for row in rows:
+                record = dict(row)
+                initial = record['price_initial']
+                max_p = record['price_max_15m']
+                gain_pct = round(((max_p - initial) / initial) * 100, 2) if initial > 0 else 0.0
+                writer.writerow([
+                    record['date_time'], record['ticker'], record['float_m'],
+                    record['headline'], initial, max_p, gain_pct
+                ])
+                
+        return export_path
+    except Exception as e:
+        print(f"⚠️ CSV 匯出失敗: {e}")
+        return None
 
+# 💡 保留 JSON 匯出相容原有的 app.py
+def export_to_json(output_filename="sniper_intelligence_export.json", limit=None, today_only=False):
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row 
+        cursor = conn.cursor()
+        query = 'SELECT * FROM momentum_events WHERE is_closed = 1'
+        params = []
+        if today_only:
+            now_ny = datetime.now(ny_tz)
+            session_start_ny = now_ny.replace(hour=4, minute=0, second=0, microsecond=0)
+            if now_ny.hour < 4: session_start_ny -= timedelta(days=1)
+            query += ' AND timestamp_sec >= ?'
+            params.append(session_start_ny.timestamp())
+        query += ' ORDER BY id DESC'
         if limit:
             query += ' LIMIT ?'
             params.append(limit)
@@ -195,51 +186,42 @@ def export_to_json(output_filename="sniper_intelligence_export.json", limit=None
         for row in rows:
             record = dict(row)
             initial = record['price_initial']
-            max_p = record['price_max_15m']
-            record['max_gain_pct'] = round(((max_p - initial) / initial) * 100, 2) if initial > 0 else 0.0
+            record['max_gain_pct'] = round(((record['price_max_15m'] - initial) / initial) * 100, 2) if initial > 0 else 0.0
             data.append(record)
-            
         conn.close()
-        
         export_path = os.path.join(os.path.dirname(__file__), output_filename)
         with open(export_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
-            
         return export_path
-        
-    except Exception as e:
-        print(f"⚠️ 匯出失敗: {e}")
-        return None
+    except: return None
 
-def generate_intelligence_summary():
-    import re
-    from collections import Counter
+def get_nlp_stats(days_back=7):
+    """核心語意統計引擎 (提取 1-gram 與 2-gram)"""
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row 
         cursor = conn.cursor()
         
-        three_days_ago = time.time() - (3 * 24 * 60 * 60)
-        cursor.execute('''
-            SELECT headline, price_initial, price_max_15m 
-            FROM momentum_events 
-            WHERE is_closed = 1 AND timestamp_sec > ?
-        ''', (three_days_ago,))
-        
+        target_time = time.time() - (days_back * 24 * 60 * 60)
+        cursor.execute('SELECT headline, price_initial, price_max_15m FROM momentum_events WHERE is_closed = 1 AND timestamp_sec > ?', (target_time,))
         rows = cursor.fetchall()
         conn.close()
 
-        stop_words = {'WITH', 'THAT', 'THIS', 'FROM', 'THEIR', 'WILL', 'HAVE', 'BEEN', 'WERE', 'AFTER', 'OVER', 'MORE', 'THAN', 'ABOUT', 'INC', 'CORP', 'LTD', 'THE', 'AND', 'FOR', 'WHY', 'MOVING', 'ALERT', 'INVESTOR', 'TODAY', 'STOCK', 'SHARES', 'ANNOUNCES', 'REPORTS'}
+        stop_words = {'WITH', 'THAT', 'THIS', 'FROM', 'THEIR', 'WILL', 'HAVE', 'BEEN', 'WERE', 'AFTER', 'OVER', 'MORE', 'THAN', 'ABOUT', 'INC', 'CORP', 'LTD', 'THE', 'AND', 'FOR', 'WHY', 'MOVING', 'ALERT', 'INVESTOR', 'TODAY', 'STOCK', 'SHARES', 'ANNOUNCES', 'REPORTS', 'PR', 'NEWSWIRE', 'GLOBE', 'GLOBENEWSWIRE', 'COMPANY'}
         stats = {}
 
         for row in rows:
+            if not row['headline']: continue
             headline = re.sub(r'\[Echo\]|\[💎 核心情報\]', '', row['headline']).upper()
             words = re.findall(r'\b[A-Z]{3,}\b', headline)
             initial = row['price_initial']
             max_p = row['price_max_15m']
             gain = round(((max_p - initial) / initial) * 100, 2) if initial > 0 else 0.0
             
-            ngrams = [" ".join(words[i:i+3]) for i in range(len(words)-2)]
+            # 💡 提取 1-Gram (單字) 與 2-Gram (雙字組)
+            ngrams = words.copy()
+            ngrams += [" ".join(words[i:i+2]) for i in range(len(words)-1)]
+            
             for gram in ngrams:
                 if any(word in stop_words for word in gram.split()): continue
                 if gram not in stats:
@@ -247,7 +229,7 @@ def generate_intelligence_summary():
                 
                 stats[gram]['occurrences'] += 1
                 stats[gram]['total_gain'] += gain
-                if gain > 1.0:
+                if gain > 5.0: # 💡 勝率標準：漲幅大於 5% 才算有效攻擊
                     stats[gram]['win_count'] += 1
 
         summary = []
@@ -263,11 +245,56 @@ def generate_intelligence_summary():
                         "occurrences": data['occurrences']
                     })
         
-        summary = sorted(summary, key=lambda x: x['avg_gain_pct'], reverse=True)[:50]
-        return {"status": "success", "data": summary}
+        return sorted(summary, key=lambda x: x['win_rate'] * x['avg_gain_pct'], reverse=True)
+    except: return []
 
+def generate_intelligence_summary():
+    """提供給前端儀表板的摘要 API"""
+    summary = get_nlp_stats(days_back=3)
+    if summary:
+        return {"status": "success", "data": summary[:50]}
+    return {"status": "error", "message": "無數據"}
+
+# 💡 終極武器：自動進化機制 (覆寫軍火庫)
+def auto_evolve_nlp():
+    """自動將高勝率詞彙寫入 catalysts.json 的 THEMATIC_TRENDS 中"""
+    print("🧠 啟動 NLP 自動進化引擎...")
+    stats = get_nlp_stats(days_back=7)
+    
+    # 篩選標準：出現 3 次以上、勝率 > 70%、平均漲幅 > 5%
+    elite_phrases = {item['phrase']: 8 for item in stats if item['occurrences'] >= 3 and item['win_rate'] >= 70.0 and item['avg_gain_pct'] >= 5.0}
+    
+    if not elite_phrases:
+        print("   -> 今日無新增高勝率詞彙。")
+        return
+
+    try:
+        # 讀取現有軍火庫
+        if os.path.exists(CATALYST_PATH):
+            with open(CATALYST_PATH, 'r', encoding='utf-8') as f:
+                armory = json.load(f)
+        else:
+            armory = {}
+            
+        if "THEMATIC_TRENDS" not in armory:
+            armory["THEMATIC_TRENDS"] = {}
+            
+        # 寫入新發現的詞彙 (不覆蓋人工設定的更高分數)
+        added_count = 0
+        for phrase, score in elite_phrases.items():
+            if phrase not in armory["THEMATIC_TRENDS"]:
+                armory["THEMATIC_TRENDS"][phrase] = score
+                added_count += 1
+                
+        if added_count > 0:
+            with open(CATALYST_PATH, 'w', encoding='utf-8') as f:
+                json.dump(armory, f, ensure_ascii=False, indent=4)
+            print(f"✅ NLP 進化完成！自動學習了 {added_count} 個全新暴漲關鍵字。")
+        else:
+            print("   -> 詞彙已存在於軍火庫中，維持現狀。")
+            
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        print(f"⚠️ NLP 進化失敗: {e}")
 
 if __name__ == '__main__':
     init_db()

@@ -37,11 +37,13 @@ app = Flask(__name__)
 def export_intelligence():
     limit = request.args.get('limit', default=None, type=int)
     today = request.args.get('today', default='false').lower() == 'true'
-    export_path = collector.export_to_json(limit=limit, today_only=today)
+    # 💡 改呼叫新的 export_corpus_csv
+    export_path = collector.export_corpus_csv(limit=limit, today_only=today) 
     
     if export_path and os.path.exists(export_path):
-        filename = f"sniper_intel_{datetime.now().strftime('%m%d_%H%M')}.json"
-        return send_file(export_path, mimetype='application/json', as_attachment=True, download_name=filename)
+        filename = f"sniper_corpus_{datetime.now().strftime('%m%d_%H%M')}.csv"
+        # 💡 mimetype 改為 text/csv
+        return send_file(export_path, mimetype='text/csv', as_attachment=True, download_name=filename)
         
     return jsonify({"status": "error", "message": "無符合條件之資料，或資料庫為空"}), 404
 
