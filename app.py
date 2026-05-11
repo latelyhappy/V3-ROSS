@@ -148,7 +148,6 @@ def load_intraday_state():
         if os.path.exists(SESSION_BACKUP_PATH):
             with open(SESSION_BACKUP_PATH, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-            # 💡 修正：嚴格比對真實的交易日，不讓幽靈殘留
             if data.get("date") == get_current_trading_date():
                 with brain_lock:
                     MASTER_BRAIN = data.get("MASTER_BRAIN", MASTER_BRAIN)
@@ -164,7 +163,7 @@ def state_auto_save_worker():
         try:
             with brain_lock:
                 backup_data = {
-                    "date": get_current_trading_date(), # 💡 修正：以真實交易日覆蓋
+                    "date": get_current_trading_date(),
                     "MASTER_BRAIN": MASTER_BRAIN,
                     "DYNAMIC_WATCHLIST": DYNAMIC_WATCHLIST,
                     "STATS_MAP": STATS_MAP,
@@ -448,7 +447,6 @@ def update_dynamic_watchlist():
         now_ny = datetime.now(TZ_NY)
         is_premarket = now_ny.time() < datetime.strptime("09:30", "%H:%M").time()
 
-        # 💡 核心修正：盤前時段使用 premarket_close 進行過濾，盤中使用 close
         price_col = "premarket_close" if is_premarket else "close"
         chg_col = "premarket_change" if is_premarket else "change"
         vol_col = "premarket_volume" if is_premarket else "volume"
@@ -456,13 +454,13 @@ def update_dynamic_watchlist():
         payload = {
             "filter": [
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, 
-                {"left": price_col, "operation": "in_range", "right": [0.5, 50]}, # 💡 解封：下限降至 0.5，且智能切換盤前報價
+                {"left": price_col, "operation": "in_range", "right": [0.5, 50]},
                 {"left": chg_col, "operation": "egreater", "right": 2.0}, 
-                {"left": vol_col, "operation": "egreater", "right": 5000} # 💡 解封：初期成交量門檻降為 5,000 股
+                {"left": vol_col, "operation": "egreater", "right": 5000} 
             ], 
             "columns": ["name", "close", "change", "volume", "premarket_close", "premarket_change", "premarket_volume", "market_cap_basic", "type"], 
             "sort": {"sortBy": chg_col, "sortOrder": "desc"}, 
-            "range": [0, 100] # 💡 擴增彈匣：掃描前 100 名，避免被仙股擠掉
+            "range": [0, 100] 
         }
 
         res = requests.post(url, json=payload, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
@@ -497,7 +495,7 @@ def update_dynamic_watchlist():
         
         with brain_lock:
             DYNAMIC_WATCHLIST.clear()
-            DYNAMIC_WATCHLIST.extend(new_watchlist[:100]) # 💡 支援 100 檔觀察名單
+            DYNAMIC_WATCHLIST.extend(new_watchlist[:100])
             STATS_MAP.update(temp_stats)
     except: pass
 
@@ -526,7 +524,6 @@ def scanner_engine():
                     _last_spy_update = now_ts
                 except: pass
 
-            # 💡 核心修正：雷達轉速從 5 分鐘縮短為 1 分鐘 (60秒)
             if now_ts - _last_list_update > 60: 
                 update_dynamic_watchlist()
                 _last_list_update = now_ts
@@ -586,7 +583,7 @@ def scanner_engine():
                     rel_vol_prev = float(round(v_prev / avg_vol, 2))
                     rel_vol_display = max(rel_vol_live, rel_vol_prev)
                     
-                    if daily_vol < 5000: # 配合放寬的 5000 門檻
+                    if daily_vol < 5000: 
                         rel_vol_display = 0.0
 
                     vol_3m = float(df['volume'].iloc[-3:].sum()) if len(df) >= 3 else v_live
@@ -611,7 +608,7 @@ def scanner_engine():
                     prev_close = true_prev_close if true_prev_close > 0 else (float(stat_data['prev']) if stat_data['prev'] > 0 else float(df['low'].min()))
                     real_pct = float(((p_live - prev_close) / prev_close) * 100) if prev_close > 0 else 0.0
                     
-                    # 💡 新增：精準跳空缺口 (Gap %) 運算引擎
+                    # 💡 1. 精準跳空缺口 (True Gap) 運算引擎
                     now_ny = datetime.now(TZ_NY)
                     is_premarket = now_ny.time() < datetime.strptime("09:30", "%H:%M").time()
                     
@@ -619,7 +616,6 @@ def scanner_engine():
                         gap_pct = real_pct
                     else:
                         try:
-                            # 將 UTC 轉換為紐約時間，抓取 09:30 開盤價來計算真實跳空
                             ny_index = today_df.index.tz_localize('UTC').tz_convert('America/New_York')
                             reg_df = today_df[ny_index.time >= datetime.strptime("09:30", "%H:%M").time()]
                             if not reg_df.empty:
@@ -629,6 +625,34 @@ def scanner_engine():
                                 gap_pct = real_pct
                         except:
                             gap_pct = real_pct
+
+                    # 💡 2. 2分鐘極速 (2 Min Velocity) 運算引擎
+                    try:
+                        if len(df) >= 3:
+                            p_2m_ago = float(df['close'].iloc[-3])
+                        else:
+                            p_2m_ago = float(df['close'].iloc[0])
+                        pct_2m = float(((p_live - p_2m_ago) / p_2m_ago) * 100) if p_2m_ago > 0 else 0.0
+                    except:
+                        pct_2m = 0.0
+
+                    # 💡 3. HOD 冷卻計時器 (HOD Cooldown) 運算引擎
+                    try:
+                        if not today_df.empty:
+                            hod_val = float(today_df['high'].max())
+                            hod_idx = today_df[today_df['high'] == hod_val].index[-1]
+                            current_utc = datetime.now(pytz.UTC)
+                            
+                            # 確保時區安全
+                            if hod_idx.tzinfo is None:
+                                hod_idx = pytz.UTC.localize(hod_idx)
+                                
+                            minutes_since_hod = int((current_utc - hod_idx).total_seconds() / 60)
+                            minutes_since_hod = max(0, minutes_since_hod) # 防止出現負數
+                        else:
+                            minutes_since_hod = 0
+                    except:
+                        minutes_since_hod = 0
 
                     real_float = get_real_float(ticker)
                     float_m = real_float / 1_000_000 if real_float > 0 else 999.0
@@ -814,6 +838,7 @@ def scanner_engine():
                                     current_signal = cell.get("StickySignal", "")
                                     status_color = cell.get("StickyColor", "green")
 
+                            # 💡 修正：打包最新的 3 大戰術數據給前端
                             stats = {
                                 "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": final_vol_text,
                                 "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, "Signal": current_signal,
@@ -825,7 +850,9 @@ def scanner_engine():
                                 "DeltaStr": delta_pct_str,
                                 "TriggerTS": now_ts if trigger_type != "none" else cell.get("TriggerTS", 0),
                                 "HasSentimentFlip": has_sentiment_flip,
-                                "GapPct": gap_pct # 💡 傳遞給前端，用於顯示與跳空徽章
+                                "GapPct": gap_pct,            # 💡 True Gap 真實缺口
+                                "Pct2Min": pct_2m,            # 💡 2分鐘極速
+                                "HOD_Cooldown": minutes_since_hod # 💡 創高冷卻計時器
                             }
                             
                             cell.update(stats)
@@ -889,17 +916,14 @@ def scanner_engine():
             time.sleep(1)
         except Exception as e: time.sleep(5)
 
-# 💡 核心修正：跨日大清洗引擎 (Daily Flush Worker)
 def daily_flush_worker():
     global _current_session_date, MASTER_BRAIN, DYNAMIC_WATCHLIST, STATS_MAP, cooldown_tracker, STATE_TRACKER
     while True:
         time.sleep(10)
-        # 每 10 秒檢查一次紐約時間，一旦跨越凌晨 04:00 就視為新交易日
         new_session_date = get_current_trading_date()
         
         if new_session_date != _current_session_date:
             with brain_lock:
-                # 執行無情清洗
                 MASTER_BRAIN["surge_log"] = []
                 MASTER_BRAIN["details"] = {}
                 MASTER_BRAIN["leaderboard"] = []
@@ -910,7 +934,6 @@ def daily_flush_worker():
                 cooldown_tracker.clear()
                 STATE_TRACKER.clear()
                 
-                # 更新狀態，避免重複清洗
                 _current_session_date = new_session_date
                 now_ny_str = datetime.now(TZ_NY).strftime('%Y-%m-%d %H:%M:%S')
                 print(f"🔄 [SYSTEM] 執行跨日大清洗！迎接全新交易日 (NY Time: {now_ny_str})")
@@ -959,9 +982,7 @@ if __name__ == '__main__':
     threading.Thread(target=scanner_engine, daemon=True).start()
     threading.Thread(target=finnhub_news_monitor_worker, daemon=True).start()
     
-    # 💡 啟動防呆清零機器人
     threading.Thread(target=daily_flush_worker, daemon=True).start()
-    
     init_alpaca(MASTER_BRAIN, DYNAMIC_WATCHLIST, brain_lock)
     
     app.run(host='0.0.0.0', port=PORT, use_reloader=False)
