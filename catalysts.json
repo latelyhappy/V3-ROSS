@@ -40,11 +40,12 @@
     "RECORD REVENUE": 15
   },
   "DEFENSE_PREMIUM": {
-    "_註記": "V46 實戰數據發現：最高期望值 E=19.59 之軍工詞彙",
+    "_註記": "V46 實戰數據 + Ross 最新認證軍工/AI詞彙",
     "RELENTLESS WOLFPACK": 95,
     "WOLFPACK": 90,
     "AFRL": 85,
     "DEPARTMENT OF DEFENSE": 85,
+    "US NAVY": 85,
     "AUTONOMOUS WEAPON": 80,
     "GOVERNMENT CONTRACT": 80,
     "MILITARY": 70,
@@ -65,7 +66,10 @@
   "THEMATIC_TRENDS": {
     "_註記": "市場熱點單字 (疊加加分用)",
     "GOVERNMENT-BACKED": 20,
+    "ARTIFICIAL INTELLIGENCE": 20,
+    "MACHINE LEARNING": 20,
     "SMR": 15,
+    "CONDITION-BASED MAINTENANCE": 15,
     "NUCLEAR": 12,
     "QUANTUM": 12,
     "AI-DRIVEN": 10,
@@ -102,13 +106,19 @@
     "EARNINGS MISS": -20
   },
   "TOXIC_OFFERINGS": {
-    "_註記": "增資毒藥鎖 (直接負分)",
+    "_註記": "增資毒藥鎖與 Ross 認證絞肉機板塊 (直接負分)",
+    "NON-BINDING LETTER OF INTENT": -50,
     "DIRECT OFFERING": -50,
     "PUBLIC OFFERING": -50,
     "PRICED AT": -50,
     "PRIVATE PLACEMENT": -50,
     "WARRANT EXERCISE": -50,
-    "SHELF REGISTRATION": -40
+    "SHELF REGISTRATION": -40,
+    "SENIORS NURSING": -40,
+    "HONG KONG": -40,
+    "CHINESE COMPANY": -40,
+    "MOTORBOATS": -30,
+    "REVERSE SPLIT": -20
   },
   "HINDSIGHT_NOISE": {
     "_註記": "後見之明與市場總結雜訊 (強制歸零，防洗版)",
@@ -170,6 +180,6 @@
   "_V46_STRATEGY_NOTES": {
     "FLOAT_REDLINE": "Float > 55M 時，自動視為低動能標的",
     "ECHO_LOGIC": "重複新聞 (Echo) 平均漲幅 14.14%，高於首發，應優先關注",
-    "ALPHA_TICKERS": "PDYN 是目前最強數據範本，重點關注國防科技"
+    "ROSS_CAMERON_LOGIC": "迴避香港中概股、老人護理與意向書陷阱，優先鎖定 US NAVY 與 AI 結合之關鍵字"
   }
 }
