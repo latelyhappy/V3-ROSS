@@ -529,7 +529,7 @@ def scanner_engine():
             if now_ts - _last_list_update > 60: 
                 update_dynamic_watchlist()
                 _last_list_update = now_ts
-                 
+                  
             if not DYNAMIC_WATCHLIST: time.sleep(5); continue
             current_watchlist = DYNAMIC_WATCHLIST.copy()
 
@@ -671,6 +671,23 @@ def scanner_engine():
                     curr_ema52 = float(df['close'].ewm(span=52, adjust=False).mean().iloc[-1]) if len(df) >= 52 else p_live
                     past_high = float(df['high'].iloc[-11:-1].max()) if len(df) >= 11 else p_live
                     
+                    # 💡 1. 均線乖離率 (EMA9 Deviation)
+                    ema9_dev = float(round(((p_live - curr_ema9) / curr_ema9) * 100, 2)) if curr_ema9 > 0 else 0.0
+
+                    # 💡 2. 動能量級 (Volume Tiers) 1~4
+                    vol_tier = 1 # 🌧️ 毛毛雨
+                    today_max_vol = float(today_df['volume'].max()) if not today_df.empty else v_live
+                    
+                    if v_live >= avg_vol * 5.0 or (v_live >= today_max_vol and v_live > 0):
+                        vol_tier = 4 # 🌋 瀑布
+                    elif v_live >= avg_vol * 3.0:
+                        vol_tier = 3 # 🌊 大浪
+                    elif v_live >= avg_vol:
+                        vol_tier = 2 # 💧 水流
+                        
+                    # 💡 3. 紫色狙擊鎖定 (Sniper Target) - 滿足「瀑布」且「安全延伸 > 1.5%」
+                    is_sniper_target = bool(vol_tier == 4 and ema9_dev >= 1.5)
+                    
                     ratio_5v5 = 1.0; vol_acc_str = "-"; vr_acc = 0.0 
                     if len(today_df) >= 15:
                         vol_A = float(today_df['volume'].iloc[-5:].sum())
@@ -716,7 +733,7 @@ def scanner_engine():
                         remainder = p_live % 1.0
                         if 0.90 <= remainder <= 0.98:
                             is_whole_dollar = True
-                            target_dollar = math.ceil(p_live)
+                    target_dollar = math.ceil(p_live)
 
                     is_massive_inflow = False
                     if len(df) >= 10:
@@ -816,6 +833,12 @@ def scanner_engine():
                                     valid_news.append(n)
                                 cell["NewsList"] = valid_news
                                 cell["HasNews"] = len(valid_news) > 0
+                                
+                                # 💡 新增：趨勢新聞過濾器 (情報發酵)
+                                # 必須站上 VWAP 且 快線(9) 大於 慢線(20)，才算真正的「發酵」
+                                is_trending = (p_live > current_vwap) and (curr_ema9 >= curr_ema20)
+                                cell["IsTrendingNews"] = cell["HasNews"] and is_trending
+                                
                                 if cell["NewsList"]: cell["CatScore"] = max(n['score'] for n in cell["NewsList"])
                                 else: cell["CatScore"] = 0
 
@@ -831,7 +854,7 @@ def scanner_engine():
                             if current_signal:
                                 if "⚡" in cell.get("StickySignal", "") and now_ts - cell.get("StickyTime", 0) < 15:
                                     current_signal = current_signal + " [⚡極速]"
-                                    status_color = "purple"
+                                status_color = "purple"
                                 cell["StickySignal"] = current_signal
                                 cell["StickyColor"] = status_color
                                 cell["StickyTime"] = now_ts
@@ -845,7 +868,11 @@ def scanner_engine():
                                 "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": final_vol_text,
                                 "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, "Signal": current_signal,
                                 "PriceVal": float(p_live), "HighVal": float(df['high'].iloc[-1]), "StopLoss": curr_ema20 * 0.99, 
-                                "Float": float_str, "Type": stat_data.get('type', 'stock'), "VolAcc": vol_acc_str, "Is100K": False, 
+                                "Float": float_str, "Type": stat_data.get('type', 'stock'), "VolAcc": vol_acc_str, 
+                                "VolTier": vol_tier,                 # 💡 水流系統 1~4
+                                "EMA9_Dev": ema9_dev,                # 💡 乖離率
+                                "IsSniperTarget": is_sniper_target,  # 💡 滿足 5 要素紫色鎖定
+                                "IsTrendingNews": cell.get("IsTrendingNews", False), # 💡 發酵判定
                                 "SN_Score": sn_score, "VsaState": 0, "VR_Acc": vr_acc, "VWAP_Dev": vwap_dev, "VWAP_Rating": vwap_rating,
                                 "EMA9": curr_ema9, "EMA52": curr_ema52,
                                 "TriggerType": trigger_type, 
