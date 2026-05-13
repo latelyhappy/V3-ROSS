@@ -284,17 +284,19 @@
                 let isSniperTarget = r.IsSniperTarget || false;
                 let rowClass = isSniperTarget ? "sniper-target-row" : "";
                 
+                // 💡 修改：僅顯示 Emoji 圖示，拔除底色與文字
                 let badges = "";
-                if (parseFloat(r.GapPct) > 10.0 && parseFloat(r.RelVol) >= 1.0) badges += `<span class="badge" style="background:#ff9800; color:#000;">🪂 跳空</span>`;
+                if (parseFloat(r.GapPct) > 10.0 && parseFloat(r.RelVol) >= 1.0) badges += `<span title="巨幅跳空" style="font-size:16px; line-height:1;">🪂</span>`;
                 
                 let volTier = r.VolTier || 0; 
-                if (volTier === 1) badges += `<span class="badge" style="background:rgba(255,255,255,0.1); color:var(--text-muted);">🌧️ 毛雨</span>`;
-                if (volTier === 2) badges += `<span class="badge" style="background:rgba(88,166,255,0.2); color:var(--blue);">💧 水流</span>`;
-                if (volTier === 3) badges += `<span class="badge" style="background:var(--neon-green); color:#000;">🌊 大浪</span>`;
-                if (volTier === 4) badges += `<span class="badge" style="background:var(--neon-purple); color:#000; animation: sniper-pulse 1.5s infinite;">🌋 瀑布</span>`;
+                if (volTier === 1) badges += `<span title="毛毛雨" style="font-size:16px; line-height:1;">🌧️</span>`;
+                if (volTier === 2) badges += `<span title="水流" style="font-size:16px; line-height:1;">💧</span>`;
+                if (volTier === 3) badges += `<span title="大浪" style="font-size:16px; line-height:1;">🌊</span>`;
+                if (volTier === 4) badges += `<span title="瀑布 (主升段)" style="font-size:16px; line-height:1; animation: sniper-pulse 1.5s infinite;">🌋</span>`;
 
-                let badgesHtml = badges ? `<span style="margin-bottom:2px; display:block;">${badges}</span>` : "";
-                let hasNewsText = newsScore > 70 ? (r.IsTrendingNews ? `<span style="font-size:10px; color:var(--neon-green); font-weight:bold;">(🔔 情報發酵)</span>` : `<span style="font-size:10px; color:var(--text-muted);">(🗞️ 滯後)</span>`) : `<span style="font-size:10px; color:var(--border);">(無情報)</span>`;
+                // 💡 修改：使用 inline-flex 將圖示與代碼排在同一水平線
+                let badgesHtml = badges ? `<span style="display:inline-flex; gap:4px; margin-right:6px; align-items:center;">${badges}</span>` : "";
+                let hasNewsText = newsScore > 70 ? (r.IsTrendingNews ? `<div style="font-size:10px; color:var(--neon-green); font-weight:bold; margin-top:2px;">(🔔 情報發酵)</div>` : `<div style="font-size:10px; color:var(--text-muted); margin-top:2px;">(🗞️ 滯後)</div>`) : `<div style="font-size:10px; color:var(--border); margin-top:2px;">(無情報)</div>`;
 
                 let fireHtml = `<b style="font-size:16px;">${r.Price||'-'}</b><br>`;
                 if (pct2min >= 2.0) { fireHtml += `<span style="color:var(--neon-purple); font-weight:bold; font-size:11px;">🚀 +${pct2min.toFixed(1)}% (${amt2minStr})</span>`; } 
@@ -311,9 +313,10 @@
                 let cdStr = hodCooldown === 0 ? `<span style="color:var(--neon-green);">剛才</span>` : (hodCooldown > 30 ? `<span style="color:var(--red);">死水(${hodCooldown}m)</span>` : `${hodCooldown}m`);
                 let floatHtml = `Float: <b style="font-size:12px;">${r.Float||"-"}</b><br><span style="font-size:11px; color:var(--text-muted);">⏱️ 創高: ${cdStr}</span>`;
 
+                // 💡 修改：將 badgesHtml 與 f_Code 放入同一個 flex 容器以保持單行
                 h2 += `<tr class="${rowClass}" onclick="loadDetail('${f_Code}')" ondblclick="openTW('${f_Code}')">
                     <td class="status-indicator"></td>
-                    <td><div class="sym">${badgesHtml}${f_Code}</div>${hasNewsText}</td>
+                    <td><div class="sym" style="display:flex; align-items:center;">${badgesHtml}<span>${f_Code}</span></div>${hasNewsText}</td>
                     <td>${fireHtml}</td>
                     <td>${momentumHtml}</td>
                     <td>${volHtml}</td>
@@ -359,7 +362,6 @@
             let snColor = snScore >= 400 ? "var(--neon-green)" : (snScore >= 200 ? "var(--yellow)" : "var(--text-muted)");
             let vwapColor = d.VWAP_Rating === 'High' ? 'var(--red)' : (d.VWAP_Rating === 'Mid' ? 'var(--yellow)' : 'var(--neon-green)');
             
-            // 💡 所有數值的 .toFixed() 精準綁定
             let gapPctVal = parseFloat(d.GapPct) || 0;
             let gapStr = gapPctVal > 0 ? `+${gapPctVal.toFixed(2)}%` : `${gapPctVal.toFixed(2)}%`;
 
