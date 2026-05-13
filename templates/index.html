@@ -228,8 +228,9 @@
 
         function refreshUI(d) {
             if (!d) return;
-            document.getElementById('sys-status').innerText = `📡 更新: ${d.last_update || '--:--:--'}`;
-            document.getElementById('sys-status').style.color = "var(--green)";
+            // 💡 登入狀態直接顯示在導覽列右上方
+            document.getElementById('sys-status').innerHTML = `<span style="color:var(--neon-purple); font-weight:bold;">${d.tv_status || ''}</span> &nbsp;|&nbsp; 📡 更新: ${d.last_update || '--:--:--'}`;
+            document.getElementById('sys-status').style.color = "var(--text-muted)";
             
             let newsScoreMap = {};
             (d.top_catalysts || []).forEach(n => { newsScoreMap[n.Code || n.ticker || n.symbol] = n.CatScore || n.score || 0; });
@@ -284,7 +285,6 @@
                 let isSniperTarget = r.IsSniperTarget || false;
                 let rowClass = isSniperTarget ? "sniper-target-row" : "";
                 
-                // 💡 修改：僅顯示 Emoji 圖示，拔除底色與文字
                 let badges = "";
                 if (parseFloat(r.GapPct) > 10.0 && parseFloat(r.RelVol) >= 1.0) badges += `<span title="巨幅跳空" style="font-size:16px; line-height:1;">🪂</span>`;
                 
@@ -294,7 +294,6 @@
                 if (volTier === 3) badges += `<span title="大浪" style="font-size:16px; line-height:1;">🌊</span>`;
                 if (volTier === 4) badges += `<span title="瀑布 (主升段)" style="font-size:16px; line-height:1; animation: sniper-pulse 1.5s infinite;">🌋</span>`;
 
-                // 💡 修改：使用 inline-flex 將圖示與代碼排在同一水平線
                 let badgesHtml = badges ? `<span style="display:inline-flex; gap:4px; margin-right:6px; align-items:center;">${badges}</span>` : "";
                 let hasNewsText = newsScore > 70 ? (r.IsTrendingNews ? `<div style="font-size:10px; color:var(--neon-green); font-weight:bold; margin-top:2px;">(🔔 情報發酵)</div>` : `<div style="font-size:10px; color:var(--text-muted); margin-top:2px;">(🗞️ 滯後)</div>`) : `<div style="font-size:10px; color:var(--border); margin-top:2px;">(無情報)</div>`;
 
@@ -313,7 +312,6 @@
                 let cdStr = hodCooldown === 0 ? `<span style="color:var(--neon-green);">剛才</span>` : (hodCooldown > 30 ? `<span style="color:var(--red);">死水(${hodCooldown}m)</span>` : `${hodCooldown}m`);
                 let floatHtml = `Float: <b style="font-size:12px;">${r.Float||"-"}</b><br><span style="font-size:11px; color:var(--text-muted);">⏱️ 創高: ${cdStr}</span>`;
 
-                // 💡 修改：將 badgesHtml 與 f_Code 放入同一個 flex 容器以保持單行
                 h2 += `<tr class="${rowClass}" onclick="loadDetail('${f_Code}')" ondblclick="openTW('${f_Code}')">
                     <td class="status-indicator"></td>
                     <td><div class="sym" style="display:flex; align-items:center;">${badgesHtml}<span>${f_Code}</span></div>${hasNewsText}</td>
