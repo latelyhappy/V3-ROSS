@@ -231,7 +231,6 @@ def calculate_hft_score(headline, ticker=""):
     total_score = 0
     elite_hits = []
 
-    # 💡 [解鎖] 取消所有垃圾新聞過濾機制，保證所有新聞無條件放行
     CORE_WORDS = ["WOLFPACK", "AFRL", "MARINE CORPS", "FDA APPROVAL", "FAST TRACK", "DEPARTMENT OF DEFENSE", "DOD"]
     is_core = False
     for kw in CORE_WORDS:
@@ -338,7 +337,6 @@ def fetch_and_score_news(ticker, cell, force=False):
                 else:
                     score, is_trap, elites = calculate_hft_score(raw_t, ticker)
                 
-                # 💡 [解鎖] 不再阻擋 score == -1 的新聞
                 if is_trap: has_trap = True
                 all_elites.update(elites)
                 if any("💎" in e for e in elites): raw_t = "[💎 核心情報] " + raw_t
@@ -402,7 +400,6 @@ def finnhub_news_monitor_worker():
                                 else:
                                     score, is_trap, elites = calculate_hft_score(art_headline, ticker)
 
-                                # 💡 [解鎖] 不再阻擋 score == -1 的新聞
                                 score = int(score * 1.2)
                                 if any("💎" in e for e in elites): art_headline = "[💎 核心情報] " + art_headline
 
@@ -447,7 +444,7 @@ def update_dynamic_watchlist():
         chg_col = "premarket_change" if is_premarket else "change"
         vol_col = "premarket_volume" if is_premarket else "volume"
 
-        # 💡 [解鎖] 三大菁英市場鎖定 (NYSE/NASDAQ/AMEX) + 納入海外飆股 (dr) + 數量縮減至 40 防止封鎖
+        # 💡 [解鎖] 精兵減負：數量縮減至前 20 名，運算時間減半，加速排行榜顯示！
         payload = {
             "filter": [
                 {"left": "exchange", "operation": "in_range", "right": ["NASDAQ", "NYSE", "AMEX"]},
@@ -458,7 +455,7 @@ def update_dynamic_watchlist():
             ], 
             "columns": ["name", "close", "change", "volume", "premarket_close", "premarket_change", "premarket_volume", "market_cap_basic", "type", "average_volume_10d_calc"], 
             "sort": {"sortBy": chg_col, "sortOrder": "desc"}, 
-            "range": [0, 40] 
+            "range": [0, 20] 
         }
 
         res = requests.post(url, json=payload, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
@@ -491,7 +488,7 @@ def update_dynamic_watchlist():
         
         with brain_lock:
             DYNAMIC_WATCHLIST.clear()
-            DYNAMIC_WATCHLIST.extend(new_watchlist[:40])
+            DYNAMIC_WATCHLIST.extend(new_watchlist[:20])
             STATS_MAP.update(temp_stats)
     except: pass
 
@@ -537,12 +534,10 @@ def scanner_engine():
             def _process_ticker(ticker):
                 nonlocal consecutive_errors, tv
                 try:
-                    # 💡 終極潛行模式：每次請求嚴格間隔 0.5 秒 (黃金平衡點)，避開 TV 的 Ddos 封鎖
                     time.sleep(0.5) 
                     
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
                     
-                    # 只要不為空就放行，保證上榜
                     if df is None or df.empty: return
 
                     time_diff = df.index.to_series().diff()
@@ -833,7 +828,6 @@ def scanner_engine():
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "StickySignal": "", "StickyColor": "green", "StickyTime": 0})
                         
                         if "NewsList" in cell:
-                            # 💡 [解鎖] 取消 2 小時過期新聞與 EMA20 隱藏限制，只要有新聞全數放行
                             cell["HasNews"] = len(cell["NewsList"]) > 0
                             
                             is_trending = (p_live > current_vwap) and (curr_ema9 >= curr_ema20)
@@ -913,20 +907,21 @@ def scanner_engine():
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
                 except Exception as e: return
 
-            # 💡 終極潛行模式：降頻火力，純單線程迴圈，避開 TV 的 Ddos 封鎖
+            # 💡 終極潛行模式：純單線程排隊迴圈，徹底消除被 TV 封鎖的風險
             for ticker in current_watchlist:
                 _process_ticker(ticker)
+                
+                # 💡 【核心修復：即時渲染】每算好一檔股票，立刻把資料推上排行榜，畫面如絲般順滑不卡頓！
+                with brain_lock:
+                    all_items = list(MASTER_BRAIN["details"].values())
+                    active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST]
+                    
+                    MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(x.get('Pct', '0').replace('%', '')), reverse=True)[:30]
+                    
+                    vwap_items = [x for x in active_items if x.get("VR_Acc", 0) > 30.0 and x.get("VWAP_Dev", 0) > 0.0]
+                    MASTER_BRAIN["vwap_list"] = sorted(vwap_items, key=lambda x: x.get("VWAP_Dev", 0), reverse=True)
+                    MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
             
-            with brain_lock:
-                all_items = list(MASTER_BRAIN["details"].values())
-                active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST]
-                
-                # 💡 排行榜：最多顯示前 30 名
-                MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(x.get('Pct', '0').replace('%', '')), reverse=True)[:30]
-                
-                vwap_items = [x for x in active_items if x.get("VR_Acc", 0) > 30.0 and x.get("VWAP_Dev", 0) > 0.0]
-                MASTER_BRAIN["vwap_list"] = sorted(vwap_items, key=lambda x: x.get("VWAP_Dev", 0), reverse=True)
-                MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
             time.sleep(1)
         except Exception as e: time.sleep(5)
 

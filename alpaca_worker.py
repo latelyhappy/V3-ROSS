@@ -49,63 +49,59 @@ def _alpaca_thread():
             
         if is_velocity_spike or is_whole_dollar:
             with _brain_lock:
-                # 💡 【核心修復】：如果名單內有這檔股票，但 TV 還沒幫它建檔，Alpaca 先幫忙建一個空夾子
-                if ticker not in _MASTER_BRAIN["details"]:
-                    _MASTER_BRAIN["details"][ticker] = {"NewsList": [], "CatScore": 0, "IsTrap": False}
+                if ticker in _MASTER_BRAIN["details"]:
+                    cell = _MASTER_BRAIN["details"][ticker]
                     
-                cell = _MASTER_BRAIN["details"][ticker]
-                
-                # 💡 【攔截 N/A 幽靈】：如果 TV 還沒算好代碼跟價格，Alpaca 強制補上自己抓到的數據！
-                if "Code" not in cell: cell["Code"] = ticker
-                if "Price" not in cell or cell["Price"] == "-": cell["Price"] = f"${price:.2f}"
-                if "Vol" not in cell: cell["Vol"] = "計算中..."
-                if "Pct" not in cell: cell["Pct"] = "- %"
-                
-                # 基礎清理，避免無限疊加
-                raw_signal = cell.get("Signal", "").replace("⚡極速拉升(+0.5%/5s)", "").replace(f"🧲即將撞擊(${math.ceil(price):.2f})", "").strip()
-                
-                signal_triggered = False
-                new_tag = ""
-                
-                if is_velocity_spike:
-                    new_tag = "⚡極速拉升(+0.5%/5s) "
-                    cell["Status"] = "purple"
-                    cell["StickyColor"] = "purple"
-                    signal_triggered = True
+                    # 基礎清理，避免無限疊加
+                    raw_signal = cell.get("Signal", "").replace("⚡極速拉升(+0.5%/5s)", "").replace(f"🧲即將撞擊(${math.ceil(price):.2f})", "").strip()
                     
-                elif is_whole_dollar:
-                    new_tag = f"🧲即將撞擊(${math.ceil(price):.2f}) "
-                    if cell.get("Status") != "purple":
-                        cell["Status"] = "yellow"
-                        cell["StickyColor"] = "yellow"
-                    signal_triggered = True
-
-                if signal_triggered:
-                    cell["Signal"] = new_tag + raw_signal
-                    cell["StickySignal"] = cell["Signal"]
-                    cell["StickyTime"] = now_ts
+                    signal_triggered = False
+                    new_tag = ""
                     
-                    last_a_time = _alpaca_cooldown.get(ticker, 0)
-                    if now_ts - last_a_time > 30:
-                        _alpaca_cooldown[ticker] = now_ts
-                        stats_copy = {k: v for k, v in cell.items() if k not in ["NewsList", "CatScore", "IsTrap", "StickySignal", "StickyColor", "StickyTime"]}
+                    # 💡 核心修復：使用乾淨的標籤覆蓋
+                    if is_velocity_spike:
+                        new_tag = "⚡極速拉升(+0.5%/5s) "
+                        cell["Status"] = "purple"
+                        cell["StickyColor"] = "purple"
+                        signal_triggered = True
                         
-                        # Alpaca 單獨觸發的訊號改為靜音
-                        _MASTER_BRAIN["surge_log"].insert(0, {
-                            **stats_copy, 
-                            "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), 
-                            "SignalTS": now_ts, 
-                            "Audio": None
-                        })
-                        _MASTER_BRAIN["surge_log"] = _MASTER_BRAIN["surge_log"][:1000]
+                    elif is_whole_dollar:
+                        new_tag = f"🧲即將撞擊(${math.ceil(price):.2f}) "
+                        if cell.get("Status") != "purple":
+                            cell["Status"] = "yellow"
+                            cell["StickyColor"] = "yellow"
+                        signal_triggered = True
+
+                    if signal_triggered:
+                        cell["Signal"] = new_tag + raw_signal
+                        cell["StickySignal"] = cell["Signal"]
+                        cell["StickyTime"] = now_ts
+                        
+                        last_a_time = _alpaca_cooldown.get(ticker, 0)
+                        if now_ts - last_a_time > 30:
+                            _alpaca_cooldown[ticker] = now_ts
+                            stats_copy = {k: v for k, v in cell.items() if k not in ["NewsList", "CatScore", "IsTrap", "StickySignal", "StickyColor", "StickyTime"]}
+                            
+                            # Alpaca 單獨觸發的訊號改為靜音
+                            _MASTER_BRAIN["surge_log"].insert(0, {
+                                **stats_copy, 
+                                "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), 
+                                "SignalTS": now_ts, 
+                                "Audio": None
+                            })
+                            _MASTER_BRAIN["surge_log"] = _MASTER_BRAIN["surge_log"][:1000]
 
     def watch_subscriptions():
         current_subs = set()
         while True:
             time.sleep(5)
             try:
+                # 💡 核心變更：強迫 Alpaca 只監聽「已經處理好且掛上排行榜」的菁英股票！
+                leaderboard = _MASTER_BRAIN.get("leaderboard", [])
+                valid_symbols = [item["Code"] for item in leaderboard if "Code" in item]
+                
                 # 💡 設定安全閾值：最多 28 檔，確保加上緩衝絕不超過免費版 30 檔上限
-                safe_watchlist = list(_DYNAMIC_WATCHLIST)[:28]
+                safe_watchlist = valid_symbols[:28]
                 target_subs = set(safe_watchlist)
                 to_add = target_subs - current_subs
                 to_remove = current_subs - target_subs
