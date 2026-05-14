@@ -232,8 +232,6 @@ def calculate_hft_score(headline, ticker=""):
     elite_hits = []
 
     # 💡 [解鎖] 取消所有垃圾新聞過濾機制，保證所有新聞無條件放行
-    # 移除 HARD_TRASH 與 score = -1 判定
-
     CORE_WORDS = ["WOLFPACK", "AFRL", "MARINE CORPS", "FDA APPROVAL", "FAST TRACK", "DEPARTMENT OF DEFENSE", "DOD"]
     is_core = False
     for kw in CORE_WORDS:
@@ -539,7 +537,8 @@ def scanner_engine():
             def _process_ticker(ticker):
                 nonlocal consecutive_errors, tv
                 try:
-                    time.sleep(0.1) 
+                    # 💡 潛行模式：強力防護網突穿，強制延遲 1.0 秒避免觸發 DDoS 判定
+                    time.sleep(1.0) 
                     
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
                     
@@ -834,13 +833,8 @@ def scanner_engine():
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "StickySignal": "", "StickyColor": "green", "StickyTime": 0})
                         
                         if "NewsList" in cell:
-                            valid_news = []
-                            for n in cell["NewsList"]:
-                                pub_ts = n.get("pub_ts", now_ts)
-                                if (now_ts - pub_ts > 7200) and (p_live < curr_ema20): continue
-                                valid_news.append(n)
-                            cell["NewsList"] = valid_news
-                            cell["HasNews"] = len(valid_news) > 0
+                            # 💡 [解鎖] 取消 2 小時過期新聞與 EMA20 隱藏限制，只要有新聞全數放行
+                            cell["HasNews"] = len(cell["NewsList"]) > 0
                             
                             is_trending = (p_live > current_vwap) and (curr_ema9 >= curr_ema20)
                             cell["IsTrendingNews"] = cell["HasNews"] and is_trending
@@ -893,7 +887,6 @@ def scanner_engine():
                             if now_ts - last_trigger_time > 60: can_trigger = True
                             elif is_massive_inflow and (now_ts - last_massive_time > 30): can_trigger = True
                                
-                            # 💡 警報觸發閘門：取消 5 根 K 線限制，只要符合動能條件直接警報
                             if can_trigger:
                                 if is_massive_inflow: STATE_TRACKER[f"{ticker}_massive"] = now_ts
                                 cooldown_tracker[ticker] = now_ts 
@@ -920,7 +913,8 @@ def scanner_engine():
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
                 except Exception as e: return
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            # 💡 潛行模式：降頻火力，同時並發數降為 3，避開 TV 的 Ddos 封鎖
+            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
                 list(executor.map(_process_ticker, current_watchlist))
             
             with brain_lock:
