@@ -10,7 +10,6 @@ class CleanStderr:
     def __init__(self, original_stderr):
         self.original_stderr = original_stderr
     def write(self, msg):
-        # 只要字串裡包含這些煩人的警告，直接丟進黑洞，不准印出來！
         if "Pandas4Warning" in msg or "Timestamp.utcnow" in msg or "FutureWarning" in msg or "deprecated" in msg:
             return
         self.original_stderr.write(msg)
@@ -43,7 +42,7 @@ import yfinance as yf
 
 from alpaca_worker import init_alpaca
 import collector
-import memory_worker # 💡 NLP 記憶大腦通道已開啟
+import memory_worker 
 
 app = Flask(__name__)
 
@@ -453,16 +452,13 @@ def update_dynamic_watchlist():
         now_ny = datetime.now(TZ_NY)
         is_premarket = now_ny.time() < datetime.strptime("09:30", "%H:%M").time()
 
-        price_col = "premarket_close" if is_premarket else "close"
         chg_col = "premarket_change" if is_premarket else "change"
-        vol_col = "premarket_volume" if is_premarket else "volume"
 
+        # 💡 天羅地網掃描：拿掉嚴格的價格與量能限制，確保開盤初期 TV API 延遲也不漏接！
         payload = {
             "filter": [
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, 
-                {"left": price_col, "operation": "in_range", "right": [0.5, 50]},
-                {"left": chg_col, "operation": "egreater", "right": 2.0}, 
-                {"left": vol_col, "operation": "egreater", "right": 5000} 
+                {"left": chg_col, "operation": "egreater", "right": 2.0}
             ], 
             "columns": ["name", "close", "change", "volume", "premarket_close", "premarket_change", "premarket_volume", "market_cap_basic", "type", "average_volume_10d_calc"], 
             "sort": {"sortBy": chg_col, "sortOrder": "desc"}, 
@@ -562,7 +558,7 @@ def scanner_engine():
                     p_live = float(df['close'].iloc[-1])
                     p_prev = float(df['close'].iloc[-2]) if len(df) > 1 else p_live
                     
-                    # 💡 絕對防線：鎖死 0.5 ~ 50 塊的區間，無情剔除 TV 漏網之魚
+                    # 💡 本地端絕對閘門：嚴格鎖死 0.5 ~ 50 美元，其餘無視！
                     if p_live < 0.5 or p_live > 50.0:
                         return
                         
