@@ -1,13 +1,17 @@
 import os
-import warnings
-
-# 💡 作業系統級消音器：從根源封殺所有 Python 警告！
 os.environ["PYTHONWARNINGS"] = "ignore"
-warnings.simplefilter(action='ignore', category=FutureWarning)
+
+import warnings
 warnings.filterwarnings("ignore")
+# 💡 針對 pandas 的未來警告進行強制消音
+warnings.simplefilter(action='ignore', category=FutureWarning)
+try:
+    from pandas.errors import Pandas4Warning
+    warnings.simplefilter(action='ignore', category=Pandas4Warning)
+except:
+    pass
 
 import logging
-# 💡 封殺第三方套件的底層連線日誌，保持終端機極度乾淨
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
 logging.getLogger('urllib3').setLevel(logging.CRITICAL)

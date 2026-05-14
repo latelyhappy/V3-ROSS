@@ -413,7 +413,7 @@
             document.getElementById('detail-list').innerHTML = html + `</div>`;
         }
 
-        function fetchSummary() { fetch('/api/intelligence_summary').then(r=>r.json()).then(res=>{ if(res.status==="success"){ let msg="🏆 高勝率詞彙：\n\n"; res.data.forEach((i,idx)=>{ msg+=`${idx+1}. ${i.phrase} (勝率: ${i.win_rate}%)\n`;}); alert(msg); } }).catch(e=>alert("錯誤")); }
+        function fetchSummary() { fetch('/api/intelligence_summary').then(r=>r.json()).then(res=>{ if(res.status==="success"){ let msg="🏆 高勝率詞彙：\n\n"; res.data.forEach((i,idx)=>{ msg+=`${idx+1}. ${i.phrase} (勝率: ${i.win_rate}%)\n`;}); alert(msg); } else { alert("⏳ 系統提示：目前收集的暴漲數據不足，請讓雷達多掃描幾個交易日！\n\n(原因: " + (res.message || "資料庫尚未建立足夠樣本") + ")"); } }).catch(e=>alert("⚠️ 連線錯誤")); }
         function exportIntelligence() { window.location.href='/api/export_intelligence'; }
         function resetLayout() { localStorage.removeItem('sniper_zoom'); location.reload(); }
 
