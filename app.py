@@ -452,17 +452,18 @@ def update_dynamic_watchlist():
         now_ny = datetime.now(TZ_NY)
         is_premarket = now_ny.time() < datetime.strptime("09:30", "%H:%M").time()
 
+        price_col = "premarket_close" if is_premarket else "close"
         chg_col = "premarket_change" if is_premarket else "change"
 
-        # 💡 天羅地網掃描：拿掉嚴格的價格與量能限制，確保開盤初期 TV API 延遲也不漏接！
+        # 💡 天羅地網掃描：只限制價格 0.5 ~ 50，取消 2% 漲幅與 5000 成交量的限制，其餘全放行！
         payload = {
             "filter": [
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, 
-                {"left": chg_col, "operation": "egreater", "right": 2.0}
+                {"left": price_col, "operation": "in_range", "right": [0.5, 50]}
             ], 
             "columns": ["name", "close", "change", "volume", "premarket_close", "premarket_change", "premarket_volume", "market_cap_basic", "type", "average_volume_10d_calc"], 
             "sort": {"sortBy": chg_col, "sortOrder": "desc"}, 
-            "range": [0, 300] 
+            "range": [0, 150] 
         }
 
         res = requests.post(url, json=payload, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
@@ -495,7 +496,7 @@ def update_dynamic_watchlist():
         
         with brain_lock:
             DYNAMIC_WATCHLIST.clear()
-            DYNAMIC_WATCHLIST.extend(new_watchlist[:100])
+            DYNAMIC_WATCHLIST.extend(new_watchlist[:150])
             STATS_MAP.update(temp_stats)
     except: pass
 
@@ -544,7 +545,7 @@ def scanner_engine():
                     time.sleep(0.1) 
                     
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
-                    if df is None or df.empty or len(df) < 3: return
+                    if df is None or df.empty or len(df) < 5: return
 
                     time_diff = df.index.to_series().diff()
                     new_sessions = time_diff[time_diff > pd.Timedelta(hours=4)]
@@ -926,7 +927,9 @@ def scanner_engine():
             with brain_lock:
                 all_items = list(MASTER_BRAIN["details"].values())
                 active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST]
-                MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(x.get('Pct', '0').replace('%', '')), reverse=True)[:20]
+                
+                # 💡 擴大排行榜顯示數量：改為前 30 名
+                MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(x.get('Pct', '0').replace('%', '')), reverse=True)[:30]
                 
                 vwap_items = [x for x in active_items if x.get("VR_Acc", 0) > 30.0 and x.get("VWAP_Dev", 0) > 0.0]
                 MASTER_BRAIN["vwap_list"] = sorted(vwap_items, key=lambda x: x.get("VWAP_Dev", 0), reverse=True)
