@@ -152,7 +152,6 @@
     <script>
         let brain = {}, activeSym = "", audioOn = true, played = {}, showETF = false;
         const sounds = { nova: new Audio('/static/sounds/nova.mp3') };
-        // 💡 修正：預設排行為 Vol 總成交量，且降冪排列
         let rankCfg = { col: 'Vol', asc: false }, newsCfg = { col: 'CatScore', asc: false };
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
@@ -410,7 +409,8 @@
             document.getElementById('detail-list').innerHTML = html + `</div>`;
         }
 
-        function fetchSummary() { fetch('/api/intelligence_summary').then(r=>r.json()).then(res=>{ if(res.status==="success"){ let msg="🏆 高勝率詞彙：\n\n"; res.data.forEach((i,idx)=>{ msg+=`${idx+1}. ${i.phrase} (勝率: ${i.win_rate}%)\n`;}); alert(msg); } else { alert("⏳ 系統提示：目前收集的暴漲數據不足，請讓雷達多掃描幾個交易日！\n\n(原因: " + (res.message || "資料庫尚未建立足夠樣本") + ")"); } }).catch(e=>alert("⚠️ 連線錯誤")); }
+        // 💡 修正：增加資料不足時的防呆彈窗
+        function fetchSummary() { fetch('/api/intelligence_summary').then(r=>r.json()).then(res=>{ if(res.status==="success"){ let msg="🏆 高勝率詞彙：\n\n"; res.data.forEach((i,idx)=>{ msg+=`${idx+1}. ${i.phrase} (勝率: ${i.win_rate}%)\n`;}); alert(msg); } else { alert("⏳ 系統提示：目前收集的暴漲數據不足，請讓雷達多掃描幾個交易日！\n\n(系統訊息: " + (res.message || "資料庫樣本不足") + ")"); } }).catch(e=>alert("⚠️ 連線錯誤")); }
         function exportIntelligence() { window.location.href='/api/export_intelligence'; }
         function resetLayout() { localStorage.removeItem('sniper_zoom'); location.reload(); }
 

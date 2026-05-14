@@ -2,12 +2,15 @@ import os
 os.environ["PYTHONWARNINGS"] = "ignore"
 
 import warnings
+# 💡 核彈級消音：從根源封殺 yfinance 與 pandas 的 Timestamp 警告
 warnings.filterwarnings("ignore")
-# 💡 針對 pandas 的未來警告進行強制消音
 warnings.simplefilter(action='ignore', category=FutureWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", message=".*Timestamp.utcnow.*")
 try:
     from pandas.errors import Pandas4Warning
     warnings.simplefilter(action='ignore', category=Pandas4Warning)
+    warnings.filterwarnings("ignore", category=Pandas4Warning)
 except:
     pass
 
@@ -89,7 +92,7 @@ _current_session_date = get_current_trading_date()
 
 CATALYST_ARMORY = {}
 armory_path = os.path.join(os.path.dirname(__file__), 'catalysts.json')
-learned_path = os.path.join(os.path.dirname(__file__), 'learned_catalysts.json') # 💡 學習記憶檔路徑
+learned_path = os.path.join(os.path.dirname(__file__), 'learned_catalysts.json') 
 
 def reload_armory():
     global CATALYST_ARMORY
@@ -98,16 +101,13 @@ def reload_armory():
             CATALYST_ARMORY = json.load(f)
     except: CATALYST_ARMORY = {}
 
-    # 💡 核心聯動：將 NLP 學到的新詞彙合併進子彈庫中
     try:
         if os.path.exists(learned_path):
             with open(learned_path, 'r', encoding='utf-8') as f:
                 learned_data = json.load(f)
                 if "THEMATIC_TRENDS" not in CATALYST_ARMORY:
                     CATALYST_ARMORY["THEMATIC_TRENDS"] = {}
-                # 將學到的詞彙賦予權重並合併
                 CATALYST_ARMORY["THEMATIC_TRENDS"].update(learned_data)
-                print(f"🧠 [NLP 聯動] 成功載入 {len(learned_data)} 個自學高勝率詞彙！")
     except: pass
 
 reload_armory()
@@ -451,6 +451,7 @@ def update_dynamic_watchlist():
         chg_col = "premarket_change" if is_premarket else "change"
         vol_col = "premarket_volume" if is_premarket else "volume"
 
+        # 💡 確保 TV 雷達抓取的基礎戰術規則: 股價 0.5~50，漲幅 > 2%，量能 > 5000
         payload = {
             "filter": [
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, 
@@ -588,21 +589,17 @@ def scanner_engine():
                     elif real_float > 0: float_str = f"⚠️{float_m:.1f}M" if float_m > 50.0 else f"{float_m:.1f}M"
                     else: float_str = "未知"
 
-                    # 💡 量比修正：區分「單分極速量比」與「日級量比」
                     avg_vol_10d = stat_data.get('avg_vol_10d', 0)
                     if avg_vol_10d and avg_vol_10d > 0:
                         historical_1m_avg = avg_vol_10d / 390.0
-                        daily_rel_vol = float(round(daily_vol / avg_vol_10d, 2)) # 前端顯示的真實日量比
+                        daily_rel_vol = float(round(daily_vol / avg_vol_10d, 2))
                     else:
                         historical_1m_avg = float(today_df['volume'].iloc[:-1].mean()) if time_lapsed_mins > 2 else v_live
                         daily_rel_vol = 1.0
                     
                     if historical_1m_avg <= 0: historical_1m_avg = 1.0 
                     
-                    # 用於後台判定 🌋 瀑布的單分極速量比
                     rel_vol_live = float(round(v_live / historical_1m_avg, 2))
-                    
-                    # 打包給前端的顯示值
                     rel_vol_display = daily_rel_vol
                     if daily_vol < 5000: rel_vol_display = 0.0
 
@@ -678,6 +675,7 @@ def scanner_engine():
                         
                     is_sniper_target = bool(vol_tier == 4 and ema9_dev >= 1.5 and daily_vol >= 200000)
 
+                    # 💡 核心六大主力透視邏輯重置並確認
                     is_monster_gene = (turnover >= 1.0 and float_m <= 20.0)
                     is_fake_breakout = (real_pct > 15.0 and turnover < 0.05 and vol_tier <= 2)
                     
