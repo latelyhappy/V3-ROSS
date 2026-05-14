@@ -10,3 +10,4 @@ websockets
 setuptools
 wheel
 git+https://github.com/rongardF/tvdatafeed.git
+PyGithub
