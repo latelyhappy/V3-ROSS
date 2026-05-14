@@ -453,17 +453,17 @@ def update_dynamic_watchlist():
                 {"left": "exchange", "operation": "in_range", "right": ["NASDAQ", "NYSE", "AMEX"]},
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund", "dr"]}, 
                 {"left": price_col, "operation": "in_range", "right": [0.5, 50]},
-                {"left": chg_col, "operation": "egreater", "right": 3.0}, # 💡 稍微放寬門檻，避免沒資料
+                # 💡 [除錯降門檻] 為了確保抓得到資料，將門檻從 5.0 降為 2.0
+                {"left": chg_col, "operation": "egreater", "right": 2.0},
                 {"left": vol_col, "operation": "egreater", "right": 5000}
             ], 
             "columns": ["name", "close", "change", "volume", "premarket_close", "premarket_change", "premarket_volume", "market_cap_basic", "type", "average_volume_10d_calc"], 
             "sort": {"sortBy": chg_col, "sortOrder": "desc"}, 
-            "range": [0, 30] # 💡 鎖定前 30 名精華
+            "range": [0, 30] # 鎖定前 30 名精華
         }
 
         res = requests.post(url, json=payload, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
         
-        # 🔦 探照燈：若 TV 拒絕我們，立刻印出狀態碼
         if res.status_code != 200:
             print(f"❌ [掃描器錯誤] TV Scanner 拒絕連線 (狀態碼: {res.status_code})")
             return
@@ -479,6 +479,10 @@ def update_dynamic_watchlist():
                 if p_eff is None: p_eff = c
                 if actual_pct is None: actual_pct = 0.0
 
+                # 💡 【核心修復】：從 TV 掃描器精準抓出「盤前/盤中」的正確總量！
+                total_vol_from_scanner = pm_v if is_premarket and pm_v is not None else v
+                if total_vol_from_scanner is None: total_vol_from_scanner = 0
+
                 real_shares = get_real_float(sym)
                 if real_shares > 0: float_m = real_shares / 1_000_000
                 else: float_m = (mc / p_eff) / 1_000_000 if mc and p_eff else 0.0
@@ -492,7 +496,8 @@ def update_dynamic_watchlist():
                 
                 temp_stats[sym] = {
                     'prev': prev_est, 'float_str': f_str, 'type': t, 
-                    'float_comp': float_comp, 'avg_vol_10d': avg_vol_10d 
+                    'float_comp': float_comp, 'avg_vol_10d': avg_vol_10d,
+                    'total_vol': total_vol_from_scanner  # 💡 將精準總量存入快取記憶體中
                 }
         else:
             print(f"⚠️ [掃描器警告] TV 回傳資料為空，目前可能無符合條件之標的。")
@@ -549,12 +554,10 @@ def scanner_engine():
             def _process_ticker(ticker):
                 nonlocal consecutive_errors, tv
                 try:
-                    # 💡 終極潛行模式：每次請求嚴格間隔 0.5 秒 (黃金平衡點)，避開 TV 的 Ddos 封鎖
                     time.sleep(0.5) 
                     
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
                     
-                    # 只要不為空就放行，保證上榜
                     if df is None or df.empty: 
                         return
 
@@ -578,8 +581,11 @@ def scanner_engine():
                     
                     collector.update_max_price(ticker, p_live)
                     
-                    # 💡 【拔除 Yahoo 炸彈】：全面信任 TV 的盤內成交量，防止系統被 YF 封鎖卡死！
-                    daily_vol = int(today_df['volume'].sum()) if not today_df.empty else int(v_live)
+                    stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0, 'avg_vol_10d': 0.0, 'total_vol': 0})
+                    
+                    # 💡 【完美修復：成交量】：直接從快取中拿出剛才掃描器抓到的精準總量！
+                    scanner_vol = stat_data.get('total_vol', 0)
+                    daily_vol = int(scanner_vol) if scanner_vol > 0 else int(v_live)
 
                     try:
                         daily_df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_daily, n_bars=2)
@@ -587,8 +593,6 @@ def scanner_engine():
                         else: true_prev_close = 0.0
                     except: true_prev_close = 0.0
 
-                    stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0, 'avg_vol_10d': 0.0})
-                    
                     time_lapsed_mins = len(today_df)
                     
                     real_float = get_real_float(ticker)
@@ -610,7 +614,8 @@ def scanner_engine():
                     if historical_1m_avg <= 0: historical_1m_avg = 1.0 
                     
                     rel_vol_live = float(round(v_live / historical_1m_avg, 2))
-                    # 💡 【核心修復】：補上「上一分鐘相對成交量」的定義，消滅 K 線運算崩潰！
+                    
+                    # 💡 【核心修復：防止崩潰】：補上上一分鐘的相對成交量，讓訊號判斷順利通過！
                     rel_vol_prev = float(round(v_prev / historical_1m_avg, 2))
                     
                     rel_vol_display = daily_rel_vol
@@ -920,27 +925,23 @@ def scanner_engine():
                                     
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
                 
-                # 🔦 探照燈：若計算 K 線發生錯誤，印出警告讓我們知道發生什麼事！
                 except Exception as e: 
                     print(f"❌ [K線運算錯誤] 處理 {ticker} 發生異常: {e}")
                     return
 
-            # 💡 終極潛行模式：純單線程排隊迴圈，徹底消除被 TV 封鎖的風險
             for ticker in current_watchlist:
                 _process_ticker(ticker)
                 
-                # 💡 【核心修復：即時渲染】每算好一檔股票，立刻把資料推上排行榜！
                 with brain_lock:
                     all_items = list(MASTER_BRAIN["details"].values())
                     active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST]
                     
-                    MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(x.get('Pct', '0').replace('%', '')), reverse=True)[:30]
+                    MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(str(x.get('Pct', '0')).replace('%', '')), reverse=True)[:30]
                     
                     vwap_items = [x for x in active_items if x.get("VR_Acc", 0) > 30.0 and x.get("VWAP_Dev", 0) > 0.0]
                     MASTER_BRAIN["vwap_list"] = sorted(vwap_items, key=lambda x: x.get("VWAP_Dev", 0), reverse=True)
                     MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
             
-            # 💡 【三維快取戰略】K線校準器掃完一圈後，進入 15 秒深度休眠，將報價舞台完全讓給 Alpaca！
             time.sleep(15)
         except Exception as e: 
             print(f"❌ [主引擎錯誤] Scanner Engine 發生崩潰: {e}")
