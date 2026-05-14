@@ -231,8 +231,8 @@ def calculate_hft_score(headline, ticker=""):
     total_score = 0
     elite_hits = []
 
-    HARD_TRASH = ["WHY IT'S MOVING", "INVESTOR ALERT", "LAWSUIT", "CLASS ACTION", "INVESTIGATION", "DEADLINE", "TOP STOCK TO BUY", "IS A BUY", "IS THIS STOCK A BUY", "HAGENS BERMAN", "POMERANTZ", "KESSLER TOPAZ", "GLANCY PRONGAY", "BRONSTEIN"]
-    if any(trash in text for trash in HARD_TRASH) or "?" in text or all(x in text for x in ["WHY", "IS"]): return -1, False, []
+    # 💡 [解鎖] 取消所有垃圾新聞過濾機制，保證所有新聞無條件放行
+    # 移除 HARD_TRASH 與 score = -1 判定
 
     CORE_WORDS = ["WOLFPACK", "AFRL", "MARINE CORPS", "FDA APPROVAL", "FAST TRACK", "DEPARTMENT OF DEFENSE", "DOD"]
     is_core = False
@@ -248,12 +248,6 @@ def calculate_hft_score(headline, ticker=""):
     MEGACAPS = list(CATALYST_ARMORY.get("SYMPATHY_MEGACAPS", {}).keys())
     EARNINGS_PREVIEW = list(CATALYST_ARMORY.get("EARNINGS_PREVIEW", {}).keys())
     MA_WORDS = CATALYST_ARMORY.get("MEGA_CATALYSTS", {})
-
-    if not is_core: 
-        if any(mc in text for mc in MEGACAPS):
-            partnership_words = ["PARTNERSHIP", "COLLABORATION", "CONTRACT", "AGREEMENT", "JOINS", "INTEGRATES"]
-            if not any(pw in text for pw in partnership_words): return -1, False, [] 
-        if any(trap in text for trap in EARNINGS_PREVIEW): return -1, False, []
 
     is_toxic = False
     for kw, score in CATALYST_ARMORY.get("TOXIC_OFFERINGS", {}).items():
@@ -346,7 +340,7 @@ def fetch_and_score_news(ticker, cell, force=False):
                 else:
                     score, is_trap, elites = calculate_hft_score(raw_t, ticker)
                 
-                if score == -1: continue
+                # 💡 [解鎖] 不再阻擋 score == -1 的新聞
                 if is_trap: has_trap = True
                 all_elites.update(elites)
                 if any("💎" in e for e in elites): raw_t = "[💎 核心情報] " + raw_t
@@ -410,8 +404,7 @@ def finnhub_news_monitor_worker():
                                 else:
                                     score, is_trap, elites = calculate_hft_score(art_headline, ticker)
 
-                                if score == -1: continue
-
+                                # 💡 [解鎖] 不再阻擋 score == -1 的新聞
                                 score = int(score * 1.2)
                                 if any("💎" in e for e in elites): art_headline = "[💎 核心情報] " + art_headline
 
@@ -456,17 +449,18 @@ def update_dynamic_watchlist():
         chg_col = "premarket_change" if is_premarket else "change"
         vol_col = "premarket_volume" if is_premarket else "volume"
 
-        # 💡 排行榜天羅地網：價格 0.5~50、漲幅 >= 5%、成交量 > 5000 (無條件上榜)
+        # 💡 [解鎖] 三大菁英市場鎖定 (NYSE/NASDAQ/AMEX) + 納入海外飆股 (dr) + 數量縮減至 40 防止封鎖
         payload = {
             "filter": [
-                {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, 
+                {"left": "exchange", "operation": "in_range", "right": ["NASDAQ", "NYSE", "AMEX"]},
+                {"left": "type", "operation": "in_range", "right": ["stock", "fund", "dr"]}, 
                 {"left": price_col, "operation": "in_range", "right": [0.5, 50]},
                 {"left": chg_col, "operation": "egreater", "right": 5.0},
                 {"left": vol_col, "operation": "egreater", "right": 5000}
             ], 
             "columns": ["name", "close", "change", "volume", "premarket_close", "premarket_change", "premarket_volume", "market_cap_basic", "type", "average_volume_10d_calc"], 
             "sort": {"sortBy": chg_col, "sortOrder": "desc"}, 
-            "range": [0, 150] 
+            "range": [0, 40] 
         }
 
         res = requests.post(url, json=payload, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
@@ -499,7 +493,7 @@ def update_dynamic_watchlist():
         
         with brain_lock:
             DYNAMIC_WATCHLIST.clear()
-            DYNAMIC_WATCHLIST.extend(new_watchlist[:150])
+            DYNAMIC_WATCHLIST.extend(new_watchlist[:40])
             STATS_MAP.update(temp_stats)
     except: pass
 
@@ -549,7 +543,7 @@ def scanner_engine():
                     
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
                     
-                    # 💡 解除隱藏限制：只要有 K 線就允許進入排行榜，不強制要求 5 根
+                    # 只要不為空就放行，保證上榜
                     if df is None or df.empty: return
 
                     time_diff = df.index.to_series().diff()
@@ -564,7 +558,6 @@ def scanner_engine():
                     p_live = float(df['close'].iloc[-1])
                     p_prev = float(df['close'].iloc[-2]) if len(df) > 1 else p_live
                     
-                    # 💡 本地端絕對閘門：嚴格鎖死 0.5 ~ 50 美元，其餘無視！
                     if p_live < 0.5 or p_live > 50.0:
                         return
                         
@@ -900,8 +893,8 @@ def scanner_engine():
                             if now_ts - last_trigger_time > 60: can_trigger = True
                             elif is_massive_inflow and (now_ts - last_massive_time > 30): can_trigger = True
                                
-                            # 💡 警報觸發閘門：必須要有至少 5 根 K 線才允許發送戰術訊號，避免幽靈跳空誤報
-                            if can_trigger and len(df) >= 5:
+                            # 💡 警報觸發閘門：取消 5 根 K 線限制，只要符合動能條件直接警報
+                            if can_trigger:
                                 if is_massive_inflow: STATE_TRACKER[f"{ticker}_massive"] = now_ts
                                 cooldown_tracker[ticker] = now_ts 
                                 
@@ -934,7 +927,7 @@ def scanner_engine():
                 all_items = list(MASTER_BRAIN["details"].values())
                 active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST]
                 
-                # 💡 擴大排行榜顯示數量：改為前 30 名
+                # 💡 排行榜：最多顯示前 30 名
                 MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(x.get('Pct', '0').replace('%', '')), reverse=True)[:30]
                 
                 vwap_items = [x for x in active_items if x.get("VR_Acc", 0) > 30.0 and x.get("VWAP_Dev", 0) > 0.0]

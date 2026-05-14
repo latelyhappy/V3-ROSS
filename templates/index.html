@@ -299,6 +299,9 @@
                 let badges = "";
                 if (parseFloat(r.GapPct) > 10.0 && parseFloat(r.RelVol) >= 1.0) badges += `<span title="巨幅跳空" style="font-size:16px; line-height:1;">🪂</span>`;
                 
+                // 💡 戰術優化：加入 DR (海外妖股) 的徽章標示
+                if (r.Type === 'dr') badges += `<span title="海外存託憑證(外國妖股)" style="font-size:16px; line-height:1;">🌐</span>`;
+
                 let volTier = r.VolTier || 0; 
                 if (volTier === 1) badges += `<span title="毛毛雨" style="font-size:16px; line-height:1;">🌧️</span>`;
                 if (volTier === 2) badges += `<span title="水流" style="font-size:16px; line-height:1;">💧</span>`;
@@ -349,7 +352,7 @@
                     <td class="status-indicator" style="background:${f_Score >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
                     <td style="color:${latest.is_today?'#ffa500':'var(--text-muted)'}; font-size:10px;">${latest.time}</td>
                     <td class="sym" style="font-size:14px; cursor:pointer;" ondblclick="event.stopPropagation(); openTW('${n.Code||n.ticker}')" title="雙擊開啟 TV 圖表">${n.Code||n.ticker}<br><span style="font-size:10px; color:${gapColor};">Gap: ${gapStr}</span></td>
-                    <td style="font-weight:bold; font-size:14px; color:${f_Score>=6?'var(--yellow)':'var(--text-muted)'};">${f_Score}</td>
+                    <td style="font-weight:bold; font-size:14px; color:${f_Score>=6?'var(--yellow)' : (f_Score<0?'var(--red)':'var(--text-muted)')};">${f_Score}</td>
                     <td style="font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px;">${hl_text}</td>
                 </tr>`;
             });
@@ -416,7 +419,7 @@
             document.getElementById('detail-list').innerHTML = html + `</div>`;
         }
 
-        function fetchSummary() { fetch('/api/intelligence_summary').then(r=>r.json()).then(res=>{ if(res.status==="success"){ let msg="🏆 高勝率詞彙：\n\n"; res.data.forEach((i,idx)=>{ msg+=`${idx+1}. ${i.phrase} (勝率: ${i.win_rate}%)\n`;}); alert(msg); } else { alert("⏳ 系統提示：目前收集的暴漲數據不足，請讓雷達多掃描幾個交易日！\n\n(系統訊息: " + (res.message || "資料庫樣本不足") + ")"); } }).catch(e=>alert("⚠️ 連線錯誤")); }
+        function fetchSummary() { fetch('/api/intelligence_summary').then(r=>r.json()).then(res=>{ if(res.status==="success"){ let msg="🏆 前 50 大高勝率戰場詞彙報表：\n\n"; res.data.forEach((i,idx)=>{ msg+=`${idx+1}. 【 ${i.phrase} 】\n   勝率: ${i.win_rate}% | 平均漲幅: +${i.avg_gain_pct}% | 觸發次數: ${i.occurrences}\n\n`;}); alert(msg); }else{alert("運算失敗");} }).catch(e=>alert("網路錯誤")); }
         function exportIntelligence() { window.location.href='/api/export_intelligence'; }
         function resetLayout() { localStorage.removeItem('sniper_zoom'); location.reload(); }
 
