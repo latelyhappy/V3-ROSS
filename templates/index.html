@@ -203,7 +203,6 @@
         
         function openTW(s) { window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank'); }
 
-        // 💡 內建 SVG Logo 呼叫函式
         function getTWLogo(sym) {
             return `<svg class="tw-logo" onclick="event.stopPropagation(); openTW('${sym}')" viewBox="0 0 24 24" title="開啟 TradingView"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5h-2v-2h2v2zm0-4h-2v-6h2v6z"/></svg>`;
         }
@@ -238,7 +237,6 @@
 
         function refreshUI(d) {
             if (!d) return;
-            // 💡 登入狀態直接顯示在導覽列右上方，並且隱藏電子信箱
             document.getElementById('sys-status').innerHTML = `<span style="color:var(--neon-purple); font-weight:bold;">${d.tv_status || ''}</span> &nbsp;|&nbsp; 📡 更新: ${d.last_update || '--:--:--'}`;
             document.getElementById('sys-status').style.color = "var(--text-muted)";
             
@@ -247,7 +245,6 @@
 
             let currentSigIds = new Set();
             
-            // 1. 日誌渲染
             let h1 = "";
             (d.surge_log || []).forEach(r => {
                 if (r.Type === 'fund' && !showETF) return; 
@@ -274,7 +271,6 @@
 
             for (let key in alertRenderCount) { if (!currentSigIds.has(key)) delete alertRenderCount[key]; }
 
-            // 2. 超新星排行 (加入點擊事件與優化版面)
             let h2 = "", rankData = [...(d.leaderboard || [])].filter(r => !(r?.Type === 'fund' && !showETF));
             rankData.sort((a, b) => {
                 let vA = parseValue(a[rankCfg.col], rankCfg.col);
@@ -322,10 +318,10 @@
                 let cdStr = hodCooldown === 0 ? `<span style="color:var(--neon-green);">剛才</span>` : (hodCooldown > 30 ? `<span style="color:var(--red);">死水(${hodCooldown}m)</span>` : `${hodCooldown}m`);
                 let floatHtml = `Float: <b style="font-size:12px;">${r.Float||"-"}</b><br><span style="font-size:11px; color:var(--text-muted);">⏱️ 創高: ${cdStr}</span>`;
 
-                // 💡 點擊代碼文字直接開啟 TradingView
+                // 💡 修正：單擊載入戰報，雙擊跳轉 TV
                 h2 += `<tr class="${rowClass}" onclick="loadDetail('${f_Code}')" ondblclick="openTW('${f_Code}')">
                     <td class="status-indicator"></td>
-                    <td><div class="sym" style="display:flex; align-items:center;">${badgesHtml}<span style="cursor:pointer;" onclick="event.stopPropagation(); openTW('${f_Code}')" title="點擊開啟 TV 圖表">${f_Code}</span></div>${hasNewsText}</td>
+                    <td><div class="sym" style="display:flex; align-items:center;">${badgesHtml}<span style="cursor:pointer;" ondblclick="event.stopPropagation(); openTW('${f_Code}')" title="雙擊開啟 TV 圖表">${f_Code}</span></div>${hasNewsText}</td>
                     <td>${fireHtml}</td>
                     <td>${momentumHtml}</td>
                     <td>${volHtml}</td>
@@ -334,7 +330,6 @@
             });
             document.getElementById('rank-list').innerHTML = h2;
 
-            // 3. 情報雷達 (代碼現在具備直接開圖功能)
             let h3 = "", newsData = [...(d.top_catalysts || [])].filter(n => (n.Code || n.ticker) && n.NewsList && n.NewsList.length > 0);
             newsData.sort((a, b) => parseValue(b[newsCfg.col], newsCfg.col) - parseValue(a[newsCfg.col], newsCfg.col));
             
@@ -346,10 +341,11 @@
                 let gapColor = gapPctVal > 10 ? 'var(--neon-green)' : (gapPctVal > 0 ? 'var(--green)' : 'var(--text-muted)');
                 let hl_text = highlightElites(latest.title==="⏳ 翻譯中..."?latest.raw_title:latest.title, latest.elites, d.live_trends);
                 
+                // 💡 修正：單擊載入戰報，雙擊跳轉 TV
                 h3 += `<tr onclick="loadDetail('${n.Code||n.ticker}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[3]);">
                     <td class="status-indicator" style="background:${f_Score >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
                     <td style="color:${latest.is_today?'#ffa500':'var(--text-muted)'}; font-size:10px;">${latest.time}</td>
-                    <td class="sym" style="font-size:14px; cursor:pointer;" onclick="event.stopPropagation(); openTW('${n.Code||n.ticker}')" title="點擊開啟 TV 圖表">${n.Code||n.ticker}<br><span style="font-size:10px; color:${gapColor};">Gap: ${gapStr}</span></td>
+                    <td class="sym" style="font-size:14px; cursor:pointer;" ondblclick="event.stopPropagation(); openTW('${n.Code||n.ticker}')" title="雙擊開啟 TV 圖表">${n.Code||n.ticker}<br><span style="font-size:10px; color:${gapColor};">Gap: ${gapStr}</span></td>
                     <td style="font-weight:bold; font-size:14px; color:${f_Score>=6?'var(--yellow)':'var(--text-muted)'};">${f_Score}</td>
                     <td style="font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px;">${hl_text}</td>
                 </tr>`;
@@ -393,7 +389,6 @@
 
             let gaugeHTML = `<svg width="70" height="38" viewBox="0 0 120 70" style="overflow:visible;"><path d="M 15 60 A 45 45 0 0 1 105 60" fill="none" stroke="var(--border)" stroke-width="12" stroke-linecap="round" /><path d="M 15 60 A 45 45 0 0 1 105 60" fill="none" stroke="${snColor}" stroke-width="12" stroke-linecap="round" stroke-dasharray="141" stroke-dashoffset="${141*(1-Math.min(snScore/600,1))}" style="transition: stroke-dashoffset 1s ease-out;" /><text x="60" y="55" text-anchor="middle" fill="${snColor}" font-size="24" font-weight="900">${snScore}</text></svg>`;
             
-            // 💡 戰報區實裝 SVG Logo 與 換手率 (Turnover) 顯示
             let html = `<div style="text-align:left;">${trapWarn}
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;">
                     <div style="flex:1;"><h2 style="font-size:18px; margin:0; display:inline-block; cursor:pointer;" onclick="openTW('${sym}')" title="開啟圖表">${sym}</h2>${getTWLogo(sym)}<span style="font-size:16px; color:var(--text-muted); margin-left:6px;">${d.Price||'-'}</span><div style="margin-top:2px; font-size:11px;"><span style="color:${d.VsaState > 0 ? 'var(--red)' : 'var(--green)'}; font-weight:bold;">${d.VsaState > 0 ? '🚨背離' : '✅量價'}</span><span style="margin-left:8px; color:var(--text-main);">🛡️守: <b style="color:var(--red);">$${(d.StopLoss||0).toFixed(2)}</b></span></div></div><div>${gaugeHTML}</div>

@@ -1,10 +1,13 @@
 import os
-os.environ["PYTHONWARNINGS"] = "ignore"
-
 import warnings
+
+# 💡 作業系統級消音器：從根源封殺所有 Python 警告！
+os.environ["PYTHONWARNINGS"] = "ignore"
+warnings.simplefilter(action='ignore', category=FutureWarning)
 warnings.filterwarnings("ignore")
 
 import logging
+# 💡 封殺第三方套件的底層連線日誌，保持終端機極度乾淨
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
 logging.getLogger('urllib3').setLevel(logging.CRITICAL)
