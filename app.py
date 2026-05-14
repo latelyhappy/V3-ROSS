@@ -70,7 +70,7 @@ SPY_real_pct = 0.0
 _last_spy_update = 0
 MIN_RELVOL_LIMIT = 3.0 
 FLOAT_CACHE = {}
-TV_LOGIN_STATUS = "檢查中..." # 💡 系統登入狀態變數
+TV_LOGIN_STATUS = "檢查中..." 
 
 def get_current_trading_date():
     now_ny = datetime.now(TZ_NY)
@@ -437,7 +437,6 @@ def update_dynamic_watchlist():
                 {"left": chg_col, "operation": "egreater", "right": 2.0}, 
                 {"left": vol_col, "operation": "egreater", "right": 5000} 
             ], 
-            # 💡 鐵則：新增 average_volume_10d_calc 以獲取 10日均量，作為 RelVol 的分母
             "columns": ["name", "close", "change", "volume", "premarket_close", "premarket_change", "premarket_volume", "market_cap_basic", "type", "average_volume_10d_calc"], 
             "sort": {"sortBy": chg_col, "sortOrder": "desc"}, 
             "range": [0, 100] 
@@ -468,7 +467,7 @@ def update_dynamic_watchlist():
                 
                 temp_stats[sym] = {
                     'prev': prev_est, 'float_str': f_str, 'type': t, 
-                    'float_comp': float_comp, 'avg_vol_10d': avg_vol_10d # 儲存10日均量
+                    'float_comp': float_comp, 'avg_vol_10d': avg_vol_10d
                 }
         
         with brain_lock:
@@ -482,12 +481,12 @@ def scanner_engine():
     tv = TvDatafeed()
     TV_LOGIN_STATUS = "👤 訪客模式 (15分延遲)"
     
-    # 💡 檢查登入狀態與實時權限
+    # 💡 隱私升級：登入成功不再顯示您的信箱字串
     if TW_USERNAME and TW_USERNAME != 'guest':
         try:
             tv = TvDatafeed(TW_USERNAME, TW_PASSWORD)
-            TV_LOGIN_STATUS = f"✅ 登入成功 ({TW_USERNAME})"
-            print(f"🚀 [SYSTEM] TradingView 實時權限登入成功: {TW_USERNAME}")
+            TV_LOGIN_STATUS = "✅ 登入成功"
+            print(f"🚀 [SYSTEM] TradingView 實時權限登入成功")
         except Exception as e:
             print(f"❌ [ERROR] TradingView 登入失敗: {e}")
             TV_LOGIN_STATUS = "⚠️ 帳密錯誤 (訪客模式)"
@@ -520,11 +519,8 @@ def scanner_engine():
             def _process_ticker(ticker):
                 nonlocal consecutive_errors, tv
                 try:
-                    # 💡 加速掃描：休眠從 0.5s 縮短至 0.1s
                     time.sleep(0.1) 
-                    
-                    # 💡 鐵則執行：依然抓取 960 根維持 HOD 冷卻計算，但剝奪其算「總成交量」的權限
-                    df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=960, extended_session=True)
+                    df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
                     if df is None or df.empty or len(df) < 5: return
 
                     time_diff = df.index.to_series().diff()
@@ -543,17 +539,15 @@ def scanner_engine():
                     
                     collector.update_max_price(ticker, p_live)
                     
-                    # 💡 鐵則執行：向官方要真實成交量 (YFinance FastInfo 零延遲)
+                    # 💡 官方總量權威 (YFinance FastInfo)
                     try:
                         yf_tick = yf.Ticker(ticker.replace('-', '.'))
-                        # 兼容不同 yfinance 版本的調用方式
                         off_vol = getattr(yf_tick.fast_info, 'lastVolume', getattr(yf_tick.fast_info, 'last_volume', 0))
                         if off_vol is None or off_vol == 0:
                             off_vol = yf_tick.fast_info.get('lastVolume', yf_tick.fast_info.get('last_volume', 0))
                     except:
                         off_vol = 0
                     
-                    # 若 yfinance 當機，才用 K 線累加作為最後備援
                     daily_vol = int(off_vol) if off_vol and off_vol > 0 else (int(today_df['volume'].sum()) if not today_df.empty else int(v_live))
 
                     try:
@@ -563,13 +557,20 @@ def scanner_engine():
                     except: true_prev_close = 0.0
 
                     stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0, 'avg_vol_10d': 0.0})
-                    
                     time_lapsed_mins = len(today_df)
                     
-                    # 💡 鐵則執行：量比 (RelVol) 分母歷史化
+                    # 💡 計算流通股數與換手率 (Turnover Rate)
+                    real_float = get_real_float(ticker)
+                    float_m = real_float / 1_000_000 if real_float > 0 else 999.0
+                    turnover = (daily_vol / real_float) if real_float > 0 else 0.0
+                    
+                    if stat_data.get('type') == 'fund': float_str = "N/A (ETF)"
+                    elif real_float > 0: float_str = f"⚠️{float_m:.1f}M" if float_m > 50.0 else f"{float_m:.1f}M"
+                    else: float_str = "未知"
+                    
+                    # 💡 量比 (RelVol) 分母歷史化
                     avg_vol_10d = stat_data.get('avg_vol_10d', 0)
                     if avg_vol_10d and avg_vol_10d > 0:
-                        # 將 10 日均量除以 390 (美股常規交易分鐘數) 獲得歷史每分鐘均量
                         historical_1m_avg = avg_vol_10d / 390.0
                     else:
                         historical_1m_avg = float(today_df['volume'].iloc[:-1].mean()) if time_lapsed_mins > 2 else v_live
@@ -635,55 +636,60 @@ def scanner_engine():
                         else: minutes_since_hod = 0
                     except: minutes_since_hod = 0
 
-                    real_float = get_real_float(ticker)
-                    float_m = real_float / 1_000_000 if real_float > 0 else 999.0
-                    
-                    if stat_data.get('type') == 'fund': float_str = "N/A (ETF)"
-                    elif real_float > 0: float_str = f"⚠️{float_m:.1f}M" if float_m > 50.0 else f"{float_m:.1f}M"
-                    else: float_str = "未知"
-
                     curr_ema9 = float(df['close'].ewm(span=9, adjust=False).mean().iloc[-1]) if len(df) >= 9 else p_live
                     curr_ema20 = float(df['close'].ewm(span=20, adjust=False).mean().iloc[-1]) if len(df) >= 20 else p_live
                     curr_ema52 = float(df['close'].ewm(span=52, adjust=False).mean().iloc[-1]) if len(df) >= 52 else p_live
                     past_high = float(df['high'].iloc[-11:-1].max()) if len(df) >= 11 else p_live
                     
                     ema9_dev = float(round(((p_live - curr_ema9) / curr_ema9) * 100, 2)) if curr_ema9 > 0 else 0.0
+                    ema_max = max(curr_ema9, curr_ema20, curr_ema52)
+                    ema_min = min(curr_ema9, curr_ema20, curr_ema52)
 
-                    # 💡 量級引擎同步更新：改用歷史均量 (historical_1m_avg) 來觸發瀑布，標準拉高
+                    # 💡 殭屍股防護：絕對量能門檻
                     vol_tier = 1 # 🌧️ 毛毛雨
                     today_max_vol = float(today_df['volume'].max()) if not today_df.empty else v_live
                     
-                    if v_live >= historical_1m_avg * 10.0 or (v_live >= today_max_vol and v_live > 0 and rel_vol_display >= 5.0):
+                    if (v_live >= historical_1m_avg * 10.0 and v_live >= 10000) or (v_live >= today_max_vol and v_live >= 10000 and rel_vol_display >= 5.0):
                         vol_tier = 4 # 🌋 瀑布
-                    elif v_live >= historical_1m_avg * 5.0:
+                    elif (v_live >= historical_1m_avg * 5.0 and v_live >= 5000):
                         vol_tier = 3 # 🌊 大浪
                     elif v_live >= historical_1m_avg * 2.0:
                         vol_tier = 2 # 💧 水流
                         
-                    is_sniper_target = bool(vol_tier == 4 and ema9_dev >= 1.5)
+                    is_sniper_target = bool(vol_tier == 4 and ema9_dev >= 1.5 and daily_vol >= 200000)
+
+                    # 💡 六大主力透視濾網
+                    is_monster_gene = (turnover >= 1.0 and float_m <= 20.0)
+                    is_fake_breakout = (real_pct > 15.0 and turnover < 0.05 and vol_tier <= 2)
                     
+                    is_ema_tight = (ema_max - ema_min) / ema_min < 0.02 if ema_min > 0 else False
+                    is_accumulation = (is_ema_tight and current_vwap > 0 and abs(p_live - current_vwap)/current_vwap < 0.01 and turnover >= 0.2 and v_live > historical_1m_avg * 3.0)
+                    
+                    c_open = float(df['open'].iloc[-1])
+                    c_close = float(df['close'].iloc[-1])
+                    c_high = float(df['high'].iloc[-1])
+                    c_body = abs(c_open - c_close)
+                    c_upper = c_high - max(c_open, c_close)
+                    is_testing_supply = (c_upper > c_body * 2 and v_live < historical_1m_avg and c_body > 0)
+                    
+                    is_controlling_cost = (is_premarket and daily_vol > 1000000 and -2.0 <= real_pct <= 2.0)
+                    is_v_reversal = (p_prev < current_vwap and p_live > current_vwap and vol_tier == 4 and pct_2m > 2.0)
+
                     ratio_5v5 = 1.0; vol_acc_str = "-"; vr_acc = 0.0 
                     if len(today_df) >= 15:
                         vol_A = float(today_df['volume'].iloc[-5:].sum())
                         vol_B = float(today_df['volume'].iloc[-10:-5].sum())
                         vol_C = float(today_df['volume'].iloc[-15:-10].sum())
-                        
                         if vol_B > 0:
                             ratio_5v5 = float(vol_A / vol_B)
                             sym_up, sym_extreme = ("↗", "🔥") if p_live >= p_prev else ("🔻", "🩸")
-                            
                             if vol_A > vol_B > vol_C: vol_acc_str = f"{sym_extreme} {ratio_5v5:.2f}x"
                             elif vol_A > vol_B: vol_acc_str = f"{sym_up} {ratio_5v5:.2f}x"
                             elif vol_A < vol_B < vol_C: vol_acc_str = f"🧊 {ratio_5v5:.2f}x"
                             else: vol_acc_str = f"↘ {ratio_5v5:.2f}x"
 
-                    ema_max = max(curr_ema9, curr_ema20, curr_ema52)
-                    ema_min = min(curr_ema9, curr_ema20, curr_ema52)
-                    is_ema_tight = (ema_max - ema_min) / ema_min < 0.02
-
                     is_vwap_magnet = False
                     if (p_live < current_vwap) and (vwap_dev >= -1.5) and is_ema_tight and float_m <= 50.0: is_vwap_magnet = True
-                    
                     is_spark = bool(((rel_vol_live >= 2.5 and p_live >= past_high) or (rel_vol_prev >= 2.5 and p_prev >= past_high)) and (real_pct > 3.0))
                     is_ross_match = bool(real_pct >= 4.0 and float_m <= 50.0 and rel_vol_display >= 1.8)
                     is_vwap_breakout = bool(p_prev < current_vwap and p_live > current_vwap and rel_vol_display >= 1.5 and float_m <= 50.0)
@@ -718,160 +724,180 @@ def scanner_engine():
 
                     status_color = "green"
                     current_signal = ""
-                    
                     ui_tag = collector.evaluate_sniper_tags(ticker, float_m, daily_vol, rel_vol_display, real_pct, p_live > current_vwap)
                     
-                    if "陷阱" in ui_tag:
-                        current_signal = f"💀 陷阱/無量 (Vol: {format_vol(daily_vol)})"
+                    # 💡 優先級覆寫：主力行為判定優先於一般標籤
+                    if is_fake_breakout:
+                        current_signal = "🤡 假突破警告(無量)"
                         status_color = "gray"
+                    elif is_v_reversal:
+                        current_signal = "🪃 假跌破V轉強襲"
+                        status_color = "purple"
+                    elif is_monster_gene:
+                        current_signal = "🧬 妖股基因(換手100%+)"
+                        status_color = "purple"
+                    elif is_accumulation:
+                        current_signal = "🏗️ 主力建倉區(橫盤爆量)"
+                        status_color = "purple"
+                    elif is_controlling_cost:
+                        current_signal = "⚓ 盤前壓價建倉"
+                        status_color = "yellow"
+                    elif is_testing_supply:
+                        current_signal = "🎣 測試賣壓(長上影量縮)"
+                        status_color = "yellow"
                     else:
-                        if "狙擊" in ui_tag:
-                            current_signal = "🎯 建議狙擊 "
-                            status_color = "red"
-                        
-                        if is_vwap_magnet:
-                            current_signal += f"🧲 磁吸噴發預警{vol_warn}"
-                            if status_color == "green": status_color = "purple"
-                        elif is_dead_bounce and is_ross_match:
-                            current_signal += f"🚨水下反彈警報{vol_warn}"
-                            if status_color == "green": status_color = "red"
-                        elif is_micro_pullback:
-                            current_signal += f"🚩牛旗回踩突破{vol_warn}"
-                            if status_color == "green": status_color = "yellow"
-                        elif is_whole_dollar:
-                            current_signal += f"🧲整數磁吸(${target_dollar:.2f}){vol_warn}"
-                            if status_color == "green": status_color = "yellow"
-                        elif is_vwap_breakout:
-                            current_signal += f"⚔️VWAP帶量突破{vol_warn}"
-                            if status_color == "green": status_color = "yellow"
-                        elif is_ross_match:
-                            current_signal += f"🚀Ross勢頭確立{vol_warn}"
-                            if status_color == "green": status_color = "yellow"
-                        elif is_spark:
-                            current_signal += f"🔥強力點火{vol_warn}"
-                            if status_color == "green": status_color = "yellow"
+                        if "陷阱" in ui_tag:
+                            current_signal = f"💀 陷阱/無量 (Vol: {format_vol(daily_vol)})"
+                            status_color = "gray"
+                        else:
+                            if "狙擊" in ui_tag:
+                                current_signal = "🎯 建議狙擊 "
+                                status_color = "red"
                             
-                        if is_massive_inflow:
-                            if current_signal: current_signal += " [📦爆量箱子]"
-                            else: current_signal = f"📦爆量箱子(大量進場){vol_warn}"
+                            if is_vwap_magnet:
+                                current_signal += f"🧲 磁吸噴發預警{vol_warn}"
+                                if status_color == "green": status_color = "purple"
+                            elif is_dead_bounce and is_ross_match:
+                                current_signal += f"🚨水下反彈警報{vol_warn}"
+                                if status_color == "green": status_color = "red"
+                            elif is_micro_pullback:
+                                current_signal += f"🚩牛旗回踩突破{vol_warn}"
+                                if status_color == "green": status_color = "yellow"
+                            elif is_whole_dollar:
+                                current_signal += f"🧲整數磁吸(${target_dollar:.2f}){vol_warn}"
+                                if status_color == "green": status_color = "yellow"
+                            elif is_vwap_breakout:
+                                current_signal += f"⚔️VWAP帶量突破{vol_warn}"
+                                if status_color == "green": status_color = "yellow"
+                            elif is_ross_match:
+                                current_signal += f"🚀Ross勢頭確立{vol_warn}"
+                                if status_color == "green": status_color = "yellow"
+                            elif is_spark:
+                                current_signal += f"🔥強力點火{vol_warn}"
+                                if status_color == "green": status_color = "yellow"
+                                
+                            if is_massive_inflow:
+                                if current_signal: current_signal += " [📦爆量箱子]"
+                                else: current_signal = f"📦爆量箱子(大量進場){vol_warn}"
+                                status_color = "purple"
+
+                    final_vol_text = format_vol(daily_vol)
+                    if is_massive_inflow:
+                        final_vol_text = f'<span style="color: #d942f5; font-weight: 900; text-shadow: 0 0 6px rgba(217, 66, 245, 0.5);">📦 {final_vol_text}</span>'
+
+                    delta_threshold = 0.03 if p_live < 5.0 else 0.015
+                    last_alert_info = STATE_TRACKER.get(f"{ticker}_last_alert", {"price": p_live, "vol": daily_vol})
+                    last_alert_price = last_alert_info["price"]
+                    last_alert_vol = last_alert_info["vol"]
+                    price_change_ratio = (p_live - last_alert_price) / last_alert_price if last_alert_price > 0 else 0.0
+                    vol_increase = daily_vol - last_alert_vol
+                    
+                    trigger_type = "none"
+                    delta_pct_str = ""
+                    
+                    if price_change_ratio >= delta_threshold:
+                        trigger_type = "up"
+                        delta_pct_str = f"+{(price_change_ratio*100):.1f}% ↗"
+                        STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
+                    elif price_change_ratio <= -delta_threshold:
+                        trigger_type = "down"
+                        delta_pct_str = f"{(price_change_ratio*100):.1f}% ↘"
+                        STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
+                    elif vol_increase > 500000 or (last_alert_vol > 0 and vol_increase / last_alert_vol > 1.0):
+                        trigger_type = "vol_spike"
+                        delta_pct_str = f"📦 大單"
+                        STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
+
+                    with brain_lock:
+                        cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "StickySignal": "", "StickyColor": "green", "StickyTime": 0})
+                        
+                        if "NewsList" in cell:
+                            valid_news = []
+                            for n in cell["NewsList"]:
+                                pub_ts = n.get("pub_ts", now_ts)
+                                if (now_ts - pub_ts > 7200) and (p_live < curr_ema20): continue
+                                valid_news.append(n)
+                            cell["NewsList"] = valid_news
+                            cell["HasNews"] = len(valid_news) > 0
+                            
+                            is_trending = (p_live > current_vwap) and (curr_ema9 >= curr_ema20)
+                            cell["IsTrendingNews"] = cell["HasNews"] and is_trending
+                            
+                            if cell["NewsList"]: cell["CatScore"] = max(n['score'] for n in cell["NewsList"])
+                            else: cell["CatScore"] = 0
+
+                        has_sentiment_flip = False
+                        if cell.get("CatScore", 0) < 0 and p_live > current_vwap and curr_ema9 > curr_ema20:
+                            cell["CatScore"] = 60
+                            cell["IsTrap"] = False
+                            has_sentiment_flip = True
+                            if not current_signal: current_signal = "🚀"
+                            current_signal += " [💎 利空不跌]"
                             status_color = "purple"
-
-                        final_vol_text = format_vol(daily_vol)
-                        if is_massive_inflow:
-                            final_vol_text = f'<span style="color: #d942f5; font-weight: 900; text-shadow: 0 0 6px rgba(217, 66, 245, 0.5);">📦 {final_vol_text}</span>'
-
-                        delta_threshold = 0.03 if p_live < 5.0 else 0.015
-                        last_alert_info = STATE_TRACKER.get(f"{ticker}_last_alert", {"price": p_live, "vol": daily_vol})
-                        last_alert_price = last_alert_info["price"]
-                        last_alert_vol = last_alert_info["vol"]
-                        price_change_ratio = (p_live - last_alert_price) / last_alert_price if last_alert_price > 0 else 0.0
-                        vol_increase = daily_vol - last_alert_vol
                         
-                        trigger_type = "none"
-                        delta_pct_str = ""
+                        if current_signal:
+                            if "⚡" in cell.get("StickySignal", "") and now_ts - cell.get("StickyTime", 0) < 15:
+                                current_signal = current_signal + " [⚡極速]"
+                            status_color = "purple"
+                            cell["StickySignal"] = current_signal
+                            cell["StickyColor"] = status_color
+                            cell["StickyTime"] = now_ts
+                        else:
+                            if now_ts - cell.get("StickyTime", 0) < 900: 
+                                current_signal = cell.get("StickySignal", "")
+                                status_color = cell.get("StickyColor", "green")
+
+                        # 💡 將 Turnover 數據打包給前端
+                        stats = {
+                            "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": final_vol_text,
+                            "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, "Signal": current_signal,
+                            "PriceVal": float(p_live), "HighVal": float(df['high'].iloc[-1]), "StopLoss": curr_ema20 * 0.99, 
+                            "Float": float_str, "Type": stat_data.get('type', 'stock'), "VolAcc": vol_acc_str, 
+                            "VolTier": vol_tier, "EMA9_Dev": ema9_dev, "IsSniperTarget": is_sniper_target, 
+                            "IsTrendingNews": cell.get("IsTrendingNews", False), 
+                            "SN_Score": sn_score, "VsaState": 0, "VR_Acc": vr_acc, "VWAP_Dev": vwap_dev, "VWAP_Rating": vwap_rating,
+                            "EMA9": curr_ema9, "EMA52": curr_ema52, "TriggerType": trigger_type, 
+                            "Turnover": f"{turnover*100:.1f}%",
+                            "DeltaStr": delta_pct_str, "TriggerTS": now_ts if trigger_type != "none" else cell.get("TriggerTS", 0),
+                            "HasSentimentFlip": has_sentiment_flip, "GapPct": gap_pct, "Pct2Min": pct_2m, "HOD_Cooldown": minutes_since_hod 
+                        }
                         
-                        if price_change_ratio >= delta_threshold:
-                            trigger_type = "up"
-                            delta_pct_str = f"+{(price_change_ratio*100):.1f}% ↗"
-                            STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
-                        elif price_change_ratio <= -delta_threshold:
-                            trigger_type = "down"
-                            delta_pct_str = f"{(price_change_ratio*100):.1f}% ↘"
-                            STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
-                        elif vol_increase > 500000 or (last_alert_vol > 0 and vol_increase / last_alert_vol > 1.0):
-                            trigger_type = "vol_spike"
-                            delta_pct_str = f"📦 大單"
-                            STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
-
-                        with brain_lock:
-                            cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "StickySignal": "", "StickyColor": "green", "StickyTime": 0})
+                        cell.update(stats)
+                        
+                        if is_vwap_magnet or is_ross_match or is_spark or is_dead_bounce or is_massive_inflow or is_vwap_breakout or is_micro_pullback or is_whole_dollar or is_fake_breakout or is_monster_gene or is_accumulation or is_v_reversal:
+                            last_trigger_time = cooldown_tracker.get(ticker, 0)
+                            last_massive_time = STATE_TRACKER.get(f"{ticker}_massive", 0)
                             
-                            if "NewsList" in cell:
-                                valid_news = []
-                                for n in cell["NewsList"]:
-                                    pub_ts = n.get("pub_ts", now_ts)
-                                    if (now_ts - pub_ts > 7200) and (p_live < curr_ema20): continue
-                                    valid_news.append(n)
-                                cell["NewsList"] = valid_news
-                                cell["HasNews"] = len(valid_news) > 0
+                            can_trigger = False
+                            if now_ts - last_trigger_time > 60: can_trigger = True
+                            elif is_massive_inflow and (now_ts - last_massive_time > 30): can_trigger = True
+                               
+                            if can_trigger:
+                                if is_massive_inflow: STATE_TRACKER[f"{ticker}_massive"] = now_ts
+                                cooldown_tracker[ticker] = now_ts 
                                 
-                                is_trending = (p_live > current_vwap) and (curr_ema9 >= curr_ema20)
-                                cell["IsTrendingNews"] = cell["HasNews"] and is_trending
-                                
-                                if cell["NewsList"]: cell["CatScore"] = max(n['score'] for n in cell["NewsList"])
-                                else: cell["CatScore"] = 0
-
-                            has_sentiment_flip = False
-                            if cell.get("CatScore", 0) < 0 and p_live > current_vwap and curr_ema9 > curr_ema20:
-                                cell["CatScore"] = 60
-                                cell["IsTrap"] = False
-                                has_sentiment_flip = True
-                                if not current_signal: current_signal = "🚀"
-                                current_signal += " [💎 利空不跌]"
-                                status_color = "purple"
-                            
-                            if current_signal:
-                                if "⚡" in cell.get("StickySignal", "") and now_ts - cell.get("StickyTime", 0) < 15:
-                                    current_signal = current_signal + " [⚡極速]"
-                                status_color = "purple"
-                                cell["StickySignal"] = current_signal
-                                cell["StickyColor"] = status_color
-                                cell["StickyTime"] = now_ts
-                            else:
-                                if now_ts - cell.get("StickyTime", 0) < 900: 
-                                    current_signal = cell.get("StickySignal", "")
-                                    status_color = cell.get("StickyColor", "green")
-
-                            stats = {
-                                "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": final_vol_text,
-                                "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, "Signal": current_signal,
-                                "PriceVal": float(p_live), "HighVal": float(df['high'].iloc[-1]), "StopLoss": curr_ema20 * 0.99, 
-                                "Float": float_str, "Type": stat_data.get('type', 'stock'), "VolAcc": vol_acc_str, 
-                                "VolTier": vol_tier, "EMA9_Dev": ema9_dev, "IsSniperTarget": is_sniper_target, 
-                                "IsTrendingNews": cell.get("IsTrendingNews", False), 
-                                "SN_Score": sn_score, "VsaState": 0, "VR_Acc": vr_acc, "VWAP_Dev": vwap_dev, "VWAP_Rating": vwap_rating,
-                                "EMA9": curr_ema9, "EMA52": curr_ema52, "TriggerType": trigger_type, 
-                                "DeltaStr": delta_pct_str, "TriggerTS": now_ts if trigger_type != "none" else cell.get("TriggerTS", 0),
-                                "HasSentimentFlip": has_sentiment_flip, "GapPct": gap_pct, "Pct2Min": pct_2m, "HOD_Cooldown": minutes_since_hod 
-                            }
-                            
-                            cell.update(stats)
-                            
-                            if is_vwap_magnet or is_ross_match or is_spark or is_dead_bounce or is_massive_inflow or is_vwap_breakout or is_micro_pullback or is_whole_dollar:
-                                last_trigger_time = cooldown_tracker.get(ticker, 0)
-                                last_massive_time = STATE_TRACKER.get(f"{ticker}_massive", 0)
-                                
-                                can_trigger = False
-                                if now_ts - last_trigger_time > 60: can_trigger = True
-                                elif is_massive_inflow and (now_ts - last_massive_time > 30): can_trigger = True
-                                   
-                                if can_trigger:
-                                    if is_massive_inflow: STATE_TRACKER[f"{ticker}_massive"] = now_ts
-                                    cooldown_tracker[ticker] = now_ts 
+                                is_sec_trap = check_sec_fatal_traps(ticker)
+                                if is_sec_trap and not has_sentiment_flip:
+                                    stats["Signal"] += " 💀(SEC陷阱)"
+                                    cell["IsTrap"] = True
                                     
-                                    is_sec_trap = check_sec_fatal_traps(ticker)
-                                    if is_sec_trap and not has_sentiment_flip:
-                                        stats["Signal"] += " 💀(SEC陷阱)"
-                                        cell["IsTrap"] = True
-                                        
-                                    alert_audio = None
-                                    if "陷阱" in ui_tag or cell.get("IsTrap", False): alert_audio = None
-                                    elif ("狙擊" in current_signal) or has_sentiment_flip or is_vwap_magnet or is_massive_inflow: alert_audio = "nova"
+                                alert_audio = None
+                                if "陷阱" in ui_tag or cell.get("IsTrap", False) or is_fake_breakout: alert_audio = None
+                                elif ("狙擊" in current_signal) or has_sentiment_flip or is_vwap_magnet or is_massive_inflow or is_v_reversal or is_accumulation: alert_audio = "nova"
 
-                                    log_entry = {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts}
-                                    if alert_audio: log_entry["Audio"] = alert_audio
-                                        
-                                    MASTER_BRAIN["surge_log"].insert(0, log_entry)
-                                    MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
+                                log_entry = {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts}
+                                if alert_audio: log_entry["Audio"] = alert_audio
                                     
-                                    if cell.get('NewsList'):
-                                        headline = cell['NewsList'][0].get('raw_title', '')
-                                        collector.log_event(ticker, headline, float_m, float(p_live), volume=daily_vol, change_percent=real_pct)
-                                        
-                    threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
+                                MASTER_BRAIN["surge_log"].insert(0, log_entry)
+                                MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
+                                
+                                if cell.get('NewsList'):
+                                    headline = cell['NewsList'][0].get('raw_title', '')
+                                    collector.log_event(ticker, headline, float_m, float(p_live), volume=daily_vol, change_percent=real_pct)
+                                    
+                threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
                 except Exception as e: return
 
-            # 💡 大幅提速：使用並發處理
             with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
                 list(executor.map(_process_ticker, current_watchlist))
             
@@ -942,7 +968,6 @@ def data():
         safe_brain = copy.deepcopy(MASTER_BRAIN)
         safe_brain["live_trends"] = get_live_trends()
         safe_brain["current_relvol"] = MIN_RELVOL_LIMIT 
-        # 💡 將登入狀態打包傳給前端 UI
         safe_brain["tv_status"] = TV_LOGIN_STATUS 
     return jsonify(safe_brain)
 
