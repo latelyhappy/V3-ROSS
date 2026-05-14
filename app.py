@@ -451,7 +451,6 @@ def update_dynamic_watchlist():
         chg_col = "premarket_change" if is_premarket else "change"
         vol_col = "premarket_volume" if is_premarket else "volume"
 
-        # 💡 確保 TV 雷達抓取的基礎戰術規則: 股價 0.5~50，漲幅 > 2%，量能 > 5000
         payload = {
             "filter": [
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, 
@@ -556,6 +555,11 @@ def scanner_engine():
 
                     p_live = float(df['close'].iloc[-1])
                     p_prev = float(df['close'].iloc[-2]) if len(df) > 1 else p_live
+                    
+                    # 💡 絕對防線：鎖死 0.5 ~ 50 塊的區間，無情剔除 TV 漏網之魚
+                    if p_live < 0.5 or p_live > 50.0:
+                        return
+                        
                     v_live = float(df['volume'].iloc[-1])
                     v_prev = float(df['volume'].iloc[-2]) if len(df) > 1 else v_live
                     
@@ -675,7 +679,6 @@ def scanner_engine():
                         
                     is_sniper_target = bool(vol_tier == 4 and ema9_dev >= 1.5 and daily_vol >= 200000)
 
-                    # 💡 核心六大主力透視邏輯重置並確認
                     is_monster_gene = (turnover >= 1.0 and float_m <= 20.0)
                     is_fake_breakout = (real_pct > 15.0 and turnover < 0.05 and vol_tier <= 2)
                     

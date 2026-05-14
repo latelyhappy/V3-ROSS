@@ -209,9 +209,16 @@
             if (val === undefined || val === null || val === '-') return -999999;
             if (typeof val === 'string' && val.includes('N/A')) return -999999;
             if (col === 'Code' || col === 'time') return val.toString();
-            let str = val.toString(); let num = parseFloat(str.replace(/[^0-9.-]/g, '')) || 0;
-            if (col === 'Float' || col === 'Vol') { if (str.includes('M')) return num * 1000000; if (str.includes('K')) return num * 1000; }
-            if (col === 'RelVol' || col === 'Pct' || col === 'GapPct' || col === 'VolAcc' || col === 'Pct2Min' || col === 'HOD_Cooldown') return parseFloat(str.replace(/[^0-9.-]/g, '')) || 0;
+            
+            // 💡 修正：扒掉所有 HTML 標籤，防止爆量箱子的 CSS 顏色代碼干擾數字提取
+            let cleanStr = val.toString().replace(/<[^>]*>?/gm, ''); 
+            let num = parseFloat(cleanStr.replace(/[^0-9.-]/g, '')) || 0;
+            
+            if (col === 'Float' || col === 'Vol') { 
+                if (cleanStr.includes('M')) return num * 1000000; 
+                if (cleanStr.includes('K')) return num * 1000; 
+            }
+            if (col === 'RelVol' || col === 'Pct' || col === 'GapPct' || col === 'VolAcc' || col === 'Pct2Min' || col === 'HOD_Cooldown') return parseFloat(cleanStr.replace(/[^0-9.-]/g, '')) || 0;
             return num;
         }
 
@@ -409,7 +416,6 @@
             document.getElementById('detail-list').innerHTML = html + `</div>`;
         }
 
-        // 💡 修正：增加資料不足時的防呆彈窗
         function fetchSummary() { fetch('/api/intelligence_summary').then(r=>r.json()).then(res=>{ if(res.status==="success"){ let msg="🏆 高勝率詞彙：\n\n"; res.data.forEach((i,idx)=>{ msg+=`${idx+1}. ${i.phrase} (勝率: ${i.win_rate}%)\n`;}); alert(msg); } else { alert("⏳ 系統提示：目前收集的暴漲數據不足，請讓雷達多掃描幾個交易日！\n\n(系統訊息: " + (res.message || "資料庫樣本不足") + ")"); } }).catch(e=>alert("⚠️ 連線錯誤")); }
         function exportIntelligence() { window.location.href='/api/export_intelligence'; }
         function resetLayout() { localStorage.removeItem('sniper_zoom'); location.reload(); }
