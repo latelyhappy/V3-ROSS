@@ -462,7 +462,7 @@ def update_dynamic_watchlist():
             ], 
             "columns": ["name", "close", "change", "volume", "premarket_close", "premarket_change", "premarket_volume", "market_cap_basic", "type", "average_volume_10d_calc"], 
             "sort": {"sortBy": chg_col, "sortOrder": "desc"}, 
-            "range": [0, 100] 
+            "range": [0, 300] 
         }
 
         res = requests.post(url, json=payload, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
@@ -544,7 +544,7 @@ def scanner_engine():
                     time.sleep(0.1) 
                     
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
-                    if df is None or df.empty or len(df) < 5: return
+                    if df is None or df.empty or len(df) < 3: return
 
                     time_diff = df.index.to_series().diff()
                     new_sessions = time_diff[time_diff > pd.Timedelta(hours=4)]
