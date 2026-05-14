@@ -338,7 +338,6 @@ def fetch_and_score_news(ticker, cell, force=False):
                 else:
                     score, is_trap, elites = calculate_hft_score(raw_t, ticker)
                 
-                # 💡 [解鎖] 不再阻擋 score == -1 的新聞
                 if is_trap: has_trap = True
                 all_elites.update(elites)
                 if any("💎" in e for e in elites): raw_t = "[💎 核心情報] " + raw_t
@@ -453,13 +452,13 @@ def update_dynamic_watchlist():
                 {"left": "exchange", "operation": "in_range", "right": ["NASDAQ", "NYSE", "AMEX"]},
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund", "dr"]}, 
                 {"left": price_col, "operation": "in_range", "right": [0.5, 50]},
-                # 💡 [除錯降門檻] 為了確保抓得到資料，將門檻從 5.0 降為 2.0
                 {"left": chg_col, "operation": "egreater", "right": 2.0},
                 {"left": vol_col, "operation": "egreater", "right": 5000}
             ], 
-            "columns": ["name", "close", "change", "volume", "premarket_close", "premarket_change", "premarket_volume", "market_cap_basic", "type", "average_volume_10d_calc"], 
+            # 💡 【核心修復二：量比精準化】向 TV 多索取了原生相對量比 `relative_volume_10d_calc`
+            "columns": ["name", "close", "change", "volume", "premarket_close", "premarket_change", "premarket_volume", "market_cap_basic", "type", "average_volume_10d_calc", "relative_volume_10d_calc"], 
             "sort": {"sortBy": chg_col, "sortOrder": "desc"}, 
-            "range": [0, 30] # 鎖定前 30 名精華
+            "range": [0, 30] 
         }
 
         res = requests.post(url, json=payload, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
@@ -471,17 +470,16 @@ def update_dynamic_watchlist():
         data = res.json()
         if data.get('data'):
             for x in data['data']:
-                sym, c, pct, v, pm_c, pm_pct, pm_v, mc, t, avg_vol_10d = x['d'][0], x['d'][1], x['d'][2], x['d'][3], x['d'][4], x['d'][5], x['d'][6], x['d'][7], x['d'][8], x['d'][9]
+                sym, c, pct, v, pm_c, pm_pct, pm_v, mc, t, avg_vol_10d, native_rel_vol = x['d'][0], x['d'][1], x['d'][2], x['d'][3], x['d'][4], x['d'][5], x['d'][6], x['d'][7], x['d'][8], x['d'][9], x['d'][10]
                 if sym not in new_watchlist: new_watchlist.append(sym)
+                
+                if native_rel_vol is None: native_rel_vol = 0.0
+                if avg_vol_10d is None: avg_vol_10d = 0.0
                 
                 p_eff = pm_c if is_premarket and pm_c is not None else c
                 actual_pct = pm_pct if is_premarket and pm_pct is not None else pct
                 if p_eff is None: p_eff = c
                 if actual_pct is None: actual_pct = 0.0
-
-                # 💡 【核心修復】：從 TV 掃描器精準抓出「盤前/盤中」的正確總量！
-                total_vol_from_scanner = pm_v if is_premarket and pm_v is not None else v
-                if total_vol_from_scanner is None: total_vol_from_scanner = 0
 
                 real_shares = get_real_float(sym)
                 if real_shares > 0: float_m = real_shares / 1_000_000
@@ -497,7 +495,7 @@ def update_dynamic_watchlist():
                 temp_stats[sym] = {
                     'prev': prev_est, 'float_str': f_str, 'type': t, 
                     'float_comp': float_comp, 'avg_vol_10d': avg_vol_10d,
-                    'total_vol': total_vol_from_scanner  # 💡 將精準總量存入快取記憶體中
+                    'native_rel_vol': native_rel_vol  # 💡 存入精準的時間加權量比
                 }
         else:
             print(f"⚠️ [掃描器警告] TV 回傳資料為空，目前可能無符合條件之標的。")
@@ -556,7 +554,8 @@ def scanner_engine():
                 try:
                     time.sleep(0.5) 
                     
-                    df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
+                    # 💡 【核心修復一：總量精準化】索取 1000 根 1分 K 線，確保完美涵蓋整個盤前加盤中時段！
+                    df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=1000, extended_session=True)
                     
                     if df is None or df.empty: 
                         return
@@ -581,11 +580,10 @@ def scanner_engine():
                     
                     collector.update_max_price(ticker, p_live)
                     
-                    stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0, 'avg_vol_10d': 0.0, 'total_vol': 0})
+                    stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0, 'avg_vol_10d': 0.0, 'native_rel_vol': 0.0})
                     
-                    # 💡 【完美修復：成交量】：直接從快取中拿出剛才掃描器抓到的精準總量！
-                    scanner_vol = stat_data.get('total_vol', 0)
-                    daily_vol = int(scanner_vol) if scanner_vol > 0 else int(v_live)
+                    # 💡 【核心修復一：總量精準化】精確加總 1000 根 K 線，徹底解決 9:30 瞬間斷層！
+                    daily_vol = int(today_df['volume'].sum()) if not today_df.empty else int(v_live)
 
                     try:
                         daily_df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_daily, n_bars=2)
@@ -604,18 +602,22 @@ def scanner_engine():
                     else: float_str = "未知"
 
                     avg_vol_10d = stat_data.get('avg_vol_10d', 0)
+                    native_rel_vol = stat_data.get('native_rel_vol', 0.0)
+                    
                     if avg_vol_10d and avg_vol_10d > 0:
                         historical_1m_avg = avg_vol_10d / 390.0
-                        daily_rel_vol = float(round(daily_vol / avg_vol_10d, 2))
                     else:
                         historical_1m_avg = float(today_df['volume'].iloc[:-1].mean()) if time_lapsed_mins > 2 else v_live
-                        daily_rel_vol = 1.0
                     
                     if historical_1m_avg <= 0: historical_1m_avg = 1.0 
                     
+                    # 💡 【核心修復二：量比精準化】直接採用 TV 官方的時間加權相對量比！
+                    if native_rel_vol > 0:
+                        daily_rel_vol = float(round(native_rel_vol, 2))
+                    else:
+                        daily_rel_vol = float(round(daily_vol / avg_vol_10d, 2)) if avg_vol_10d > 0 else 1.0
+
                     rel_vol_live = float(round(v_live / historical_1m_avg, 2))
-                    
-                    # 💡 【核心修復：防止崩潰】：補上上一分鐘的相對成交量，讓訊號判斷順利通過！
                     rel_vol_prev = float(round(v_prev / historical_1m_avg, 2))
                     
                     rel_vol_display = daily_rel_vol
