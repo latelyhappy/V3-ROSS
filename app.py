@@ -231,6 +231,7 @@ def calculate_hft_score(headline, ticker=""):
     total_score = 0
     elite_hits = []
 
+    # 💡 [解鎖] 取消所有垃圾新聞過濾機制，保證所有新聞無條件放行
     CORE_WORDS = ["WOLFPACK", "AFRL", "MARINE CORPS", "FDA APPROVAL", "FAST TRACK", "DEPARTMENT OF DEFENSE", "DOD"]
     is_core = False
     for kw in CORE_WORDS:
@@ -337,6 +338,7 @@ def fetch_and_score_news(ticker, cell, force=False):
                 else:
                     score, is_trap, elites = calculate_hft_score(raw_t, ticker)
                 
+                # 💡 [解鎖] 不再阻擋 score == -1 的新聞
                 if is_trap: has_trap = True
                 all_elites.update(elites)
                 if any("💎" in e for e in elites): raw_t = "[💎 核心情報] " + raw_t
@@ -367,7 +369,8 @@ def fetch_and_score_news(ticker, cell, force=False):
                     if art['title'] == "⏳ 翻譯中...":
                         threading.Thread(target=background_translate_worker, args=(ticker, art['raw_title'], MASTER_BRAIN), daemon=True).start()
                         time.sleep(0.5) 
-    except: pass
+    except Exception as e: 
+        print(f"❌ [新聞錯誤] Yahoo 抓取異常: {e}")
 
 def finnhub_news_monitor_worker():
     if not FINNHUB_TOKEN: return
@@ -426,7 +429,8 @@ def finnhub_news_monitor_worker():
                                     time.sleep(0.5)
                             seen_news_urls.add(art_url) 
                             if len(seen_news_urls) > 1000: seen_news_urls.pop() 
-                except: pass
+                except Exception as e: 
+                    pass
                 time.sleep(1.5)
         except: time.sleep(30) 
 
@@ -444,21 +448,26 @@ def update_dynamic_watchlist():
         chg_col = "premarket_change" if is_premarket else "change"
         vol_col = "premarket_volume" if is_premarket else "volume"
 
-        # 💡 [解鎖] 精兵減負：數量縮減至前 20 名，運算時間減半，加速排行榜顯示！
         payload = {
             "filter": [
                 {"left": "exchange", "operation": "in_range", "right": ["NASDAQ", "NYSE", "AMEX"]},
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund", "dr"]}, 
                 {"left": price_col, "operation": "in_range", "right": [0.5, 50]},
-                {"left": chg_col, "operation": "egreater", "right": 5.0},
+                {"left": chg_col, "operation": "egreater", "right": 3.0}, # 💡 稍微放寬門檻，避免沒資料
                 {"left": vol_col, "operation": "egreater", "right": 5000}
             ], 
             "columns": ["name", "close", "change", "volume", "premarket_close", "premarket_change", "premarket_volume", "market_cap_basic", "type", "average_volume_10d_calc"], 
             "sort": {"sortBy": chg_col, "sortOrder": "desc"}, 
-            "range": [0, 20] 
+            "range": [0, 30] # 💡 鎖定前 30 名精華
         }
 
         res = requests.post(url, json=payload, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+        
+        # 🔦 探照燈：若 TV 拒絕我們，立刻印出狀態碼
+        if res.status_code != 200:
+            print(f"❌ [掃描器錯誤] TV Scanner 拒絕連線 (狀態碼: {res.status_code})")
+            return
+            
         data = res.json()
         if data.get('data'):
             for x in data['data']:
@@ -485,12 +494,15 @@ def update_dynamic_watchlist():
                     'prev': prev_est, 'float_str': f_str, 'type': t, 
                     'float_comp': float_comp, 'avg_vol_10d': avg_vol_10d 
                 }
+        else:
+            print(f"⚠️ [掃描器警告] TV 回傳資料為空，目前可能無符合條件之標的。")
         
         with brain_lock:
             DYNAMIC_WATCHLIST.clear()
-            DYNAMIC_WATCHLIST.extend(new_watchlist[:20])
+            DYNAMIC_WATCHLIST.extend(new_watchlist[:30])
             STATS_MAP.update(temp_stats)
-    except: pass
+    except Exception as e: 
+        print(f"❌ [掃描器錯誤] 獲取 TV 名單失敗: {e}")
 
 def scanner_engine():
     global _last_list_update, SPY_real_pct, _last_spy_update, MIN_RELVOL_LIMIT, TV_LOGIN_STATUS
@@ -528,17 +540,23 @@ def scanner_engine():
                 update_dynamic_watchlist()
                 _last_list_update = now_ts
                   
-            if not DYNAMIC_WATCHLIST: time.sleep(5); continue
+            if not DYNAMIC_WATCHLIST: 
+                time.sleep(5)
+                continue
+                
             current_watchlist = DYNAMIC_WATCHLIST.copy()
 
             def _process_ticker(ticker):
                 nonlocal consecutive_errors, tv
                 try:
+                    # 💡 終極潛行模式：每次請求嚴格間隔 0.5 秒 (黃金平衡點)，避開 TV 的 Ddos 封鎖
                     time.sleep(0.5) 
                     
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
                     
-                    if df is None or df.empty: return
+                    # 只要不為空就放行，保證上榜
+                    if df is None or df.empty: 
+                        return
 
                     time_diff = df.index.to_series().diff()
                     new_sessions = time_diff[time_diff > pd.Timedelta(hours=4)]
@@ -560,15 +578,8 @@ def scanner_engine():
                     
                     collector.update_max_price(ticker, p_live)
                     
-                    try:
-                        yf_tick = yf.Ticker(ticker.replace('-', '.'))
-                        off_vol = getattr(yf_tick.fast_info, 'lastVolume', getattr(yf_tick.fast_info, 'last_volume', 0))
-                        if off_vol is None or off_vol == 0:
-                            off_vol = yf_tick.fast_info.get('lastVolume', yf_tick.fast_info.get('last_volume', 0))
-                    except:
-                        off_vol = 0
-                    
-                    daily_vol = int(off_vol) if off_vol and off_vol > 0 else (int(today_df['volume'].sum()) if not today_df.empty else int(v_live))
+                    # 💡 【拔除 Yahoo 炸彈】：全面信任 TV 的盤內成交量，防止系統被 YF 封鎖卡死！
+                    daily_vol = int(today_df['volume'].sum()) if not today_df.empty else int(v_live)
 
                     try:
                         daily_df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_daily, n_bars=2)
@@ -905,13 +916,17 @@ def scanner_engine():
                                     collector.log_event(ticker, headline, float_m, float(p_live), volume=daily_vol, change_percent=real_pct)
                                     
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
-                except Exception as e: return
+                
+                # 🔦 探照燈：若計算 K 線發生錯誤，印出警告讓我們知道發生什麼事！
+                except Exception as e: 
+                    print(f"❌ [K線運算錯誤] 處理 {ticker} 發生異常: {e}")
+                    return
 
             # 💡 終極潛行模式：純單線程排隊迴圈，徹底消除被 TV 封鎖的風險
             for ticker in current_watchlist:
                 _process_ticker(ticker)
                 
-                # 💡 【核心修復：即時渲染】每算好一檔股票，立刻把資料推上排行榜，畫面如絲般順滑不卡頓！
+                # 💡 【核心修復：即時渲染】每算好一檔股票，立刻把資料推上排行榜！
                 with brain_lock:
                     all_items = list(MASTER_BRAIN["details"].values())
                     active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST]
@@ -922,8 +937,11 @@ def scanner_engine():
                     MASTER_BRAIN["vwap_list"] = sorted(vwap_items, key=lambda x: x.get("VWAP_Dev", 0), reverse=True)
                     MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
             
-            time.sleep(1)
-        except Exception as e: time.sleep(5)
+            # 💡 【三維快取戰略】K線校準器掃完一圈後，進入 15 秒深度休眠，將報價舞台完全讓給 Alpaca！
+            time.sleep(15)
+        except Exception as e: 
+            print(f"❌ [主引擎錯誤] Scanner Engine 發生崩潰: {e}")
+            time.sleep(5)
 
 def daily_flush_worker():
     global _current_session_date, MASTER_BRAIN, DYNAMIC_WATCHLIST, STATS_MAP, cooldown_tracker, STATE_TRACKER
