@@ -610,6 +610,9 @@ def scanner_engine():
                     if historical_1m_avg <= 0: historical_1m_avg = 1.0 
                     
                     rel_vol_live = float(round(v_live / historical_1m_avg, 2))
+                    # 💡 【核心修復】：補上「上一分鐘相對成交量」的定義，消滅 K 線運算崩潰！
+                    rel_vol_prev = float(round(v_prev / historical_1m_avg, 2))
+                    
                     rel_vol_display = daily_rel_vol
                     if daily_vol < 5000: rel_vol_display = 0.0
 
