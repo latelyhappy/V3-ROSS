@@ -1,18 +1,24 @@
 import os
-os.environ["PYTHONWARNINGS"] = "ignore"
-
+import sys
 import warnings
-# 💡 核彈級消音：從根源封殺 yfinance 與 pandas 的 Timestamp 警告
+
+# --- 🌌 絕對領域：終極警告封殺器 ---
+os.environ["PYTHONWARNINGS"] = "ignore"
 warnings.filterwarnings("ignore")
-warnings.simplefilter(action='ignore', category=FutureWarning)
-warnings.filterwarnings("ignore", category=FutureWarning)
-warnings.filterwarnings("ignore", message=".*Timestamp.utcnow.*")
-try:
-    from pandas.errors import Pandas4Warning
-    warnings.simplefilter(action='ignore', category=Pandas4Warning)
-    warnings.filterwarnings("ignore", category=Pandas4Warning)
-except:
-    pass
+
+class CleanStderr:
+    def __init__(self, original_stderr):
+        self.original_stderr = original_stderr
+    def write(self, msg):
+        # 只要字串裡包含這些煩人的警告，直接丟進黑洞，不准印出來！
+        if "Pandas4Warning" in msg or "Timestamp.utcnow" in msg or "FutureWarning" in msg or "deprecated" in msg:
+            return
+        self.original_stderr.write(msg)
+    def flush(self):
+        self.original_stderr.flush()
+
+sys.stderr = CleanStderr(sys.stderr)
+# --------------------------------
 
 import logging
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
