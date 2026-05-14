@@ -11,8 +11,7 @@ logging.getLogger('urllib3').setLevel(logging.CRITICAL)
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
 from flask import Flask, jsonify, render_template, request, send_file
-import io
-import time, threading, json, re, base64, copy, math
+import io, time, threading, json, re, base64, copy, math
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
@@ -28,6 +27,7 @@ import yfinance as yf
 
 from alpaca_worker import init_alpaca
 import collector
+import memory_worker # 💡 NLP 記憶大腦通道已開啟
 
 app = Flask(__name__)
 
@@ -82,12 +82,26 @@ _current_session_date = get_current_trading_date()
 
 CATALYST_ARMORY = {}
 armory_path = os.path.join(os.path.dirname(__file__), 'catalysts.json')
+learned_path = os.path.join(os.path.dirname(__file__), 'learned_catalysts.json') # 💡 學習記憶檔路徑
+
 def reload_armory():
     global CATALYST_ARMORY
     try:
         with open(armory_path, 'r', encoding='utf-8') as f: 
             CATALYST_ARMORY = json.load(f)
     except: CATALYST_ARMORY = {}
+
+    # 💡 核心聯動：將 NLP 學到的新詞彙合併進子彈庫中
+    try:
+        if os.path.exists(learned_path):
+            with open(learned_path, 'r', encoding='utf-8') as f:
+                learned_data = json.load(f)
+                if "THEMATIC_TRENDS" not in CATALYST_ARMORY:
+                    CATALYST_ARMORY["THEMATIC_TRENDS"] = {}
+                # 將學到的詞彙賦予權重並合併
+                CATALYST_ARMORY["THEMATIC_TRENDS"].update(learned_data)
+                print(f"🧠 [NLP 聯動] 成功載入 {len(learned_data)} 個自學高勝率詞彙！")
+    except: pass
 
 reload_armory()
 
@@ -467,7 +481,7 @@ def update_dynamic_watchlist():
                 
                 temp_stats[sym] = {
                     'prev': prev_est, 'float_str': f_str, 'type': t, 
-                    'float_comp': float_comp, 'avg_vol_10d': avg_vol_10d
+                    'float_comp': float_comp, 'avg_vol_10d': avg_vol_10d 
                 }
         
         with brain_lock:
@@ -481,7 +495,6 @@ def scanner_engine():
     tv = TvDatafeed()
     TV_LOGIN_STATUS = "👤 訪客模式 (15分延遲)"
     
-    # 💡 隱私升級：登入成功不再顯示您的信箱字串
     if TW_USERNAME and TW_USERNAME != 'guest':
         try:
             tv = TvDatafeed(TW_USERNAME, TW_PASSWORD)
@@ -520,6 +533,7 @@ def scanner_engine():
                 nonlocal consecutive_errors, tv
                 try:
                     time.sleep(0.1) 
+                    
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
                     if df is None or df.empty or len(df) < 5: return
 
@@ -539,7 +553,6 @@ def scanner_engine():
                     
                     collector.update_max_price(ticker, p_live)
                     
-                    # 💡 官方總量權威 (YFinance FastInfo)
                     try:
                         yf_tick = yf.Ticker(ticker.replace('-', '.'))
                         off_vol = getattr(yf_tick.fast_info, 'lastVolume', getattr(yf_tick.fast_info, 'last_volume', 0))
@@ -557,9 +570,9 @@ def scanner_engine():
                     except: true_prev_close = 0.0
 
                     stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0, 'avg_vol_10d': 0.0})
+                    
                     time_lapsed_mins = len(today_df)
                     
-                    # 💡 計算流通股數與換手率 (Turnover Rate)
                     real_float = get_real_float(ticker)
                     float_m = real_float / 1_000_000 if real_float > 0 else 999.0
                     turnover = (daily_vol / real_float) if real_float > 0 else 0.0
@@ -567,8 +580,7 @@ def scanner_engine():
                     if stat_data.get('type') == 'fund': float_str = "N/A (ETF)"
                     elif real_float > 0: float_str = f"⚠️{float_m:.1f}M" if float_m > 50.0 else f"{float_m:.1f}M"
                     else: float_str = "未知"
-                    
-                    # 💡 量比 (RelVol) 分母歷史化
+
                     avg_vol_10d = stat_data.get('avg_vol_10d', 0)
                     if avg_vol_10d and avg_vol_10d > 0:
                         historical_1m_avg = avg_vol_10d / 390.0
@@ -580,7 +592,6 @@ def scanner_engine():
                     rel_vol_live = float(round(v_live / historical_1m_avg, 2))
                     rel_vol_prev = float(round(v_prev / historical_1m_avg, 2))
                     rel_vol_display = max(rel_vol_live, rel_vol_prev)
-                    
                     if daily_vol < 5000: rel_vol_display = 0.0
 
                     vol_3m = float(df['volume'].iloc[-3:].sum()) if len(df) >= 3 else v_live
@@ -642,34 +653,30 @@ def scanner_engine():
                     past_high = float(df['high'].iloc[-11:-1].max()) if len(df) >= 11 else p_live
                     
                     ema9_dev = float(round(((p_live - curr_ema9) / curr_ema9) * 100, 2)) if curr_ema9 > 0 else 0.0
-                    ema_max = max(curr_ema9, curr_ema20, curr_ema52)
-                    ema_min = min(curr_ema9, curr_ema20, curr_ema52)
 
-                    # 💡 殭屍股防護：絕對量能門檻
-                    vol_tier = 1 # 🌧️ 毛毛雨
+                    vol_tier = 1 
                     today_max_vol = float(today_df['volume'].max()) if not today_df.empty else v_live
                     
                     if (v_live >= historical_1m_avg * 10.0 and v_live >= 10000) or (v_live >= today_max_vol and v_live >= 10000 and rel_vol_display >= 5.0):
-                        vol_tier = 4 # 🌋 瀑布
+                        vol_tier = 4 
                     elif (v_live >= historical_1m_avg * 5.0 and v_live >= 5000):
-                        vol_tier = 3 # 🌊 大浪
+                        vol_tier = 3 
                     elif v_live >= historical_1m_avg * 2.0:
-                        vol_tier = 2 # 💧 水流
+                        vol_tier = 2 
                         
                     is_sniper_target = bool(vol_tier == 4 and ema9_dev >= 1.5 and daily_vol >= 200000)
 
-                    # 💡 六大主力透視濾網
                     is_monster_gene = (turnover >= 1.0 and float_m <= 20.0)
                     is_fake_breakout = (real_pct > 15.0 and turnover < 0.05 and vol_tier <= 2)
                     
+                    ema_max = max(curr_ema9, curr_ema20, curr_ema52)
+                    ema_min = min(curr_ema9, curr_ema20, curr_ema52)
                     is_ema_tight = (ema_max - ema_min) / ema_min < 0.02 if ema_min > 0 else False
                     is_accumulation = (is_ema_tight and current_vwap > 0 and abs(p_live - current_vwap)/current_vwap < 0.01 and turnover >= 0.2 and v_live > historical_1m_avg * 3.0)
                     
-                    c_open = float(df['open'].iloc[-1])
-                    c_close = float(df['close'].iloc[-1])
-                    c_high = float(df['high'].iloc[-1])
+                    c_open = float(df['open'].iloc[-1]); c_close = float(df['close'].iloc[-1])
                     c_body = abs(c_open - c_close)
-                    c_upper = c_high - max(c_open, c_close)
+                    c_upper = float(df['high'].iloc[-1]) - max(c_open, c_close)
                     is_testing_supply = (c_upper > c_body * 2 and v_live < historical_1m_avg and c_body > 0)
                     
                     is_controlling_cost = (is_premarket and daily_vol > 1000000 and -2.0 <= real_pct <= 2.0)
@@ -680,6 +687,7 @@ def scanner_engine():
                         vol_A = float(today_df['volume'].iloc[-5:].sum())
                         vol_B = float(today_df['volume'].iloc[-10:-5].sum())
                         vol_C = float(today_df['volume'].iloc[-15:-10].sum())
+                        
                         if vol_B > 0:
                             ratio_5v5 = float(vol_A / vol_B)
                             sym_up, sym_extreme = ("↗", "🔥") if p_live >= p_prev else ("🔻", "🩸")
@@ -724,9 +732,9 @@ def scanner_engine():
 
                     status_color = "green"
                     current_signal = ""
+                    
                     ui_tag = collector.evaluate_sniper_tags(ticker, float_m, daily_vol, rel_vol_display, real_pct, p_live > current_vwap)
                     
-                    # 💡 優先級覆寫：主力行為判定優先於一般標籤
                     if is_fake_breakout:
                         current_signal = "🤡 假突破警告(無量)"
                         status_color = "gray"
@@ -847,7 +855,6 @@ def scanner_engine():
                                 current_signal = cell.get("StickySignal", "")
                                 status_color = cell.get("StickyColor", "green")
 
-                        # 💡 將 Turnover 數據打包給前端
                         stats = {
                             "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": final_vol_text,
                             "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, "Signal": current_signal,
@@ -895,7 +902,7 @@ def scanner_engine():
                                     headline = cell['NewsList'][0].get('raw_title', '')
                                     collector.log_event(ticker, headline, float_m, float(p_live), volume=daily_vol, change_percent=real_pct)
                                     
-                threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
+                    threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
                 except Exception as e: return
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
@@ -975,6 +982,7 @@ if __name__ == '__main__':
     collector.init_db() 
     load_float_cache()
     load_intraday_state()
+    memory_worker.init_worker() # 💡 啟動 NLP 自動進化大腦
     threading.Thread(target=state_auto_save_worker, daemon=True).start()
     threading.Thread(target=scanner_engine, daemon=True).start()
     threading.Thread(target=finnhub_news_monitor_worker, daemon=True).start()

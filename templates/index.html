@@ -52,6 +52,7 @@
         /* 💡 狙擊鎖定特效 */
         .sniper-target-row { background: rgba(163, 113, 247, 0.15) !important; border-left: 3px solid var(--neon-purple) !important; }
         .sniper-target-row:hover { background: rgba(163, 113, 247, 0.25) !important; }
+        .badge { font-size: 11px; padding: 2px 5px; border-radius: 4px; font-weight: bold; margin-right: 4px; display: inline-block; vertical-align: text-bottom; }
 
         #mobile-tabs { display: none; }
         body.mobile-mode { overflow-y: auto !important; overflow-x: hidden !important; height: auto; padding-bottom: 50px; }
@@ -82,7 +83,7 @@
         <button class="ghost-btn" onclick="resetLayout()">🔄 重設</button>
         
         <div style="font-size: 12px; color: var(--text-muted); font-family: monospace; margin-left:8px; flex-shrink: 0;">TPE: <span id="sys-clock" style="color: var(--text-main); font-weight: bold;">--:--:--</span></div>
-        <span id="sys-status" style="margin-left:auto; font-size:12px; color: var(--text-muted); padding-left: 10px;">📡 系統初始化...</span>
+        <span id="sys-status" style="margin-left:auto; font-size:11px; color: var(--text-muted); padding-left: 10px;">📡 系統初始化...</span>
     </div>
 
     <div id="workspace">
@@ -199,11 +200,12 @@
         function toggleMode() { isMobileMode = !isMobileMode; let btn = document.getElementById('mode-btn'); if (isMobileMode) { document.body.classList.add('mobile-mode'); btn.innerText = "💻 電腦版"; switchTab('win-rank', document.querySelectorAll('.tab-btn')[0]); } else { document.body.classList.remove('mobile-mode'); btn.innerText = "📱 手機版"; document.querySelectorAll('.window-panel').forEach(el => el.classList.remove('active-tab')); } }
         function switchTab(tabId, btn) { document.querySelectorAll('.window-panel').forEach(el => el.classList.remove('active-tab')); document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active')); document.getElementById(tabId).classList.add('active-tab'); btn.classList.add('active'); }
         function toggleETF() { showETF = !showETF; let btn = document.getElementById('etf-btn'); if (showETF) { btn.innerText = "🔘 隱藏 ETF"; btn.style.borderColor = "var(--red)"; btn.style.color = "var(--red)"; } else { btn.innerText = "🔘 ETF"; btn.style.borderColor = "var(--border)"; btn.style.color = "var(--text-main)"; } if (Object.keys(brain).length > 0) refreshUI(brain); }
+        
         function openTW(s) { window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank'); }
 
         // 💡 內建 SVG Logo 呼叫函式
         function getTWLogo(sym) {
-            return `<svg class="tw-logo" onclick="event.stopPropagation(); openTW('${sym}')" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5h-2v-2h2v2zm0-4h-2v-6h2v6z"/></svg>`;
+            return `<svg class="tw-logo" onclick="event.stopPropagation(); openTW('${sym}')" viewBox="0 0 24 24" title="開啟 TradingView"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5h-2v-2h2v2zm0-4h-2v-6h2v6z"/></svg>`;
         }
 
         function parseValue(val, col) {
@@ -236,7 +238,7 @@
 
         function refreshUI(d) {
             if (!d) return;
-            // 💡 登入狀態渲染
+            // 💡 登入狀態直接顯示在導覽列右上方，並且隱藏電子信箱
             document.getElementById('sys-status').innerHTML = `<span style="color:var(--neon-purple); font-weight:bold;">${d.tv_status || ''}</span> &nbsp;|&nbsp; 📡 更新: ${d.last_update || '--:--:--'}`;
             document.getElementById('sys-status').style.color = "var(--text-muted)";
             
@@ -272,7 +274,7 @@
 
             for (let key in alertRenderCount) { if (!currentSigIds.has(key)) delete alertRenderCount[key]; }
 
-            // 2. 超新星排行
+            // 2. 超新星排行 (加入點擊事件與優化版面)
             let h2 = "", rankData = [...(d.leaderboard || [])].filter(r => !(r?.Type === 'fund' && !showETF));
             rankData.sort((a, b) => {
                 let vA = parseValue(a[rankCfg.col], rankCfg.col);
@@ -320,9 +322,10 @@
                 let cdStr = hodCooldown === 0 ? `<span style="color:var(--neon-green);">剛才</span>` : (hodCooldown > 30 ? `<span style="color:var(--red);">死水(${hodCooldown}m)</span>` : `${hodCooldown}m`);
                 let floatHtml = `Float: <b style="font-size:12px;">${r.Float||"-"}</b><br><span style="font-size:11px; color:var(--text-muted);">⏱️ 創高: ${cdStr}</span>`;
 
+                // 💡 點擊代碼文字直接開啟 TradingView
                 h2 += `<tr class="${rowClass}" onclick="loadDetail('${f_Code}')" ondblclick="openTW('${f_Code}')">
                     <td class="status-indicator"></td>
-                    <td><div class="sym" style="display:flex; align-items:center;">${badgesHtml}<span>${f_Code}</span></div>${hasNewsText}</td>
+                    <td><div class="sym" style="display:flex; align-items:center;">${badgesHtml}<span style="cursor:pointer;" onclick="event.stopPropagation(); openTW('${f_Code}')" title="點擊開啟 TV 圖表">${f_Code}</span></div>${hasNewsText}</td>
                     <td>${fireHtml}</td>
                     <td>${momentumHtml}</td>
                     <td>${volHtml}</td>
@@ -331,7 +334,7 @@
             });
             document.getElementById('rank-list').innerHTML = h2;
 
-            // 3. 情報雷達 (💡 點擊代碼直接跳轉)
+            // 3. 情報雷達 (代碼現在具備直接開圖功能)
             let h3 = "", newsData = [...(d.top_catalysts || [])].filter(n => (n.Code || n.ticker) && n.NewsList && n.NewsList.length > 0);
             newsData.sort((a, b) => parseValue(b[newsCfg.col], newsCfg.col) - parseValue(a[newsCfg.col], newsCfg.col));
             
