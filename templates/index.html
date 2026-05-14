@@ -45,11 +45,9 @@
         .up { color: var(--green); font-weight: bold; } .down { color: var(--red); font-weight: bold; }
         .neon-word { color: var(--neon-green); font-weight: 900; }
 
-        /* 💡 SVG Logo 設計與特效 */
         .tw-logo { width: 16px; height: 16px; vertical-align: middle; cursor: pointer; margin-left: 6px; fill: var(--blue); transition: transform 0.2s, fill 0.2s; }
         .tw-logo:hover { transform: scale(1.2); fill: #ffffff; }
 
-        /* 💡 狙擊鎖定特效 */
         .sniper-target-row { background: rgba(163, 113, 247, 0.15) !important; border-left: 3px solid var(--neon-purple) !important; }
         .sniper-target-row:hover { background: rgba(163, 113, 247, 0.25) !important; }
         .badge { font-size: 11px; padding: 2px 5px; border-radius: 4px; font-weight: bold; margin-right: 4px; display: inline-block; vertical-align: text-bottom; }
@@ -119,8 +117,8 @@
                         <th onclick="setSort('rank', 'Code')">代碼與屬性 <span id="sort-rank-Code"></span></th>
                         <th onclick="setSort('rank', 'Pct2Min')">火力 (極速) <span id="sort-rank-Pct2Min"></span></th>
                         <th onclick="setSort('rank', 'GapPct')">動能 (缺/現) <span id="sort-rank-GapPct"></span></th>
-                        <th onclick="setSort('rank', 'RelVol')">量能狀態 <span id="sort-rank-RelVol"></span></th>
-                        <th onclick="setSort('rank', 'HOD_Cooldown')">籌碼與冷卻 <span id="sort-rank-HOD_Cooldown">▼</span></th>
+                        <th onclick="setSort('rank', 'Vol')">量能狀態 <span id="sort-rank-Vol">▼</span></th>
+                        <th onclick="setSort('rank', 'HOD_Cooldown')">籌碼與冷卻 <span id="sort-rank-HOD_Cooldown"></span></th>
                     </tr></thead>
                     <tbody id="rank-list"></tbody>
                 </table>
@@ -154,7 +152,8 @@
     <script>
         let brain = {}, activeSym = "", audioOn = true, played = {}, showETF = false;
         const sounds = { nova: new Audio('/static/sounds/nova.mp3') };
-        let rankCfg = { col: 'HOD_Cooldown', asc: true }, newsCfg = { col: 'CatScore', asc: false };
+        // 💡 修正：預設排行為 Vol 總成交量，且降冪排列
+        let rankCfg = { col: 'Vol', asc: false }, newsCfg = { col: 'CatScore', asc: false };
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
 
@@ -318,7 +317,6 @@
                 let cdStr = hodCooldown === 0 ? `<span style="color:var(--neon-green);">剛才</span>` : (hodCooldown > 30 ? `<span style="color:var(--red);">死水(${hodCooldown}m)</span>` : `${hodCooldown}m`);
                 let floatHtml = `Float: <b style="font-size:12px;">${r.Float||"-"}</b><br><span style="font-size:11px; color:var(--text-muted);">⏱️ 創高: ${cdStr}</span>`;
 
-                // 💡 修正：單擊載入戰報，雙擊跳轉 TV
                 h2 += `<tr class="${rowClass}" onclick="loadDetail('${f_Code}')" ondblclick="openTW('${f_Code}')">
                     <td class="status-indicator"></td>
                     <td><div class="sym" style="display:flex; align-items:center;">${badgesHtml}<span style="cursor:pointer;" ondblclick="event.stopPropagation(); openTW('${f_Code}')" title="雙擊開啟 TV 圖表">${f_Code}</span></div>${hasNewsText}</td>
@@ -341,7 +339,6 @@
                 let gapColor = gapPctVal > 10 ? 'var(--neon-green)' : (gapPctVal > 0 ? 'var(--green)' : 'var(--text-muted)');
                 let hl_text = highlightElites(latest.title==="⏳ 翻譯中..."?latest.raw_title:latest.title, latest.elites, d.live_trends);
                 
-                // 💡 修正：單擊載入戰報，雙擊跳轉 TV
                 h3 += `<tr onclick="loadDetail('${n.Code||n.ticker}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[3]);">
                     <td class="status-indicator" style="background:${f_Score >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
                     <td style="color:${latest.is_today?'#ffa500':'var(--text-muted)'}; font-size:10px;">${latest.time}</td>

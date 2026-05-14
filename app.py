@@ -588,17 +588,22 @@ def scanner_engine():
                     elif real_float > 0: float_str = f"⚠️{float_m:.1f}M" if float_m > 50.0 else f"{float_m:.1f}M"
                     else: float_str = "未知"
 
+                    # 💡 量比修正：區分「單分極速量比」與「日級量比」
                     avg_vol_10d = stat_data.get('avg_vol_10d', 0)
                     if avg_vol_10d and avg_vol_10d > 0:
                         historical_1m_avg = avg_vol_10d / 390.0
+                        daily_rel_vol = float(round(daily_vol / avg_vol_10d, 2)) # 前端顯示的真實日量比
                     else:
                         historical_1m_avg = float(today_df['volume'].iloc[:-1].mean()) if time_lapsed_mins > 2 else v_live
+                        daily_rel_vol = 1.0
                     
                     if historical_1m_avg <= 0: historical_1m_avg = 1.0 
                     
+                    # 用於後台判定 🌋 瀑布的單分極速量比
                     rel_vol_live = float(round(v_live / historical_1m_avg, 2))
-                    rel_vol_prev = float(round(v_prev / historical_1m_avg, 2))
-                    rel_vol_display = max(rel_vol_live, rel_vol_prev)
+                    
+                    # 打包給前端的顯示值
+                    rel_vol_display = daily_rel_vol
                     if daily_vol < 5000: rel_vol_display = 0.0
 
                     vol_3m = float(df['volume'].iloc[-3:].sum()) if len(df) >= 3 else v_live
