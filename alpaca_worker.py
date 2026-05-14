@@ -96,18 +96,18 @@ def _alpaca_thread():
         while True:
             time.sleep(5)
             try:
-                # 💡 確保最多只取 28 檔 (保留 2 檔的緩衝空間，絕對不超過免費版 30 檔上限)
+                # 💡 設定安全閾值：最多 28 檔，確保加上緩衝絕不超過免費版 30 檔上限
                 safe_watchlist = list(_DYNAMIC_WATCHLIST)[:28]
                 target_subs = set(safe_watchlist)
                 to_add = target_subs - current_subs
                 to_remove = current_subs - target_subs
                 
-                # 💡 【關鍵修復】：必須先「退訂(unsubscribe)」，釋放空間後，才能「訂閱(subscribe)」！
+                # 💡 關鍵順序對調：先「退訂(unsubscribe)」釋放空間，再「訂閱(subscribe)」！
                 if to_remove: 
                     stream.unsubscribe_trades(*to_remove)
                     for sym in to_remove: 
                         price_history.pop(sym, None)
-                        _alpaca_cooldown.pop(sym, None)
+                        _alpaca_cooldown.pop(sym, None) # 💡 聯動清空：徹底移除舊的冷卻記憶！
                         
                 if to_add: 
                     stream.subscribe_trades(trade_callback, *to_add)
