@@ -537,8 +537,8 @@ def scanner_engine():
             def _process_ticker(ticker):
                 nonlocal consecutive_errors, tv
                 try:
-                    # 💡 潛行模式：強力防護網突穿，強制延遲 1.0 秒避免觸發 DDoS 判定
-                    time.sleep(1.0) 
+                    # 💡 終極潛行模式：每次請求嚴格間隔 0.5 秒 (黃金平衡點)，避開 TV 的 Ddos 封鎖
+                    time.sleep(0.5) 
                     
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
                     
@@ -913,9 +913,9 @@ def scanner_engine():
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
                 except Exception as e: return
 
-            # 💡 潛行模式：降頻火力，同時並發數降為 3，避開 TV 的 Ddos 封鎖
-            with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-                list(executor.map(_process_ticker, current_watchlist))
+            # 💡 終極潛行模式：降頻火力，純單線程迴圈，避開 TV 的 Ddos 封鎖
+            for ticker in current_watchlist:
+                _process_ticker(ticker)
             
             with brain_lock:
                 all_items = list(MASTER_BRAIN["details"].values())
