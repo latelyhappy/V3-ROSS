@@ -454,12 +454,15 @@ def update_dynamic_watchlist():
 
         price_col = "premarket_close" if is_premarket else "close"
         chg_col = "premarket_change" if is_premarket else "change"
+        vol_col = "premarket_volume" if is_premarket else "volume"
 
-        # 💡 天羅地網掃描：只限制價格 0.5 ~ 50，取消 2% 漲幅與 5000 成交量的限制，其餘全放行！
+        # 💡 排行榜天羅地網：價格 0.5~50、漲幅 >= 5%、成交量 > 5000 (無條件上榜)
         payload = {
             "filter": [
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund"]}, 
-                {"left": price_col, "operation": "in_range", "right": [0.5, 50]}
+                {"left": price_col, "operation": "in_range", "right": [0.5, 50]},
+                {"left": chg_col, "operation": "egreater", "right": 5.0},
+                {"left": vol_col, "operation": "egreater", "right": 5000}
             ], 
             "columns": ["name", "close", "change", "volume", "premarket_close", "premarket_change", "premarket_volume", "market_cap_basic", "type", "average_volume_10d_calc"], 
             "sort": {"sortBy": chg_col, "sortOrder": "desc"}, 
@@ -545,7 +548,9 @@ def scanner_engine():
                     time.sleep(0.1) 
                     
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=60, extended_session=True)
-                    if df is None or df.empty or len(df) < 5: return
+                    
+                    # 💡 解除隱藏限制：只要有 K 線就允許進入排行榜，不強制要求 5 根
+                    if df is None or df.empty: return
 
                     time_diff = df.index.to_series().diff()
                     new_sessions = time_diff[time_diff > pd.Timedelta(hours=4)]
@@ -895,7 +900,8 @@ def scanner_engine():
                             if now_ts - last_trigger_time > 60: can_trigger = True
                             elif is_massive_inflow and (now_ts - last_massive_time > 30): can_trigger = True
                                
-                            if can_trigger:
+                            # 💡 警報觸發閘門：必須要有至少 5 根 K 線才允許發送戰術訊號，避免幽靈跳空誤報
+                            if can_trigger and len(df) >= 5:
                                 if is_massive_inflow: STATE_TRACKER[f"{ticker}_massive"] = now_ts
                                 cooldown_tracker[ticker] = now_ts 
                                 
