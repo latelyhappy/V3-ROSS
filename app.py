@@ -494,10 +494,14 @@ def update_dynamic_watchlist():
                 
                 float_comp = 100.0 / math.sqrt(float_m) if float_m > 0 else 0.0
                 
+                total_vol_from_scanner = pm_v if is_premarket and pm_v is not None else v
+                if total_vol_from_scanner is None: total_vol_from_scanner = 0
+
                 temp_stats[sym] = {
                     'prev': prev_est, 'float_str': f_str, 'type': t, 
                     'float_comp': float_comp, 'avg_vol_10d': avg_vol_10d,
-                    'native_rel_vol': native_rel_vol  
+                    'native_rel_vol': native_rel_vol,
+                    'total_vol': total_vol_from_scanner  # 💡 核心修復：確實把總量存入共用資料庫！
                 }
         else:
             print(f"⚠️ [掃描器警告] TV 回傳資料為空，目前可能無符合條件之標的。")
@@ -581,10 +585,13 @@ def scanner_engine():
                     
                     collector.update_max_price(ticker, p_live)
                     
-                    stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0, 'avg_vol_10d': 0.0, 'native_rel_vol': 0.0})
+                    stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0, 'avg_vol_10d': 0.0, 'native_rel_vol': 0.0, 'total_vol': 0})
                     
                     scanner_vol = stat_data.get('total_vol', 0)
-                    daily_vol = int(scanner_vol) if scanner_vol > 0 else int(v_live)
+                    kbar_sum_vol = int(today_df['volume'].sum()) if not today_df.empty else int(v_live)
+                    
+                    # 💡 核心修復：優先相信 TV 掃描器的原生總量，拒絕殘缺 K 線的誤導！
+                    daily_vol = int(scanner_vol) if scanner_vol > 0 else kbar_sum_vol
 
                     try:
                         daily_df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_daily, n_bars=2)
