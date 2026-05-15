@@ -455,7 +455,6 @@ def update_dynamic_watchlist():
                 {"left": chg_col, "operation": "egreater", "right": 2.0},
                 {"left": vol_col, "operation": "egreater", "right": 5000}
             ], 
-            # 💡 【核心修復二：量比精準化】向 TV 多索取了原生相對量比 `relative_volume_10d_calc`
             "columns": ["name", "close", "change", "volume", "premarket_close", "premarket_change", "premarket_volume", "market_cap_basic", "type", "average_volume_10d_calc", "relative_volume_10d_calc"], 
             "sort": {"sortBy": chg_col, "sortOrder": "desc"}, 
             "range": [0, 30] 
@@ -481,6 +480,9 @@ def update_dynamic_watchlist():
                 if p_eff is None: p_eff = c
                 if actual_pct is None: actual_pct = 0.0
 
+                total_vol_from_scanner = pm_v if is_premarket and pm_v is not None else v
+                if total_vol_from_scanner is None: total_vol_from_scanner = 0
+
                 real_shares = get_real_float(sym)
                 if real_shares > 0: float_m = real_shares / 1_000_000
                 else: float_m = (mc / p_eff) / 1_000_000 if mc and p_eff else 0.0
@@ -495,7 +497,7 @@ def update_dynamic_watchlist():
                 temp_stats[sym] = {
                     'prev': prev_est, 'float_str': f_str, 'type': t, 
                     'float_comp': float_comp, 'avg_vol_10d': avg_vol_10d,
-                    'native_rel_vol': native_rel_vol  # 💡 存入精準的時間加權量比
+                    'native_rel_vol': native_rel_vol  
                 }
         else:
             print(f"⚠️ [掃描器警告] TV 回傳資料為空，目前可能無符合條件之標的。")
@@ -554,7 +556,6 @@ def scanner_engine():
                 try:
                     time.sleep(0.5) 
                     
-                    # 💡 【核心修復一：總量精準化】索取 1000 根 1分 K 線，確保完美涵蓋整個盤前加盤中時段！
                     df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=1000, extended_session=True)
                     
                     if df is None or df.empty: 
@@ -582,8 +583,8 @@ def scanner_engine():
                     
                     stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0, 'avg_vol_10d': 0.0, 'native_rel_vol': 0.0})
                     
-                    # 💡 【核心修復一：總量精準化】精確加總 1000 根 K 線，徹底解決 9:30 瞬間斷層！
-                    daily_vol = int(today_df['volume'].sum()) if not today_df.empty else int(v_live)
+                    scanner_vol = stat_data.get('total_vol', 0)
+                    daily_vol = int(scanner_vol) if scanner_vol > 0 else int(v_live)
 
                     try:
                         daily_df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_daily, n_bars=2)
@@ -611,7 +612,6 @@ def scanner_engine():
                     
                     if historical_1m_avg <= 0: historical_1m_avg = 1.0 
                     
-                    # 💡 【核心修復二：量比精準化】直接採用 TV 官方的時間加權相對量比！
                     if native_rel_vol > 0:
                         daily_rel_vol = float(round(native_rel_vol, 2))
                     else:
@@ -878,10 +878,13 @@ def scanner_engine():
                                 current_signal = cell.get("StickySignal", "")
                                 status_color = cell.get("StickyColor", "green")
 
+                        # 💡 【楚河漢界防護】：檢查 Alpaca 是否已經接管報價權
+                        is_alpaca_active = cell.get("Alpaca_Active", False)
+
                         stats = {
-                            "Code": ticker, "Price": f"${p_live:.2f}", "RelVol": f"{rel_vol_display}x", "Vol": final_vol_text,
-                            "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live-prev_close):+.2f}", "Status": status_color, "Signal": current_signal,
-                            "PriceVal": float(p_live), "HighVal": float(df['high'].iloc[-1]), "StopLoss": curr_ema20 * 0.99, 
+                            "Code": ticker, "RelVol": f"{rel_vol_display}x", "Vol": final_vol_text,
+                            "Status": status_color, "Signal": current_signal,
+                            "HighVal": float(df['high'].iloc[-1]), "StopLoss": curr_ema20 * 0.99, 
                             "Float": float_str, "Type": stat_data.get('type', 'stock'), "VolAcc": vol_acc_str, 
                             "VolTier": vol_tier, "EMA9_Dev": ema9_dev, "IsSniperTarget": is_sniper_target, 
                             "IsTrendingNews": cell.get("IsTrendingNews", False), 
@@ -889,9 +892,24 @@ def scanner_engine():
                             "EMA9": curr_ema9, "EMA52": curr_ema52, "TriggerType": trigger_type, 
                             "Turnover": f"{turnover*100:.1f}%",
                             "DeltaStr": delta_pct_str, "TriggerTS": now_ts if trigger_type != "none" else cell.get("TriggerTS", 0),
-                            "HasSentimentFlip": has_sentiment_flip, "GapPct": gap_pct, "Pct2Min": pct_2m, "HOD_Cooldown": minutes_since_hod 
+                            "HasSentimentFlip": has_sentiment_flip, "GapPct": gap_pct, "Pct2Min": pct_2m, "HOD_Cooldown": minutes_since_hod,
+                            # 💡 存入昨收價，讓 Alpaca 可以自己算漲跌幅！
+                            "PrevClose": prev_close 
                         }
                         
+                        # 💡 如果 Alpaca 還沒接管，TV 才負責顯示價格；如果 Alpaca 接管了，TV 閉嘴！保留 Alpaca 的極速報價
+                        if not is_alpaca_active:
+                            stats["Price"] = f"${p_live:.2f}"
+                            stats["Pct"] = f"{real_pct:+.2f}%"
+                            stats["Amt"] = f"{(p_live-prev_close):+.2f}"
+                            stats["PriceVal"] = float(p_live)
+                        else:
+                            # 為了讓下方的日誌與計算能拿到價格，把 Alpaca 寫入的最新報價拿回來放進 stats
+                            stats["Price"] = cell.get("Price", f"${p_live:.2f}")
+                            stats["Pct"] = cell.get("Pct", f"{real_pct:+.2f}%")
+                            stats["Amt"] = cell.get("Amt", f"{(p_live-prev_close):+.2f}")
+                            stats["PriceVal"] = cell.get("PriceVal", float(p_live))
+
                         cell.update(stats)
                         
                         if is_vwap_magnet or is_ross_match or is_spark or is_dead_bounce or is_massive_inflow or is_vwap_breakout or is_micro_pullback or is_whole_dollar or is_fake_breakout or is_monster_gene or is_accumulation or is_v_reversal:

@@ -47,18 +47,31 @@ def _alpaca_thread():
         is_whole_dollar = False
         if 0.95 <= price % 1.0 <= 0.99 and price > 1.0: is_whole_dollar = True
             
-        if is_velocity_spike or is_whole_dollar:
-            with _brain_lock:
-                if ticker in _MASTER_BRAIN["details"]:
-                    cell = _MASTER_BRAIN["details"][ticker]
-                    
+        with _brain_lock:
+            if ticker in _MASTER_BRAIN["details"]:
+                cell = _MASTER_BRAIN["details"][ticker]
+                
+                # 💡 【核心修復：毫秒級報價全面接管】
+                # 無論有沒有觸發警報，只要有價格跳動，立刻覆寫白板！
+                prev_close = cell.get("PrevClose", 0)
+                real_pct = ((price - prev_close) / prev_close * 100) if prev_close > 0 else 0.0
+                
+                cell["Price"] = f"${price:.2f}"
+                cell["PriceVal"] = float(price)
+                cell["Pct"] = f"{real_pct:+.2f}%"
+                cell["Amt"] = f"{(price - prev_close):+.2f}"
+                
+                # 💡 蓋上印記，正式剝奪 TradingView 的報價權限！
+                cell["Alpaca_Active"] = True
+                
+                # 以下為原本的警報雷達邏輯
+                if is_velocity_spike or is_whole_dollar:
                     # 基礎清理，避免無限疊加
                     raw_signal = cell.get("Signal", "").replace("⚡極速拉升(+0.5%/5s)", "").replace(f"🧲即將撞擊(${math.ceil(price):.2f})", "").strip()
                     
                     signal_triggered = False
                     new_tag = ""
                     
-                    # 💡 核心修復：使用乾淨的標籤覆蓋
                     if is_velocity_spike:
                         new_tag = "⚡極速拉升(+0.5%/5s) "
                         cell["Status"] = "purple"
@@ -106,12 +119,11 @@ def _alpaca_thread():
                 to_add = target_subs - current_subs
                 to_remove = current_subs - target_subs
                 
-                # 💡 關鍵順序對調：先「退訂(unsubscribe)」釋放空間，再「訂閱(subscribe)」！
                 if to_remove: 
                     stream.unsubscribe_trades(*to_remove)
                     for sym in to_remove: 
                         price_history.pop(sym, None)
-                        _alpaca_cooldown.pop(sym, None) # 💡 聯動清空：徹底移除舊的冷卻記憶！
+                        _alpaca_cooldown.pop(sym, None)
                         
                 if to_add: 
                     stream.subscribe_trades(trade_callback, *to_add)
