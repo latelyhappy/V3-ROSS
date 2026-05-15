@@ -588,7 +588,12 @@ def scanner_engine():
                     stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0, 'avg_vol_10d': 0.0, 'native_rel_vol': 0.0, 'total_vol': 0})
                     
                     scanner_vol = stat_data.get('total_vol', 0)
+                    # 自己加總 1 分鐘 K 線的量
                     kbar_sum_vol = int(today_df['volume'].sum()) if not today_df.empty else int(v_live)
+                    
+                    # 💡 核心修復：取「掃描器」與「K線加總」的【最大值】！
+                    # 確保量能既不會因為斷層而縮水，又能每 15 秒平滑向上跳動！
+                    daily_vol = max(int(scanner_vol), kbar_sum_vol)
                     
                     # 💡 核心修復：優先相信 TV 掃描器的原生總量，拒絕殘缺 K 線的誤導！
                     daily_vol = int(scanner_vol) if scanner_vol > 0 else kbar_sum_vol
@@ -619,10 +624,13 @@ def scanner_engine():
                     
                     if historical_1m_avg <= 0: historical_1m_avg = 1.0 
                     
-                    if native_rel_vol > 0:
-                        daily_rel_vol = float(round(native_rel_vol, 2))
+                    # 💡 核心修復：廢除 TV 官方盤前會鎖死的殭屍量比！
+                    # 直接用我們剛算出的「最即時總量」÷「10日均量」，強制達成每 15 秒動態刷新！
+                    if avg_vol_10d > 0:
+                        daily_rel_vol = float(round(daily_vol / avg_vol_10d, 2))
                     else:
-                        daily_rel_vol = float(round(daily_vol / avg_vol_10d, 2)) if avg_vol_10d > 0 else 1.0
+                        # 只有在完全拿不到均量數據時，才退而求其次用 TV 的快取
+                        daily_rel_vol = float(round(native_rel_vol, 2)) if native_rel_vol > 0 else 1.0
 
                     rel_vol_live = float(round(v_live / historical_1m_avg, 2))
                     rel_vol_prev = float(round(v_prev / historical_1m_avg, 2))
