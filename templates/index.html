@@ -1,4 +1,3 @@
-web application/stitch/projects/3821308289950563886/screens/74766365170202084
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -23,7 +22,9 @@ web application/stitch/projects/3821308289950563886/screens/74766365170202084
         #workspace { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 6px; padding: 6px; flex: 1; box-sizing: border-box; background: #000; overflow: hidden; }
         .window-panel { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; position: relative; }
         .panel-header { background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border); padding: 6px 12px; font-size: 13px; font-weight: bold; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
-        .panel-content { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 0; scrollbar-width: none; -ms-overflow-style: none; }
+        
+        /* 💡 修正：解鎖電腦版的 overflow-x，以防萬一 */
+        .panel-content { flex: 1; overflow-y: auto; overflow-x: auto; padding: 0; scrollbar-width: none; -ms-overflow-style: none; }
         .panel-content::-webkit-scrollbar { display: none; } 
         
         table { width: 100%; border-collapse: collapse; }
@@ -54,15 +55,28 @@ web application/stitch/projects/3821308289950563886/screens/74766365170202084
         .badge { font-size: 11px; padding: 2px 5px; border-radius: 4px; font-weight: bold; margin-right: 4px; display: inline-block; vertical-align: text-bottom; }
 
         #mobile-tabs { display: none; }
-        body.mobile-mode { overflow-y: auto !important; overflow-x: hidden !important; height: auto; padding-bottom: 50px; }
+        
+        /* =========================================================
+           💡 手機版核心重構：解決滑動、Sticky Header 與 Zoom 問題
+           ========================================================= */
+        body.mobile-mode { overflow: hidden !important; height: 100vh; padding-bottom: 0; }
         body.mobile-mode #tactical-bar { overflow-x: auto; white-space: nowrap; padding-right: 15px; }
-        body.mobile-mode #mobile-tabs { display: flex; position: fixed; bottom: 0; left: 0; width: 100%; background: var(--bg-surface); z-index: 10000; border-top: 1px solid var(--border); }
-        body.mobile-mode .tab-btn { flex: 1; padding: 14px 0; background: transparent; border: none; color: var(--text-muted); font-weight: bold; font-size: 13px; cursor: pointer; }
+        body.mobile-mode #mobile-tabs { display: flex; position: fixed; bottom: 0; left: 0; width: 100%; height: 50px; background: var(--bg-surface); z-index: 10000; border-top: 1px solid var(--border); }
+        body.mobile-mode .tab-btn { flex: 1; padding: 0; background: transparent; border: none; color: var(--text-muted); font-weight: bold; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
         body.mobile-mode .tab-btn.active { color: var(--blue); border-top: 2px solid var(--blue); background: rgba(88, 166, 255, 0.05); }
-        body.mobile-mode #workspace { display: block; overflow: hidden; height: auto; padding: 4px; width: 100vw; box-sizing: border-box; }
-        body.mobile-mode .window-panel { position: static !important; width: 100% !important; height: auto !important; min-height: 80vh; margin-bottom: 10px; display: none; border-radius: 0; border: none; }
-        body.mobile-mode .window-panel.active-tab { display: flex !important; }
-        body.mobile-mode table { font-size: 13px; min-width: max-content; }
+        
+        body.mobile-mode #workspace { display: flex; flex-direction: column; overflow: hidden; height: calc(100vh - 42px - 50px); padding: 0; width: 100vw; box-sizing: border-box; }
+        body.mobile-mode .window-panel { position: static !important; width: 100% !important; height: 100% !important; min-height: unset; margin: 0; display: none; border-radius: 0; border: none; }
+        body.mobile-mode .window-panel.active-tab { display: flex !important; flex: 1; }
+        
+        /* 允許面板內容左右滑動，並顯示提示捲軸 */
+        body.mobile-mode .panel-content { overflow-x: auto !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
+        body.mobile-mode .panel-content::-webkit-scrollbar { display: block; width: 4px; height: 4px; }
+        body.mobile-mode .panel-content::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 2px; }
+        
+        body.mobile-mode table { min-width: 650px; font-size: 13px; }
+        body.mobile-mode .zoom-controls { display: none !important; }
+        /* ========================================================= */
     </style>
 </head>
 <body id="main-body">
@@ -71,7 +85,7 @@ web application/stitch/projects/3821308289950563886/screens/74766365170202084
         <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 ETF</button>
         <button id="summary-btn" class="ghost-btn" style="border-color:var(--neon-green); color:var(--neon-green);" onclick="fetchSummary()">📊 高勝率戰報</button>
         
-        <div style="display:flex; align-items:center; border:1px solid var(--border); border-radius:5px; padding:2px 5px; margin-right:8px; background:rgba(0,0,0,0.2); flex-shrink: 0;">
+        <div class="zoom-controls" style="display:flex; align-items:center; border:1px solid var(--border); border-radius:5px; padding:2px 5px; margin-right:8px; background:rgba(0,0,0,0.2); flex-shrink: 0;">
             <button class="ghost-btn" style="margin:0; border:none; padding:0 6px; font-size:14px; outline:none;" onclick="changeZoom(-0.1)">-</button>
             <span id="zoom-label" style="font-size:12px; color:var(--text-main); min-width:35px; text-align:center; font-weight:bold; cursor:default;">100%</span>
             <button class="ghost-btn" style="margin:0; border:none; padding:0 6px; font-size:14px; outline:none;" onclick="changeZoom(0.1)">+</button>
@@ -196,7 +210,23 @@ web application/stitch/projects/3821308289950563886/screens/74766365170202084
             else { btn.style.borderColor="var(--red)"; btn.style.color="var(--red)"; btn.innerText="🔇 音效 (已靜音)"; }
         }
 
-        function toggleMode() { isMobileMode = !isMobileMode; let btn = document.getElementById('mode-btn'); if (isMobileMode) { document.body.classList.add('mobile-mode'); btn.innerText = "💻 電腦版"; switchTab('win-rank', document.querySelectorAll('.tab-btn')[0]); } else { document.body.classList.remove('mobile-mode'); btn.innerText = "📱 手機版"; document.querySelectorAll('.window-panel').forEach(el => el.classList.remove('active-tab')); } }
+        // 💡 修正：切換手機版時強制取消 zoom，避免排版崩壞
+        function toggleMode() { 
+            isMobileMode = !isMobileMode; 
+            let btn = document.getElementById('mode-btn'); 
+            if (isMobileMode) { 
+                document.body.classList.add('mobile-mode'); 
+                btn.innerText = "💻 電腦版"; 
+                document.getElementById('main-body').style.zoom = 1.0; // 防跑版
+                switchTab('win-rank', document.querySelectorAll('.tab-btn')[0]); 
+            } else { 
+                document.body.classList.remove('mobile-mode'); 
+                btn.innerText = "📱 手機版"; 
+                applyZoom(); // 恢復使用者自訂縮放
+                document.querySelectorAll('.window-panel').forEach(el => el.classList.remove('active-tab')); 
+            } 
+        }
+
         function switchTab(tabId, btn) { document.querySelectorAll('.window-panel').forEach(el => el.classList.remove('active-tab')); document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active')); document.getElementById(tabId).classList.add('active-tab'); btn.classList.add('active'); }
         function toggleETF() { showETF = !showETF; let btn = document.getElementById('etf-btn'); if (showETF) { btn.innerText = "🔘 隱藏 ETF"; btn.style.borderColor = "var(--red)"; btn.style.color = "var(--red)"; } else { btn.innerText = "🔘 ETF"; btn.style.borderColor = "var(--border)"; btn.style.color = "var(--text-main)"; } if (Object.keys(brain).length > 0) refreshUI(brain); }
         
@@ -211,7 +241,6 @@ web application/stitch/projects/3821308289950563886/screens/74766365170202084
             if (typeof val === 'string' && val.includes('N/A')) return -999999;
             if (col === 'Code' || col === 'time') return val.toString();
             
-            // 💡 修正：扒掉所有 HTML 標籤，防止爆量箱子的 CSS 顏色代碼干擾數字提取
             let cleanStr = val.toString().replace(/<[^>]*>?/gm, ''); 
             let num = parseFloat(cleanStr.replace(/[^0-9.-]/g, '')) || 0;
             
@@ -299,8 +328,6 @@ web application/stitch/projects/3821308289950563886/screens/74766365170202084
                 
                 let badges = "";
                 if (parseFloat(r.GapPct) > 10.0 && parseFloat(r.RelVol) >= 1.0) badges += `<span title="巨幅跳空" style="font-size:16px; line-height:1;">🪂</span>`;
-                
-                // 💡 戰術優化：加入 DR (海外妖股) 的徽章標示
                 if (r.Type === 'dr') badges += `<span title="海外存託憑證(外國妖股)" style="font-size:16px; line-height:1;">🌐</span>`;
 
                 let volTier = r.VolTier || 0; 
