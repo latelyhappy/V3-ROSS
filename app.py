@@ -275,8 +275,8 @@ def calculate_hft_score(headline, ticker=""):
                 
     return total_score, is_toxic, elite_hits
 
-# 💡 核心手術 2 & 3：動態計算分數（包含最新毒藥否決、時間衰減、死水打折）
-def update_dynamic_catscore(cell, current_vwap_dev=None, current_ema9=None, current_ema20=None):
+# 💡 核心手術：導入「毒藥背離」一票否決機制
+def update_dynamic_catscore(cell, current_vwap_dev=None, current_ema9=None, current_ema20=None, gap_pct=None):
     news_list = cell.get('NewsList', [])
     if not news_list:
         cell["CatScore"] = 0
@@ -287,10 +287,11 @@ def update_dynamic_catscore(cell, current_vwap_dev=None, current_ema9=None, curr
     news_list.sort(key=lambda x: x.get('time', '00-00 00:00'), reverse=True)
     latest_news = news_list[0]
     
-    # ☠️ 毒藥一票否決機制：只要最新一篇是毒藥，直接覆蓋所有歷史利多，強制轉為地雷！
+    # ☠️ 毒藥一票否決 1：新聞本身自帶毒藥關鍵字 (如 Offering)
     if latest_news.get('is_trap', False):
         cell["CatScore"] = -50
         cell["IsTrap"] = True
+        cell["StickySignal"] = "💀 增發/毒藥陷阱"
         return
         
     best_score = 0
@@ -299,11 +300,10 @@ def update_dynamic_catscore(cell, current_vwap_dev=None, current_ema9=None, curr
     v_dev = current_vwap_dev if current_vwap_dev is not None else cell.get("VWAP_Dev", 0)
     e9 = current_ema9 if current_ema9 is not None else cell.get("EMA9", 0)
     e20 = current_ema20 if current_ema20 is not None else cell.get("EMA52", 0) 
+    g_pct = gap_pct if gap_pct is not None else cell.get("GapPct", 0) # 獲取跳空跌幅
     
-    # 判斷是否為「死水/停滯」狀態 (股價在 VWAP 之下，或短均線下彎)
-    is_stagnant = False
-    if v_dev <= 0 or e9 <= e20:
-        is_stagnant = True
+    # 判斷是否為「死水/停滯」狀態
+    is_stagnant = (v_dev <= 0 or e9 <= e20)
         
     has_trap = False
     for art in news_list:
@@ -313,13 +313,24 @@ def update_dynamic_catscore(cell, current_vwap_dev=None, current_ema9=None, curr
         art_score = art.get('score', 0)
         pub_ts = art.get('pub_ts', now_ts)
         
-        # ⏱️ 時間衰減降權機制：發布超過 45 分鐘 (2700秒) 且盤勢處於死水，分數直接打一折
+        # ⏱️ 時間衰減降權機制
         if (now_ts - pub_ts) > 2700 and is_stagnant:
             art_score = int(art_score * 0.1)
             
         if art_score > best_score:
             best_score = art_score
-            
+
+    # ========================================================
+    # 🚨 終極修正：毒藥背離審判 (Divergence Veto)
+    # 邏輯：如果 NLP 判定是大利多 (分數 >= 50)，但市場卻用腳投票 (跳空暴跌 > 10% 或 水下崩盤 > 10%)
+    # 這代表主力在利用好新聞出貨，直接一票否決，打入冷宮！
+    # ========================================================
+    if best_score >= 50 and (g_pct <= -10.0 or v_dev <= -10.0):
+        cell["CatScore"] = -99  # 強制給予極度負分
+        cell["IsTrap"] = True
+        cell["StickySignal"] = "💀 假利多真出貨"
+        return
+
     cell["CatScore"] = best_score
     cell["IsTrap"] = has_trap
 
@@ -917,7 +928,7 @@ def scanner_engine():
                             cell["IsTrendingNews"] = cell["HasNews"] and is_trending
                             
                             # 💡 呼叫最新動態計分系統，實時計算時間衰減與最新毒藥判定！
-                            update_dynamic_catscore(cell, current_vwap_dev=vwap_dev, current_ema9=curr_ema9, current_ema20=curr_ema20)
+                            update_dynamic_catscore(cell, current_vwap_dev=vwap_dev, current_ema9=curr_ema9, current_ema20=curr_ema20, gap_pct=gap_pct)
 
                         has_sentiment_flip = False
                         if cell.get("CatScore", 0) < 0 and p_live > current_vwap and curr_ema9 > curr_ema20:
