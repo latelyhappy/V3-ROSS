@@ -679,17 +679,24 @@ def scanner_engine():
                     avg_vol_10d = stat_data.get('avg_vol_10d', 0)
                     native_rel_vol = stat_data.get('native_rel_vol', 0.0)
                     
-                    if avg_vol_10d and avg_vol_10d > 0:
+                    # 💡 V57.6 核心修復：穩定 1 分鐘均量與日量比，根除重開跳掉 Bug
+                    if avg_vol_10d > 0:
                         historical_1m_avg = avg_vol_10d / 390.0
                     else:
+                        # 如果連 TV 都沒給 10日均量，才用當天歷史平均
                         historical_1m_avg = float(today_df['volume'].iloc[:-1].mean()) if time_lapsed_mins > 2 else v_live
                     
                     if historical_1m_avg <= 0: historical_1m_avg = 1.0 
                     
-                    if avg_vol_10d > 0:
+                    # 💡 絕對優先：強制使用 TV 掃描器傳來的原生量比！
+                    # 只有在 TV 沒給原生量比，且我們有拿到 10 日均量時，才自己除。
+                    if native_rel_vol > 0:
+                        daily_rel_vol = float(round(native_rel_vol, 2))
+                    elif avg_vol_10d > 0:
                         daily_rel_vol = float(round(daily_vol / avg_vol_10d, 2))
                     else:
-                        daily_rel_vol = float(round(native_rel_vol, 2)) if native_rel_vol > 0 else 1.0
+                        # 如果全部都拿不到 (剛開機瞬間)，給予預設值 1.0，絕不輸出奇怪的 0.14
+                        daily_rel_vol = 1.0
 
                     rel_vol_live = float(round(v_live / historical_1m_avg, 2))
                     rel_vol_prev = float(round(v_prev / historical_1m_avg, 2))
