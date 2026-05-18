@@ -23,7 +23,6 @@
     "EXCLUSIVE": 80,
     "OFFER TO": 80,
     "PURCHASE AGREEMENT": 75,
-    "INTENT TO ACQUIRE": 75,
     "LIFTS FULL-YEAR GUIDANCE": 30,
     "RAISES GUIDANCE": 25,
     "PROFITABILITY SURPRISE": 20,
@@ -38,6 +37,15 @@
     "第一季財報": 15,
     "FINANCIAL RESULTS": 15,
     "RECORD REVENUE": 15
+  },
+  "FLUFF_PR_WARNING": {
+    "_註記": "意向書、備忘錄與戰略探索 (極容易被用來掩護出貨，給予極低分)",
+    "INTENT TO ACQUIRE": 15,
+    "LETTER OF INTENT": 15,
+    "MEMORANDUM OF UNDERSTANDING": 10,
+    "MOU": 10,
+    "NON-BINDING": 0,
+    "EXPLORING STRATEGIC ALTERNATIVES": 10
   },
   "DEFENSE_PREMIUM": {
     "_註記": "V46 實戰數據 + Ross 最新認證軍工/AI詞彙",
