@@ -46,6 +46,24 @@ import memory_worker
 
 app = Flask(__name__)
 
+# ==========================================
+# 📊 V58 核心數學引擎：CVD、HMA 與極限軌道
+# ==========================================
+def calc_wma(s, length):
+    weights = np.arange(1, length + 1)
+    return s.rolling(length).apply(lambda x: np.dot(x, weights) / weights.sum(), raw=True)
+
+def calc_hma(s, length):
+    if len(s) < length: return s # 數據不夠時防呆
+    half_length = int(length / 2)
+    sqrt_length = int(np.sqrt(length))
+    wmaf = calc_wma(s, half_length) * 2
+    wmas = calc_wma(s, length)
+    diff = wmaf - wmas
+    return calc_wma(diff, sqrt_length)
+
+# ==========================================
+
 @app.route('/api/export_intelligence')
 def export_intelligence():
     limit = request.args.get('limit', default=None, type=int)
@@ -541,7 +559,6 @@ def update_dynamic_watchlist():
                 
                 float_comp = 100.0 / math.sqrt(float_m) if float_m > 0 else 0.0
 
-                # 💡 V57.7 新增：強制將掃描器的最新報價寫入備援記憶體，防止 K 線斷層導致的畫面凍結！
                 temp_stats[sym] = {
                     'prev': prev_est, 'float_str': f_str, 'type': t, 
                     'float_comp': float_comp, 'avg_vol_10d': avg_vol_10d,
@@ -569,12 +586,9 @@ def scanner_engine():
         try:
             tv = TvDatafeed(TW_USERNAME, TW_PASSWORD)
             TV_LOGIN_STATUS = "✅ 登入成功"
-            print(f"🚀 [SYSTEM] TradingView 實時權限登入成功")
         except Exception as e:
-            print(f"❌ [ERROR] TradingView 登入失敗: {e}")
             TV_LOGIN_STATUS = "⚠️ 帳密錯誤 (訪客模式)"
 
-    consecutive_errors = 0 
     while True:
         try:
             now_ts = time.time()
@@ -603,86 +617,81 @@ def scanner_engine():
             current_watchlist = DYNAMIC_WATCHLIST.copy()
 
             def _process_ticker(ticker):
-                nonlocal consecutive_errors, tv
+                nonlocal tv
                 try:
                     time.sleep(0.5) 
-                    
-                    # 💡 V57.7 核心修復：攔截 K 線套件的致命崩潰
                     df = None
                     try:
                         df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=1000, extended_session=True)
-                    except Exception as e:
-                        print(f"⚠️ [K線獲取失敗] {ticker} 尚未產生足夠K線，啟動掃描器備援...")
+                    except: pass
                     
                     stat_data = STATS_MAP.get(ticker, {'prev': 0.0, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0, 'avg_vol_10d': 0.0, 'native_rel_vol': 0.0, 'total_vol': 0, 'live_price': 0.0, 'live_pct': 0.0})
                     
-                    # 💡 V57.7 強制備援邏輯：當 K 線失敗時，直接提取 TV 掃描器的最新資料覆蓋儀表板！
                     if df is None or df.empty: 
                         with brain_lock:
                             cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "StickySignal": "", "StickyColor": "green", "StickyTime": 0})
                             p_live = float(stat_data.get('live_price', 0.0))
                             real_pct = float(stat_data.get('live_pct', 0.0))
-                            daily_vol = int(stat_data.get('total_vol', 0))
-                            
                             if p_live == 0.0: return 
-                            
                             stats = {
-                                "Code": ticker, "RelVol": f"{stat_data.get('native_rel_vol', 0.0)}x", "Vol": format_vol(daily_vol),
+                                "Code": ticker, "RelVol": f"{stat_data.get('native_rel_vol', 0.0)}x", "Vol": format_vol(int(stat_data.get('total_vol', 0))),
                                 "Status": "gray", "Signal": "⏳ 待K線生成",
-                                "HighVal": p_live, "StopLoss": p_live * 0.99, 
-                                "Float": stat_data.get('float_str', '-'), "Type": stat_data.get('type', 'stock'), "VolAcc": "-", 
-                                "VolTier": 1, "EMA9_Dev": 0.0, "IsSniperTarget": False, 
-                                "IsTrendingNews": False, 
+                                "HighVal": p_live, "StopLoss": p_live * 0.99, "Float": stat_data.get('float_str', '-'), "Type": stat_data.get('type', 'stock'),
+                                "VolAcc": "-", "VolTier": 1, "EMA9_Dev": 0.0, "IsSniperTarget": False, "IsTrendingNews": False, 
                                 "SN_Score": 0, "VsaState": 0, "VR_Acc": 0.0, "VWAP_Dev": 0.0, "VWAP_Rating": "Low",
-                                "EMA9": p_live, "EMA52": p_live, "TriggerType": "none", 
-                                "Turnover": "0.0%",
-                                "DeltaStr": "", "TriggerTS": 0,
-                                "HasSentimentFlip": False, "GapPct": real_pct, "Pct2Min": 0.0, "HOD_Cooldown": 0,
-                                "PrevClose": stat_data.get('prev', 0.0),
-                                "Price": f"${p_live:.2f}",
-                                "Pct": f"{real_pct:+.2f}%",
-                                "Amt": f"{(p_live - stat_data.get('prev', 0.0)):+.2f}",
-                                "PriceVal": p_live
+                                "EMA9": p_live, "EMA52": p_live, "TriggerType": "none", "Turnover": "0.0%", "DeltaStr": "", "TriggerTS": 0,
+                                "HasSentimentFlip": False, "GapPct": real_pct, "Pct2Min": 0.0, "HOD_Cooldown": 0, "PrevClose": stat_data.get('prev', 0.0),
+                                "Price": f"${p_live:.2f}", "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live - stat_data.get('prev', 0.0)):+.2f}", "PriceVal": p_live
                             }
                             cell.update(stats)
-                            
                             active_items = [x for x in MASTER_BRAIN["details"].values() if x.get("Code") in DYNAMIC_WATCHLIST]
                             MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(str(x.get('Pct', '0')).replace('%', '')), reverse=True)[:30]
-                        return # 備援完成，讓儀表板跳動，結束此回合
+                        return 
 
                     time_diff = df.index.to_series().diff()
                     new_sessions = time_diff[time_diff > pd.Timedelta(hours=4)]
                     if not new_sessions.empty:
                         session_start = new_sessions.index[-1]
-                        today_df = df.loc[session_start:]
+                        today_df = df.loc[session_start:].copy()
                     else:
                         last_date = df.index[-1].date()
-                        today_df = df[df.index.date == last_date]
+                        today_df = df[df.index.date == last_date].copy()
 
-                    p_live = float(df['close'].iloc[-1])
-                    p_prev = float(df['close'].iloc[-2]) if len(df) > 1 else p_live
-                    
-                    if p_live < 0.5 or p_live > 50.0:
-                        return
+                    p_live = float(today_df['close'].iloc[-1])
+                    p_prev = float(today_df['close'].iloc[-2]) if len(today_df) > 1 else p_live
+                    if p_live < 0.5 or p_live > 50.0: return
                         
-                    v_live = float(df['volume'].iloc[-1])
-                    v_prev = float(df['volume'].iloc[-2]) if len(df) > 1 else v_live
+                    v_live = float(today_df['volume'].iloc[-1])
+                    v_prev = float(today_df['volume'].iloc[-2]) if len(today_df) > 1 else v_live
                     
                     collector.update_max_price(ticker, p_live)
                     
                     scanner_vol = stat_data.get('total_vol', 0)
                     kbar_sum_vol = int(today_df['volume'].sum()) if not today_df.empty else int(v_live)
-                    
                     daily_vol = int(scanner_vol) if scanner_vol > 0 else kbar_sum_vol
 
-                    try:
-                        daily_df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_daily, n_bars=2)
-                        if daily_df is not None and not daily_df.empty: true_prev_close = float(daily_df['close'].iloc[-2]) if len(daily_df) > 1 else float(daily_df['open'].iloc[0])
-                        else: true_prev_close = 0.0
-                    except: true_prev_close = 0.0
+                    # ==========================================
+                    # 📊 V58 核心武器：CVD 籌碼矩陣運算
+                    # ==========================================
+                    k_range = today_df['high'] - today_df['low']
+                    k_range = k_range.replace(0, 1e-5) # 防呆除以零
+                    
+                    buy_vol = np.where(today_df['close'] >= today_df['open'], 
+                                       today_df['volume'] * ((today_df['close'] - today_df['low']) / k_range),
+                                       today_df['volume'] * ((today_df['high'] - today_df['open']) / k_range))
+                    
+                    sell_vol = today_df['volume'] - buy_vol
+                    delta = buy_vol - sell_vol
+                    cvd_series = delta.cumsum()
+                    
+                    # 計算 HMA 與 布林極限
+                    cvd_hma = calc_hma(cvd_series, 14)
+                    cvd_sma20 = cvd_series.rolling(20).mean()
+                    cvd_std20 = cvd_series.rolling(20).std()
+                    cvd_upper = cvd_sma20 + (2 * cvd_std20)
+                    # ==========================================
 
                     time_lapsed_mins = len(today_df)
-                    
                     real_float = get_real_float(ticker)
                     float_m = real_float / 1_000_000 if real_float > 0 else 999.0
                     turnover = (daily_vol / real_float) if real_float > 0 else 0.0
@@ -694,33 +703,16 @@ def scanner_engine():
                     avg_vol_10d = stat_data.get('avg_vol_10d', 0)
                     native_rel_vol = stat_data.get('native_rel_vol', 0.0)
                     
-                    if avg_vol_10d > 0:
-                        historical_1m_avg = avg_vol_10d / 390.0
-                    else:
-                        historical_1m_avg = float(today_df['volume'].iloc[:-1].mean()) if time_lapsed_mins > 2 else v_live
-                    
+                    if avg_vol_10d > 0: historical_1m_avg = avg_vol_10d / 390.0
+                    else: historical_1m_avg = float(today_df['volume'].iloc[:-1].mean()) if time_lapsed_mins > 2 else v_live
                     if historical_1m_avg <= 0: historical_1m_avg = 1.0 
                     
-                    if native_rel_vol > 0:
-                        daily_rel_vol = float(round(native_rel_vol, 2))
-                    elif avg_vol_10d > 0:
-                        daily_rel_vol = float(round(daily_vol / avg_vol_10d, 2))
-                    else:
-                        daily_rel_vol = 1.0
+                    if native_rel_vol > 0: daily_rel_vol = float(round(native_rel_vol, 2))
+                    elif avg_vol_10d > 0: daily_rel_vol = float(round(daily_vol / avg_vol_10d, 2))
+                    else: daily_rel_vol = 1.0
 
-                    rel_vol_live = float(round(v_live / historical_1m_avg, 2))
-                    rel_vol_prev = float(round(v_prev / historical_1m_avg, 2))
-                    
                     rel_vol_display = daily_rel_vol
                     if daily_vol < 5000: rel_vol_display = 0.0
-
-                    vol_3m = float(df['volume'].iloc[-3:].sum()) if len(df) >= 3 else v_live
-
-                    zero_vol_mins = 0
-                    if time_lapsed_mins >= 15:
-                        last_15_vols = today_df['volume'].iloc[-15:].values
-                        zero_vol_mins = (last_15_vols == 0).sum()
-                    is_continuous = (zero_vol_mins <= 3) 
 
                     if time_lapsed_mins > 0:
                         typical_price = (today_df['high'] + today_df['low'] + today_df['close']) / 3
@@ -730,84 +722,23 @@ def scanner_engine():
                         vwap_dev = float(round(((p_live - current_vwap) / current_vwap) * 100, 2)) if current_vwap > 0 else 0.0
                     else: current_vwap = p_live; vwap_dev = 0.0
 
-                    vwap_rating = "High" if vwap_dev > 15.0 else ("Mid" if vwap_dev > 5.0 else "Low") 
-                    df['tr'] = pd.concat([(df['high'] - df['low']), (df['high'] - df['close'].shift(1)).abs(), (df['low'] - df['close'].shift(1)).abs()], axis=1).max(axis=1)
-                    
-                    prev_close = true_prev_close if true_prev_close > 0 else (float(stat_data['prev']) if stat_data['prev'] > 0 else float(df['low'].min()))
+                    prev_close = float(stat_data['prev']) if stat_data['prev'] > 0 else float(today_df['low'].min())
                     real_pct = float(((p_live - prev_close) / prev_close) * 100) if prev_close > 0 else 0.0
-                    
-                    now_ny = datetime.now(TZ_NY)
-                    is_premarket = now_ny.time() < datetime.strptime("09:30", "%H:%M").time()
-                    
-                    if is_premarket: gap_pct = real_pct
-                    else:
-                        try:
-                            ny_index = today_df.index.tz_localize('UTC').tz_convert('America/New_York')
-                            reg_df = today_df[ny_index.time >= datetime.strptime("09:30", "%H:%M").time()]
-                            if not reg_df.empty:
-                                reg_open = float(reg_df['open'].iloc[0])
-                                gap_pct = float(((reg_open - prev_close) / prev_close) * 100) if prev_close > 0 else 0.0
-                            else: gap_pct = real_pct
-                        except: gap_pct = real_pct
-
-                    try:
-                        if len(df) >= 3: p_2m_ago = float(df['close'].iloc[-3])
-                        else: p_2m_ago = float(df['close'].iloc[0])
-                        pct_2m = float(((p_live - p_2m_ago) / p_2m_ago) * 100) if p_2m_ago > 0 else 0.0
-                    except: pct_2m = 0.0
-
-                    try:
-                        if not today_df.empty:
-                            hod_val = float(today_df['high'].max())
-                            hod_idx = today_df[today_df['high'] == hod_val].index[-1]
-                            current_utc = datetime.now(pytz.UTC)
-                            if hod_idx.tzinfo is None: hod_idx = pytz.UTC.localize(hod_idx)
-                            minutes_since_hod = int((current_utc - hod_idx).total_seconds() / 60)
-                            minutes_since_hod = max(0, minutes_since_hod)
-                        else: minutes_since_hod = 0
-                    except: minutes_since_hod = 0
+                    gap_pct = real_pct # 盤前視為與 real_pct 一致
 
                     curr_ema9 = float(df['close'].ewm(span=9, adjust=False).mean().iloc[-1]) if len(df) >= 9 else p_live
                     curr_ema20 = float(df['close'].ewm(span=20, adjust=False).mean().iloc[-1]) if len(df) >= 20 else p_live
                     curr_ema52 = float(df['close'].ewm(span=52, adjust=False).mean().iloc[-1]) if len(df) >= 52 else p_live
-                    past_high = float(df['high'].iloc[-11:-1].max()) if len(df) >= 11 else p_live
                     
-                    ema9_dev = float(round(((p_live - curr_ema9) / curr_ema9) * 100, 2)) if curr_ema9 > 0 else 0.0
-
                     vol_tier = 1 
-                    today_max_vol = float(today_df['volume'].max()) if not today_df.empty else v_live
-                    
-                    if (v_live >= historical_1m_avg * 10.0 and v_live >= 10000) or (v_live >= today_max_vol and v_live >= 10000 and rel_vol_display >= 5.0):
-                        vol_tier = 4 
-                    elif (v_live >= historical_1m_avg * 5.0 and v_live >= 5000):
-                        vol_tier = 3 
-                    elif v_live >= historical_1m_avg * 2.0:
-                        vol_tier = 2 
-                        
-                    is_sniper_target = bool(vol_tier == 4 and ema9_dev >= 1.5 and daily_vol >= 200000)
+                    if (v_live >= historical_1m_avg * 5.0 and v_live >= 5000): vol_tier = 3 
+                    elif v_live >= historical_1m_avg * 2.0: vol_tier = 2 
 
-                    is_monster_gene = (turnover >= 1.0 and float_m <= 20.0)
-                    is_fake_breakout = (real_pct > 15.0 and turnover < 0.05 and vol_tier <= 2)
-                    
-                    ema_max = max(curr_ema9, curr_ema20, curr_ema52)
-                    ema_min = min(curr_ema9, curr_ema20, curr_ema52)
-                    is_ema_tight = (ema_max - ema_min) / ema_min < 0.02 if ema_min > 0 else False
-                    is_accumulation = (is_ema_tight and current_vwap > 0 and abs(p_live - current_vwap)/current_vwap < 0.01 and turnover >= 0.2 and v_live > historical_1m_avg * 3.0)
-                    
-                    c_open = float(df['open'].iloc[-1]); c_close = float(df['close'].iloc[-1])
-                    c_body = abs(c_open - c_close)
-                    c_upper = float(df['high'].iloc[-1]) - max(c_open, c_close)
-                    is_testing_supply = (c_upper > c_body * 2 and v_live < historical_1m_avg and c_body > 0)
-                    
-                    is_controlling_cost = (is_premarket and daily_vol > 1000000 and -2.0 <= real_pct <= 2.0)
-                    is_v_reversal = (p_prev < current_vwap and p_live > current_vwap and vol_tier == 4 and pct_2m > 2.0)
-
-                    ratio_5v5 = 1.0; vol_acc_str = "-"; vr_acc = 0.0 
+                    ratio_5v5 = 1.0; vol_acc_str = "-" 
                     if len(today_df) >= 15:
                         vol_A = float(today_df['volume'].iloc[-5:].sum())
                         vol_B = float(today_df['volume'].iloc[-10:-5].sum())
                         vol_C = float(today_df['volume'].iloc[-15:-10].sum())
-                        
                         if vol_B > 0:
                             ratio_5v5 = float(vol_A / vol_B)
                             sym_up, sym_extreme = ("↗", "🔥") if p_live >= p_prev else ("🔻", "🩸")
@@ -816,113 +747,93 @@ def scanner_engine():
                             elif vol_A < vol_B < vol_C: vol_acc_str = f"🧊 {ratio_5v5:.2f}x"
                             else: vol_acc_str = f"↘ {ratio_5v5:.2f}x"
 
-                    is_vwap_magnet = False
-                    if (p_live < current_vwap) and (vwap_dev >= -1.5) and is_ema_tight and float_m <= 50.0: is_vwap_magnet = True
-                    is_spark = bool(((rel_vol_live >= 2.5 and p_live >= past_high) or (rel_vol_prev >= 2.5 and p_prev >= past_high)) and (real_pct > 3.0))
-                    is_ross_match = bool(real_pct >= 4.0 and float_m <= 50.0 and rel_vol_display >= 1.8)
-                    is_vwap_breakout = bool(p_prev < current_vwap and p_live > current_vwap and rel_vol_display >= 1.5 and float_m <= 50.0)
-                    is_dead_bounce = bool((p_live < current_vwap) and (curr_ema9 < curr_ema20) and (real_pct > 0))
-
-                    is_micro_pullback = False
-                    if len(df) >= 3 and float_m <= 50.0:
-                        prev_open = float(df['open'].iloc[-2])
-                        prev_high = float(df['high'].iloc[-2])
-                        if p_prev <= prev_open and p_prev > curr_ema9:
-                            if p_live > prev_high and rel_vol_live >= 1.5: is_micro_pullback = True
-
-                    is_whole_dollar = False
-                    if float_m <= 50.0 and rel_vol_display >= 1.5 and p_live > p_prev:
-                        remainder = p_live % 1.0
-                        if 0.90 <= remainder <= 0.98: is_whole_dollar = True
-                    target_dollar = math.ceil(p_live)
-
-                    is_massive_inflow = False
-                    if len(df) >= 10:
-                        recent_vol_max = float(df['volume'].iloc[-11:-1].max()) if len(df) >= 11 else v_live
-                        if v_live > recent_vol_max and v_live >= historical_1m_avg * 3.0 and p_live >= df['open'].iloc[-1]:
-                            is_massive_inflow = True
-
                     base_sn_score = (stat_data.get('float_comp', 0) + real_pct) * (ratio_5v5 if ratio_5v5 > 1.0 else 0.5)
-                    if float_m < 2.0: base_sn_score *= 2.5 
-                    elif float_m > 80.0: base_sn_score = min(base_sn_score, 30.0) 
                     sn_score = int(round(base_sn_score))
                     
-                    vol_warn = " (⚠️量低)" if (p_live * max(v_live, v_prev, historical_1m_avg)) < 50000 else ""
-                    if not is_continuous: vol_warn += " (❄️斷層停滯)"
+                    # ==========================================
+                    # ⚔️ V58 全新 CVD 六大戰術判定區
+                    # ==========================================
+                    is_spring_trap = False
+                    is_peak_hook = False
+                    is_golden_cross = False
+                    is_death_cross = False
+                    is_cvd_frontrun = False
+                    is_iceberg_dist = False
+                    
+                    # 全局過濾：當前成交量必須大於 5 分鐘均量，否則為死水不發訊號
+                    vol_sma5 = today_df['volume'].rolling(5).mean().iloc[-1] if len(today_df) >= 5 else 0
+                    has_active_volume = v_live > vol_sma5 and vol_sma5 > 0
 
+                    if len(today_df) >= 20 and has_active_volume:
+                        curr_cvd = cvd_series.iloc[-1]
+                        prev_cvd = cvd_series.iloc[-2]
+                        prev2_cvd = cvd_series.iloc[-3]
+                        
+                        curr_hma = cvd_hma.iloc[-1]
+                        prev_hma = cvd_hma.iloc[-2]
+                        
+                        prev_upper = cvd_upper.iloc[-2]
+                        curr_delta = delta.iloc[-1]
+                        
+                        # [做多 Level 1] ⚡ 假跌破獵殺 (破VWAP但帶正Delta反拉)
+                        if (p_live < current_vwap * 1.01) and (p_live > p_prev) and (curr_delta > 0) and vol_tier >= 3:
+                            is_spring_trap = True
+                            
+                        # [逃頂 Level 1] 💥 山峰極限反轉 (CVD 突破+2標準差後下勾)
+                        if (prev_cvd > prev_upper) and (curr_cvd < prev_cvd):
+                            is_peak_hook = True
+                            
+                        # [做多 Level 2] ● 金叉啟動
+                        if (prev_cvd < prev_hma) and (curr_cvd > curr_hma):
+                            is_golden_cross = True
+                            
+                        # [逃頂 Level 2] ❌ 動能死叉
+                        if (prev_cvd > prev_hma) and (curr_cvd < curr_hma):
+                            is_death_cross = True
+                            
+                        # [潛伏做多] 🎯 CVD 潛伏上揚 (價格橫盤，但CVD連三漲)
+                        if (curr_cvd > prev_cvd > prev2_cvd) and (v_live < historical_1m_avg):
+                            ema_max = max(curr_ema9, curr_ema20)
+                            ema_min = min(curr_ema9, curr_ema20)
+                            is_ema_tight = (ema_max - ema_min) / ema_min < 0.02 if ema_min > 0 else False
+                            if is_ema_tight: is_cvd_frontrun = True
+                            
+                        # [潛伏逃頂] ⚠️ 冰山倒貨 (高檔爆量留上影線且 Delta < 0)
+                        c_open = float(today_df['open'].iloc[-1]); c_close = float(today_df['close'].iloc[-1])
+                        c_body = abs(c_open - c_close)
+                        c_upper = float(today_df['high'].iloc[-1]) - max(c_open, c_close)
+                        if (p_live > current_vwap) and (c_upper > c_body * 2) and (v_live > historical_1m_avg * 2) and (curr_delta < 0):
+                            is_iceberg_dist = True
+
+                    # 🎨 訊號與顏色判定
                     status_color = "green"
                     current_signal = ""
                     
-                    ui_tag = collector.evaluate_sniper_tags(ticker, float_m, daily_vol, rel_vol_display, real_pct, p_live > current_vwap)
-                    
-                    if is_fake_breakout:
-                        current_signal = "🤡 假突破警告(無量)"
+                    if is_peak_hook:
+                        current_signal = "💥 山峰極限反轉"
+                        status_color = "red"
+                    elif is_spring_trap:
+                        current_signal = "⚡ 獵殺陷阱(假跌破拉回)"
+                        status_color = "purple"
+                    elif is_iceberg_dist:
+                        current_signal = "⚠️ 主力倒貨(準備停利)"
+                        status_color = "yellow"
+                    elif is_cvd_frontrun:
+                        current_signal = "🎯 狙擊陣型(量縮CVD潛伏)"
+                        status_color = "yellow"
+                    elif is_death_cross:
+                        current_signal = "❌ 動能死叉"
                         status_color = "gray"
-                    elif is_v_reversal:
-                        current_signal = "🪃 假跌破V轉強襲"
-                        status_color = "purple"
-                    elif is_monster_gene:
-                        current_signal = "🧬 妖股基因(換手100%+)"
-                        status_color = "purple"
-                    elif is_accumulation:
-                        current_signal = "🏗️ 主力建倉區(橫盤爆量)"
-                        status_color = "purple"
-                    elif is_controlling_cost:
-                        current_signal = "⚓ 盤前壓價建倉"
-                        status_color = "yellow"
-                    elif is_testing_supply:
-                        current_signal = "🎣 測試賣壓(長上影量縮)"
-                        status_color = "yellow"
-                    else:
-                        if "陷阱" in ui_tag:
-                            current_signal = f"💀 陷阱/無量 (Vol: {format_vol(daily_vol)})"
-                            status_color = "gray"
-                        else:
-                            if "狙擊" in ui_tag:
-                                current_signal = "🎯 建議狙擊 "
-                                status_color = "red"
-                            
-                            if is_vwap_magnet:
-                                current_signal += f"🧲 磁吸噴發預警{vol_warn}"
-                                if status_color == "green": status_color = "purple"
-                            elif is_dead_bounce and is_ross_match:
-                                current_signal += f"🚨水下反彈警報{vol_warn}"
-                                if status_color == "green": status_color = "red"
-                            elif is_micro_pullback:
-                                current_signal += f"🚩牛旗回踩突破{vol_warn}"
-                                if status_color == "green": status_color = "yellow"
-                            elif is_whole_dollar:
-                                current_signal += f"🧲整數磁吸(${target_dollar:.2f}){vol_warn}"
-                                if status_color == "green": status_color = "yellow"
-                            elif is_vwap_breakout:
-                                current_signal += f"⚔️VWAP帶量突破{vol_warn}"
-                                if status_color == "green": status_color = "yellow"
-                            elif is_ross_match:
-                                current_signal += f"🚀Ross勢頭確立{vol_warn}"
-                                if status_color == "green": status_color = "yellow"
-                            elif is_spark:
-                                current_signal += f"🔥強力點火{vol_warn}"
-                                if status_color == "green": status_color = "yellow"
-                                
-                            if is_massive_inflow:
-                                if current_signal: current_signal += " [📦爆量箱子]"
-                                else: current_signal = f"📦爆量箱子(大量進場){vol_warn}"
-                                status_color = "purple"
-
-                    final_vol_text = format_vol(daily_vol)
-                    if is_massive_inflow:
-                        final_vol_text = f'<span style="color: #d942f5; font-weight: 900; text-shadow: 0 0 6px rgba(217, 66, 245, 0.5);">📦 {final_vol_text}</span>'
+                    elif is_golden_cross:
+                        current_signal = "● 金叉啟動"
+                        status_color = "green"
 
                     delta_threshold = 0.03 if p_live < 5.0 else 0.015
                     last_alert_info = STATE_TRACKER.get(f"{ticker}_last_alert", {"price": p_live, "vol": daily_vol})
-                    last_alert_price = last_alert_info["price"]
-                    last_alert_vol = last_alert_info["vol"]
-                    price_change_ratio = (p_live - last_alert_price) / last_alert_price if last_alert_price > 0 else 0.0
-                    vol_increase = daily_vol - last_alert_vol
+                    price_change_ratio = (p_live - last_alert_info["price"]) / last_alert_info["price"] if last_alert_info["price"] > 0 else 0.0
                     
                     trigger_type = "none"
                     delta_pct_str = ""
-                    
                     if price_change_ratio >= delta_threshold:
                         trigger_type = "up"
                         delta_pct_str = f"+{(price_change_ratio*100):.1f}% ↗"
@@ -931,23 +842,10 @@ def scanner_engine():
                         trigger_type = "down"
                         delta_pct_str = f"{(price_change_ratio*100):.1f}% ↘"
                         STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
-                    elif vol_increase > 500000 or (last_alert_vol > 0 and vol_increase / last_alert_vol > 1.0):
-                        trigger_type = "vol_spike"
-                        delta_pct_str = f"📦 大單"
-                        STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
 
                     with brain_lock:
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "StickySignal": "", "StickyColor": "green", "StickyTime": 0})
                         
-                        if "NewsList" in cell:
-                            cell["HasNews"] = len(cell["NewsList"]) > 0
-                            
-                            is_trending = (p_live > current_vwap) and (curr_ema9 >= curr_ema20)
-                            cell["IsTrendingNews"] = cell["HasNews"] and is_trending
-                            
-                            if cell["NewsList"]: cell["CatScore"] = max(n['score'] for n in cell["NewsList"])
-                            else: cell["CatScore"] = 0
-
                         has_sentiment_flip = False
                         if cell.get("CatScore", 0) < 0 and p_live > current_vwap and curr_ema9 > curr_ema20:
                             cell["CatScore"] = 60
@@ -958,9 +856,6 @@ def scanner_engine():
                             status_color = "purple"
                         
                         if current_signal:
-                            if "⚡" in cell.get("StickySignal", "") and now_ts - cell.get("StickyTime", 0) < 15:
-                                current_signal = current_signal + " [⚡極速]"
-                            status_color = "purple"
                             cell["StickySignal"] = current_signal
                             cell["StickyColor"] = status_color
                             cell["StickyTime"] = now_ts
@@ -972,17 +867,17 @@ def scanner_engine():
                         is_alpaca_active = cell.get("Alpaca_Active", False)
 
                         stats = {
-                            "Code": ticker, "RelVol": f"{rel_vol_display}x", "Vol": final_vol_text,
+                            "Code": ticker, "RelVol": f"{rel_vol_display}x", "Vol": format_vol(daily_vol),
                             "Status": status_color, "Signal": current_signal,
                             "HighVal": float(df['high'].iloc[-1]), "StopLoss": curr_ema20 * 0.99, 
                             "Float": float_str, "Type": stat_data.get('type', 'stock'), "VolAcc": vol_acc_str, 
-                            "VolTier": vol_tier, "EMA9_Dev": ema9_dev, "IsSniperTarget": is_sniper_target, 
+                            "VolTier": vol_tier, "EMA9_Dev": ema9_dev, "IsSniperTarget": False, 
                             "IsTrendingNews": cell.get("IsTrendingNews", False), 
-                            "SN_Score": sn_score, "VsaState": 0, "VR_Acc": vr_acc, "VWAP_Dev": vwap_dev, "VWAP_Rating": vwap_rating,
+                            "SN_Score": sn_score, "VsaState": 0, "VR_Acc": 0.0, "VWAP_Dev": vwap_dev, "VWAP_Rating": "Low",
                             "EMA9": curr_ema9, "EMA52": curr_ema52, "TriggerType": trigger_type, 
                             "Turnover": f"{turnover*100:.1f}%",
                             "DeltaStr": delta_pct_str, "TriggerTS": now_ts if trigger_type != "none" else cell.get("TriggerTS", 0),
-                            "HasSentimentFlip": has_sentiment_flip, "GapPct": gap_pct, "Pct2Min": pct_2m, "HOD_Cooldown": minutes_since_hod,
+                            "HasSentimentFlip": has_sentiment_flip, "GapPct": gap_pct, "Pct2Min": 0.0, "HOD_Cooldown": 0,
                             "PrevClose": prev_close 
                         }
                         
@@ -991,24 +886,12 @@ def scanner_engine():
                             stats["Pct"] = f"{real_pct:+.2f}%"
                             stats["Amt"] = f"{(p_live-prev_close):+.2f}"
                             stats["PriceVal"] = float(p_live)
-                        else:
-                            stats["Price"] = cell.get("Price", f"${p_live:.2f}")
-                            stats["Pct"] = cell.get("Pct", f"{real_pct:+.2f}%")
-                            stats["Amt"] = cell.get("Amt", f"{(p_live-prev_close):+.2f}")
-                            stats["PriceVal"] = cell.get("PriceVal", float(p_live))
 
                         cell.update(stats)
                         
-                        if is_vwap_magnet or is_ross_match or is_spark or is_dead_bounce or is_massive_inflow or is_vwap_breakout or is_micro_pullback or is_whole_dollar or is_fake_breakout or is_monster_gene or is_accumulation or is_v_reversal:
+                        if is_spring_trap or is_peak_hook or is_iceberg_dist or is_cvd_frontrun or is_golden_cross or is_death_cross:
                             last_trigger_time = cooldown_tracker.get(ticker, 0)
-                            last_massive_time = STATE_TRACKER.get(f"{ticker}_massive", 0)
-                            
-                            can_trigger = False
-                            if now_ts - last_trigger_time > 60: can_trigger = True
-                            elif is_massive_inflow and (now_ts - last_massive_time > 30): can_trigger = True
-                               
-                            if can_trigger:
-                                if is_massive_inflow: STATE_TRACKER[f"{ticker}_massive"] = now_ts
+                            if now_ts - last_trigger_time > 60:
                                 cooldown_tracker[ticker] = now_ts 
                                 
                                 is_sec_trap = check_sec_fatal_traps(ticker)
@@ -1016,9 +899,7 @@ def scanner_engine():
                                     stats["Signal"] += " 💀(SEC陷阱)"
                                     cell["IsTrap"] = True
                                     
-                                alert_audio = None
-                                if "陷阱" in ui_tag or cell.get("IsTrap", False) or is_fake_breakout: alert_audio = None
-                                elif ("狙擊" in current_signal) or has_sentiment_flip or is_vwap_magnet or is_massive_inflow or is_v_reversal or is_accumulation: alert_audio = "nova"
+                                alert_audio = "nova" if (is_spring_trap or is_peak_hook) else None
 
                                 log_entry = {**stats, "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), "SignalTS": now_ts}
                                 if alert_audio: log_entry["Audio"] = alert_audio
@@ -1026,10 +907,6 @@ def scanner_engine():
                                 MASTER_BRAIN["surge_log"].insert(0, log_entry)
                                 MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
                                 
-                                if cell.get('NewsList'):
-                                    headline = cell['NewsList'][0].get('raw_title', '')
-                                    collector.log_event(ticker, headline, float_m, float(p_live), volume=daily_vol, change_percent=real_pct)
-                                    
                     threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
                 
                 except Exception as e: 
@@ -1042,16 +919,11 @@ def scanner_engine():
                 with brain_lock:
                     all_items = list(MASTER_BRAIN["details"].values())
                     active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST]
-                    
                     MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(str(x.get('Pct', '0')).replace('%', '')), reverse=True)[:30]
-                    
-                    vwap_items = [x for x in active_items if x.get("VR_Acc", 0) > 30.0 and x.get("VWAP_Dev", 0) > 0.0]
-                    MASTER_BRAIN["vwap_list"] = sorted(vwap_items, key=lambda x: x.get("VWAP_Dev", 0), reverse=True)
                     MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
             
             time.sleep(15)
         except Exception as e: 
-            print(f"❌ [主引擎錯誤] Scanner Engine 發生崩潰: {e}")
             time.sleep(5)
 
 def daily_flush_worker():
@@ -1059,22 +931,16 @@ def daily_flush_worker():
     while True:
         time.sleep(10)
         new_session_date = get_current_trading_date()
-        
         if new_session_date != _current_session_date:
             with brain_lock:
                 MASTER_BRAIN["surge_log"] = []
                 MASTER_BRAIN["details"] = {}
                 MASTER_BRAIN["leaderboard"] = []
-                MASTER_BRAIN["vwap_list"] = []
-                MASTER_BRAIN["top_catalysts"] = []
                 DYNAMIC_WATCHLIST.clear()
                 STATS_MAP.clear()
                 cooldown_tracker.clear()
                 STATE_TRACKER.clear()
-                
                 _current_session_date = new_session_date
-                now_ny_str = datetime.now(TZ_NY).strftime('%Y-%m-%d %H:%M:%S')
-                print(f"🔄 [SYSTEM] 執行跨日大清洗！迎接全新交易日 (NY Time: {now_ny_str})")
 
 @app.route('/api/config', methods=['POST'])
 def update_config():
@@ -1117,7 +983,7 @@ if __name__ == '__main__':
     collector.init_db() 
     load_float_cache()
     load_intraday_state()
-    memory_worker.init_worker() # 💡 啟動 NLP 自動進化大腦
+    memory_worker.init_worker() 
     threading.Thread(target=state_auto_save_worker, daemon=True).start()
     threading.Thread(target=scanner_engine, daemon=True).start()
     threading.Thread(target=finnhub_news_monitor_worker, daemon=True).start()
