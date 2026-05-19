@@ -275,7 +275,6 @@ def calculate_hft_score(headline, ticker=""):
                 
     return total_score, is_toxic, elite_hits
 
-# 💡 核心手術：導入「毒藥背離」一票否決機制
 def update_dynamic_catscore(cell, current_vwap_dev=None, current_ema9=None, current_ema20=None, gap_pct=None):
     news_list = cell.get('NewsList', [])
     if not news_list:
@@ -283,11 +282,9 @@ def update_dynamic_catscore(cell, current_vwap_dev=None, current_ema9=None, curr
         cell["IsTrap"] = False
         return
     
-    # 確保由新到舊排序
     news_list.sort(key=lambda x: x.get('time', '00-00 00:00'), reverse=True)
     latest_news = news_list[0]
     
-    # ☠️ 毒藥一票否決 1：新聞本身自帶毒藥關鍵字 (如 Offering)
     if latest_news.get('is_trap', False):
         cell["CatScore"] = -50
         cell["IsTrap"] = True
@@ -300,9 +297,8 @@ def update_dynamic_catscore(cell, current_vwap_dev=None, current_ema9=None, curr
     v_dev = current_vwap_dev if current_vwap_dev is not None else cell.get("VWAP_Dev", 0)
     e9 = current_ema9 if current_ema9 is not None else cell.get("EMA9", 0)
     e20 = current_ema20 if current_ema20 is not None else cell.get("EMA52", 0) 
-    g_pct = gap_pct if gap_pct is not None else cell.get("GapPct", 0) # 獲取跳空跌幅
+    g_pct = gap_pct if gap_pct is not None else cell.get("GapPct", 0) 
     
-    # 判斷是否為「死水/停滯」狀態
     is_stagnant = (v_dev <= 0 or e9 <= e20)
         
     has_trap = False
@@ -313,27 +309,20 @@ def update_dynamic_catscore(cell, current_vwap_dev=None, current_ema9=None, curr
         art_score = art.get('score', 0)
         pub_ts = art.get('pub_ts', now_ts)
         
-        # ⏱️ 時間衰減降權機制
         if (now_ts - pub_ts) > 2700 and is_stagnant:
             art_score = int(art_score * 0.1)
             
         if art_score > best_score:
             best_score = art_score
 
-    # ========================================================
-    # 🚨 終極修正：毒藥背離審判 (Divergence Veto)
-    # 邏輯：如果 NLP 判定是大利多 (分數 >= 50)，但市場卻用腳投票 (跳空暴跌 > 10% 或 水下崩盤 > 10%)
-    # 這代表主力在利用好新聞出貨，直接一票否決，打入冷宮！
-    # ========================================================
     if best_score >= 50 and (g_pct <= -10.0 or v_dev <= -10.0):
-        cell["CatScore"] = -99  # 強制給予極度負分
+        cell["CatScore"] = -99  
         cell["IsTrap"] = True
         cell["StickySignal"] = "💀 假利多真出貨"
         return
 
     cell["CatScore"] = best_score
     cell["IsTrap"] = has_trap
-
 
 def extract_top_catalysts(master_brain):
     top_list = []
@@ -391,11 +380,9 @@ def fetch_and_score_news(ticker, cell, force=False):
                 raw_t = item.find('title').text
                 if raw_t in finnhub_titles: continue 
         
-                # 💡 核心手術 1：Echo 懲罰機制。若是洗版新聞，分數強制為 0
                 if is_news_echo(raw_t, dt_tpe, cell.get('NewsList', [])):
+                    score, is_trap, elites = calculate_hft_score(raw_t, ticker)
                     raw_t = "[Echo] " + raw_t
-                    score = 0
-                    _, is_trap, elites = calculate_hft_score(raw_t, ticker)
                 else:
                     score, is_trap, elites = calculate_hft_score(raw_t, ticker)
                 
@@ -409,18 +396,16 @@ def fetch_and_score_news(ticker, cell, force=False):
                     "link": item.find('link').text, "time": dt_tpe.strftime("%m-%d %H:%M"),
                     "pub_ts": dt_tpe.timestamp(), "is_today": (dt_tpe.date() == now_tpe.date()), 
                     "score": score, "elites": list(elites), "source": "Yahoo",
-                    "p_news": p_news, "max_p_15m": p_news, "fetch_time_ts": time.time(),
-                    "is_trap": is_trap # 💡 存入個體毒藥標記
+                    "p_news": p_news, "max_p_15m": p_news, "fetch_time_ts": time.time()
                 })
             
             with brain_lock:
                 combined = articles + [n for n in cell.get('NewsList', []) if n['raw_title'] not in {a['raw_title'] for a in articles}]
                 combined.sort(key=lambda x: x.get('time', '00-00 00:00'), reverse=True)
                 cell["NewsList"] = combined[:10]
-                
-                # 💡 取代舊的粗暴 max() 計算，套用最新動態計算引擎
                 update_dynamic_catscore(cell)
-                
+                cell["IsTrap"] = cell.get("IsTrap", False) or has_trap 
+                cell["HasNews"] = len(cell["NewsList"]) > 0 
                 MASTER_BRAIN["top_catalysts"] = extract_top_catalysts(MASTER_BRAIN)
                 for e in all_elites:
                     if e not in MASTER_BRAIN["elite_words"]: MASTER_BRAIN["elite_words"].append(e)
@@ -458,16 +443,13 @@ def finnhub_news_monitor_worker():
                            
                             with brain_lock:
                                 cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": []})
-                                
-                                # 💡 核心手術 1：Echo 懲罰機制
                                 if is_news_echo(art_headline, dt_tpe, cell.get('NewsList', [])):
+                                    score, is_trap, elites = calculate_hft_score(art_headline, ticker)
                                     art_headline = "[Echo] " + art_headline
-                                    score = 0
-                                    _, is_trap, elites = calculate_hft_score(art_headline, ticker)
                                 else:
                                     score, is_trap, elites = calculate_hft_score(art_headline, ticker)
-                                    score = int(score * 1.2)
 
+                                score = int(score * 1.2)
                                 if any("💎" in e for e in elites): art_headline = "[💎 核心情報] " + art_headline
 
                                 p_news = cell.get('HighVal', 0.0)
@@ -476,18 +458,15 @@ def finnhub_news_monitor_worker():
                                     "time": dt_tpe.strftime("%m-%d %H:%M"), "pub_ts": dt_tpe.timestamp(),
                                     "is_today": (dt_tpe.date() == datetime.now(TZ_TW).date()),
                                     "score": score, "elites": list(elites), "source": "Finnhub PR",
-                                    "p_news": p_news, "max_p_15m": p_news, "fetch_time_ts": time.time(),
-                                    "is_trap": is_trap # 💡 存入個體毒藥標記
+                                    "p_news": p_news, "max_p_15m": p_news, "fetch_time_ts": time.time()
                                 }
 
                                 if not any(n['link'] == art_url for n in cell['NewsList']):
                                     cell['NewsList'].append(new_article)
                                     cell['NewsList'].sort(key=lambda x: x.get('time', '00-00 00:00'), reverse=True)
                                     cell['NewsList'] = cell['NewsList'][:10]
-                                    
-                                    # 💡 取代舊的粗暴 max() 計算
                                     update_dynamic_catscore(cell)
-                                    
+                                    cell["IsTrap"] = cell.get("IsTrap", False) or is_trap
                                     cell["HasNews"] = True
                                     MASTER_BRAIN["top_catalysts"] = extract_top_catalysts(MASTER_BRAIN)
                                     for e in elites:
@@ -561,15 +540,15 @@ def update_dynamic_watchlist():
                 if t != 'fund' and float_m > 50.0: f_str = f"⚠️{f_str}"
                 
                 float_comp = 100.0 / math.sqrt(float_m) if float_m > 0 else 0.0
-                
-                total_vol_from_scanner = pm_v if is_premarket and pm_v is not None else v
-                if total_vol_from_scanner is None: total_vol_from_scanner = 0
 
+                # 💡 V57.7 新增：強制將掃描器的最新報價寫入備援記憶體，防止 K 線斷層導致的畫面凍結！
                 temp_stats[sym] = {
                     'prev': prev_est, 'float_str': f_str, 'type': t, 
                     'float_comp': float_comp, 'avg_vol_10d': avg_vol_10d,
                     'native_rel_vol': native_rel_vol,
-                    'total_vol': total_vol_from_scanner 
+                    'total_vol': total_vol_from_scanner,
+                    'live_price': p_eff,
+                    'live_pct': actual_pct
                 }
         else:
             print(f"⚠️ [掃描器警告] TV 回傳資料為空，目前可能無符合條件之標的。")
@@ -628,10 +607,48 @@ def scanner_engine():
                 try:
                     time.sleep(0.5) 
                     
-                    df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=1000, extended_session=True)
+                    # 💡 V57.7 核心修復：攔截 K 線套件的致命崩潰
+                    df = None
+                    try:
+                        df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=1000, extended_session=True)
+                    except Exception as e:
+                        print(f"⚠️ [K線獲取失敗] {ticker} 尚未產生足夠K線，啟動掃描器備援...")
                     
+                    stat_data = STATS_MAP.get(ticker, {'prev': 0.0, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0, 'avg_vol_10d': 0.0, 'native_rel_vol': 0.0, 'total_vol': 0, 'live_price': 0.0, 'live_pct': 0.0})
+                    
+                    # 💡 V57.7 強制備援邏輯：當 K 線失敗時，直接提取 TV 掃描器的最新資料覆蓋儀表板！
                     if df is None or df.empty: 
-                        return
+                        with brain_lock:
+                            cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "StickySignal": "", "StickyColor": "green", "StickyTime": 0})
+                            p_live = float(stat_data.get('live_price', 0.0))
+                            real_pct = float(stat_data.get('live_pct', 0.0))
+                            daily_vol = int(stat_data.get('total_vol', 0))
+                            
+                            if p_live == 0.0: return 
+                            
+                            stats = {
+                                "Code": ticker, "RelVol": f"{stat_data.get('native_rel_vol', 0.0)}x", "Vol": format_vol(daily_vol),
+                                "Status": "gray", "Signal": "⏳ 待K線生成",
+                                "HighVal": p_live, "StopLoss": p_live * 0.99, 
+                                "Float": stat_data.get('float_str', '-'), "Type": stat_data.get('type', 'stock'), "VolAcc": "-", 
+                                "VolTier": 1, "EMA9_Dev": 0.0, "IsSniperTarget": False, 
+                                "IsTrendingNews": False, 
+                                "SN_Score": 0, "VsaState": 0, "VR_Acc": 0.0, "VWAP_Dev": 0.0, "VWAP_Rating": "Low",
+                                "EMA9": p_live, "EMA52": p_live, "TriggerType": "none", 
+                                "Turnover": "0.0%",
+                                "DeltaStr": "", "TriggerTS": 0,
+                                "HasSentimentFlip": False, "GapPct": real_pct, "Pct2Min": 0.0, "HOD_Cooldown": 0,
+                                "PrevClose": stat_data.get('prev', 0.0),
+                                "Price": f"${p_live:.2f}",
+                                "Pct": f"{real_pct:+.2f}%",
+                                "Amt": f"{(p_live - stat_data.get('prev', 0.0)):+.2f}",
+                                "PriceVal": p_live
+                            }
+                            cell.update(stats)
+                            
+                            active_items = [x for x in MASTER_BRAIN["details"].values() if x.get("Code") in DYNAMIC_WATCHLIST]
+                            MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(str(x.get('Pct', '0')).replace('%', '')), reverse=True)[:30]
+                        return # 備援完成，讓儀表板跳動，結束此回合
 
                     time_diff = df.index.to_series().diff()
                     new_sessions = time_diff[time_diff > pd.Timedelta(hours=4)]
@@ -652,8 +669,6 @@ def scanner_engine():
                     v_prev = float(df['volume'].iloc[-2]) if len(df) > 1 else v_live
                     
                     collector.update_max_price(ticker, p_live)
-                    
-                    stat_data = STATS_MAP.get(ticker, {'prev': p_live, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0, 'avg_vol_10d': 0.0, 'native_rel_vol': 0.0, 'total_vol': 0})
                     
                     scanner_vol = stat_data.get('total_vol', 0)
                     kbar_sum_vol = int(today_df['volume'].sum()) if not today_df.empty else int(v_live)
@@ -679,23 +694,18 @@ def scanner_engine():
                     avg_vol_10d = stat_data.get('avg_vol_10d', 0)
                     native_rel_vol = stat_data.get('native_rel_vol', 0.0)
                     
-                    # 💡 V57.6 核心修復：穩定 1 分鐘均量與日量比，根除重開跳掉 Bug
                     if avg_vol_10d > 0:
                         historical_1m_avg = avg_vol_10d / 390.0
                     else:
-                        # 如果連 TV 都沒給 10日均量，才用當天歷史平均
                         historical_1m_avg = float(today_df['volume'].iloc[:-1].mean()) if time_lapsed_mins > 2 else v_live
                     
                     if historical_1m_avg <= 0: historical_1m_avg = 1.0 
                     
-                    # 💡 絕對優先：強制使用 TV 掃描器傳來的原生量比！
-                    # 只有在 TV 沒給原生量比，且我們有拿到 10 日均量時，才自己除。
                     if native_rel_vol > 0:
                         daily_rel_vol = float(round(native_rel_vol, 2))
                     elif avg_vol_10d > 0:
                         daily_rel_vol = float(round(daily_vol / avg_vol_10d, 2))
                     else:
-                        # 如果全部都拿不到 (剛開機瞬間)，給予預設值 1.0，絕不輸出奇怪的 0.14
                         daily_rel_vol = 1.0
 
                     rel_vol_live = float(round(v_live / historical_1m_avg, 2))
@@ -931,11 +941,12 @@ def scanner_engine():
                         
                         if "NewsList" in cell:
                             cell["HasNews"] = len(cell["NewsList"]) > 0
+                            
                             is_trending = (p_live > current_vwap) and (curr_ema9 >= curr_ema20)
                             cell["IsTrendingNews"] = cell["HasNews"] and is_trending
                             
-                            # 💡 呼叫最新動態計分系統，實時計算時間衰減與最新毒藥判定！
-                            update_dynamic_catscore(cell, current_vwap_dev=vwap_dev, current_ema9=curr_ema9, current_ema20=curr_ema20, gap_pct=gap_pct)
+                            if cell["NewsList"]: cell["CatScore"] = max(n['score'] for n in cell["NewsList"])
+                            else: cell["CatScore"] = 0
 
                         has_sentiment_flip = False
                         if cell.get("CatScore", 0) < 0 and p_live > current_vwap and curr_ema9 > curr_ema20:
