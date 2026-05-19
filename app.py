@@ -57,7 +57,22 @@ def safe_float(v):
     except: return 0.0
 
 # ==========================================
-# 🌍 V58：動態時區校準引擎 (完美處理美東夏/冬令時差)
+# 🛠️ 拆股異常校準器 (YFinance Fallback)
+# ==========================================
+def fetch_yfinance_prev_close(ticker):
+    try:
+        tkr = yf.Ticker(ticker.replace('-', '.'))
+        hist = tkr.history(period="5d")
+        if not hist.empty and len(hist) >= 2:
+            return float(hist['Close'].iloc[-2])
+        elif len(hist) == 1:
+            return float(hist['Close'].iloc[0])
+    except:
+        pass
+    return 0.0
+
+# ==========================================
+# 🌍 動態時區校準引擎 (完美處理美東夏/冬令時差)
 # ==========================================
 TZ_TW = pytz.timezone('Asia/Taipei')
 TZ_NY = pytz.timezone('America/New_York')
@@ -65,15 +80,11 @@ TZ_NY = pytz.timezone('America/New_York')
 def convert_to_taiwan_time(raw_time, source="yahoo"):
     try:
         if source == "yahoo":
-            # Yahoo 提供的是帶有時區的字串 (如 -0400, GMT)
             dt_obj = parsedate_to_datetime(raw_time)
-            # 萬一 API 抽風沒有給時區，強制視為紐約當地時間 (會自動處理夏/冬令)
             if dt_obj.tzinfo is None:
                 dt_obj = TZ_NY.localize(dt_obj)
             return dt_obj.astimezone(TZ_TW)
-            
         elif source == "finnhub":
-            # Finnhub 提供的是絕對 UNIX 時間戳 (UTC)
             utc_dt = datetime.fromtimestamp(raw_time, pytz.UTC)
             return utc_dt.astimezone(TZ_TW)
     except Exception as e:
@@ -424,7 +435,6 @@ def fetch_and_score_news(ticker, cell, force=False):
                 finnhub_titles = {n['raw_title'] for n in cell.get('NewsList', []) if n.get('source') == 'Finnhub PR'}
             
             for item in root.findall('./channel/item')[:5]:
-                # 💡 套用時區校準引擎
                 dt_tpe = convert_to_taiwan_time(item.find('pubDate').text, source="yahoo")
                 if dt_tpe.date() < three_days_ago_tpe: continue
                 raw_t = item.find('title').text
@@ -444,7 +454,7 @@ def fetch_and_score_news(ticker, cell, force=False):
                 articles.append({
                     "ticker": ticker, "title": "⏳ 翻譯中...", "raw_title": raw_t,
                     "link": item.find('link').text, 
-                    "time": dt_tpe.strftime("%m-%d %H:%M"), # 精準輸出台灣時間
+                    "time": dt_tpe.strftime("%m-%d %H:%M"),
                     "pub_ts": dt_tpe.timestamp(), "is_today": (dt_tpe.date() == now_tpe.date()), 
                     "score": score, "elites": list(elites), "source": "Yahoo",
                     "p_news": p_news, "max_p_15m": p_news, "fetch_time_ts": time.time()
@@ -491,7 +501,6 @@ def finnhub_news_monitor_worker():
                             art_headline = art.get('headline', '')
                             if not art_url or not art_headline or art_url in seen_news_urls: continue
                             
-                            # 💡 套用時區校準引擎
                             dt_tpe = convert_to_taiwan_time(art.get('datetime', time.time()), source="finnhub")
                            
                             with brain_lock:
@@ -508,7 +517,7 @@ def finnhub_news_monitor_worker():
                                 p_news = cell.get('HighVal', 0.0)
                                 new_article = {
                                     "ticker": ticker, "title": "⏳ 翻譯中...", "raw_title": art_headline, "link": art_url,
-                                    "time": dt_tpe.strftime("%m-%d %H:%M"), # 精準輸出台灣時間
+                                    "time": dt_tpe.strftime("%m-%d %H:%M"),
                                     "pub_ts": dt_tpe.timestamp(),
                                     "is_today": (dt_tpe.date() == datetime.now(TZ_TW).date()),
                                     "score": score, "elites": list(elites), "source": "Finnhub PR",
@@ -548,17 +557,18 @@ def update_dynamic_watchlist():
         chg_col = "premarket_change" if is_premarket else "change"
         vol_col = "premarket_volume" if is_premarket else "volume"
 
+        # 🚀 V58.1 網子大放水：擴容100支、價格放寬、成交量降至500、漲幅降至-50%
         payload = {
             "filter": [
                 {"left": "exchange", "operation": "in_range", "right": ["NASDAQ", "NYSE", "AMEX"]},
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund", "dr"]}, 
-                {"left": price_col, "operation": "in_range", "right": [0.5, 50]},
-                {"left": chg_col, "operation": "egreater", "right": 2.0},
-                {"left": vol_col, "operation": "egreater", "right": 5000}
+                {"left": price_col, "operation": "in_range", "right": [0.1, 100]},
+                {"left": chg_col, "operation": "egreater", "right": -50.0},
+                {"left": vol_col, "operation": "egreater", "right": 500}
             ], 
             "columns": ["name", "close", "change", "volume", "premarket_close", "premarket_change", "premarket_volume", "market_cap_basic", "type", "average_volume_10d_calc", "relative_volume_10d_calc"], 
             "sort": {"sortBy": chg_col, "sortOrder": "desc"}, 
-            "range": [0, 30] 
+            "range": [0, 100] 
         }
 
         res = requests.post(url, json=payload, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
@@ -608,7 +618,7 @@ def update_dynamic_watchlist():
         
         with brain_lock:
             DYNAMIC_WATCHLIST.clear()
-            DYNAMIC_WATCHLIST.extend(new_watchlist[:30])
+            DYNAMIC_WATCHLIST.extend(new_watchlist[:100]) # 🚀 擴容至 100 支
             STATS_MAP.update(temp_stats)
     except Exception as e: 
         print(f"❌ [掃描器錯誤] 獲取 TV 名單失敗: {e}")
@@ -663,25 +673,61 @@ def scanner_engine():
                     
                     stat_data = STATS_MAP.get(ticker, {'prev': 0.0, 'float_str': '-', 'type': 'stock', 'float_comp': 0.0, 'avg_vol_10d': 0.0, 'native_rel_vol': 0.0, 'total_vol': 0, 'live_price': 0.0, 'live_pct': 0.0})
                     
+                    # 🚀 V58.1 數據解耦提取區
+                    tv_live_price = float(stat_data.get('live_price', 0.0))
+                    tv_native_pct = float(stat_data.get('live_pct', 0.0))
+                    tv_scanner_vol = int(stat_data.get('total_vol', 0))
+                    tv_prev_est = float(stat_data.get('prev', 0.0))
+
                     if df is None or df.empty: 
                         with brain_lock:
                             cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "StickySignal": "", "StickyColor": "green", "StickyTime": 0})
-                            p_live = float(stat_data.get('live_price', 0.0))
-                            real_pct = float(stat_data.get('live_pct', 0.0))
-                            if p_live == 0.0: return 
+                            
+                            is_alpaca_active = cell.get("Alpaca_Active", False)
+                            alpaca_cost_price = cell.get("Alpaca_Cost_Price", 0.0)
+                            
+                            if tv_live_price == 0.0: return 
+
+                            # 🛠️ 拆股異常校準 (K線斷層時的備援防護)
+                            correct_prev = tv_prev_est
+                            pct_val = tv_native_pct
+                            if tv_native_pct < -20.0 and tv_live_price > tv_prev_est:
+                                yf_prev = fetch_yfinance_prev_close(ticker)
+                                if yf_prev > 0:
+                                    correct_prev = yf_prev
+                                    pct_val = ((tv_live_price - correct_prev) / correct_prev) * 100
+
+                            amt_val = tv_live_price - correct_prev
+                            
+                            # 寫入物理隔離格
+                            cell["TV_Live_Price"] = tv_live_price
+                            cell["Correct_Prev_Close"] = correct_prev
+                            cell["PctVal"] = pct_val
+                            cell["AmtVal"] = amt_val
+                            cell["TV_Scanner_Vol"] = tv_scanner_vol
+                            cell["Daily_Vol_Raw"] = tv_scanner_vol
+
+                            # 🛡️ Alpaca 終極渲染路由
+                            if is_alpaca_active and alpaca_cost_price > 0:
+                                ui_price_str = f"${alpaca_cost_price:.2f} (持倉)"
+                                ui_price_val = alpaca_cost_price
+                            else:
+                                ui_price_str = f"${tv_live_price:.2f}"
+                                ui_price_val = tv_live_price
+
                             stats = {
-                                "Code": ticker, "RelVol": f"{stat_data.get('native_rel_vol', 0.0)}x", "Vol": format_vol(int(stat_data.get('total_vol', 0))),
+                                "Code": ticker, "RelVol": f"{stat_data.get('native_rel_vol', 0.0)}x", "Vol": format_vol(tv_scanner_vol),
                                 "Status": "gray", "Signal": "⏳ 待K線生成",
-                                "HighVal": safe_float(p_live), "StopLoss": safe_float(p_live * 0.99), "Float": stat_data.get('float_str', '-'), "Type": stat_data.get('type', 'stock'),
+                                "HighVal": safe_float(tv_live_price), "StopLoss": safe_float(tv_live_price * 0.99), "Float": stat_data.get('float_str', '-'), "Type": stat_data.get('type', 'stock'),
                                 "VolAcc": "-", "VolTier": 1, "EMA9_Dev": 0.0, "IsSniperTarget": False, "IsTrendingNews": False, 
                                 "SN_Score": 0.0, "VsaState": 0, "VR_Acc": 0.0, "VWAP_Dev": 0.0, "VWAP_Rating": "Low",
-                                "EMA9": safe_float(p_live), "EMA52": safe_float(p_live), "TriggerType": "none", "Turnover": "0.0%", "DeltaStr": "", "TriggerTS": 0,
-                                "HasSentimentFlip": False, "GapPct": safe_float(real_pct), "Pct2Min": 0.0, "HOD_Cooldown": 0, "PrevClose": safe_float(stat_data.get('prev', 0.0)),
-                                "Price": f"${p_live:.2f}", "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live - stat_data.get('prev', 0.0)):+.2f}", "PriceVal": safe_float(p_live)
+                                "EMA9": safe_float(tv_live_price), "EMA52": safe_float(tv_live_price), "TriggerType": "none", "Turnover": "0.0%", "DeltaStr": "", "TriggerTS": 0,
+                                "HasSentimentFlip": False, "GapPct": safe_float(pct_val), "Pct2Min": 0.0, "HOD_Cooldown": 0, "PrevClose": safe_float(correct_prev),
+                                "Price": ui_price_str, "Pct": f"{pct_val:+.2f}%", "Amt": f"{amt_val:+.2f}", "PriceVal": safe_float(ui_price_val)
                             }
                             cell.update(stats)
                             active_items = [x for x in MASTER_BRAIN["details"].values() if x.get("Code") in DYNAMIC_WATCHLIST]
-                            MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(str(x.get('Pct', '0')).replace('%', '')), reverse=True)[:30]
+                            MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(str(x.get('Pct', '0')).replace('%', '')), reverse=True)[:100]
                         return 
 
                     df = df.ffill().bfill().fillna(0)
@@ -697,16 +743,32 @@ def scanner_engine():
 
                     p_live = float(today_df['close'].iloc[-1])
                     p_prev = float(today_df['close'].iloc[-2]) if len(today_df) > 1 else p_live
-                    if p_live < 0.5 or p_live > 50.0: return
+                    if p_live < 0.1 or p_live > 100.0: return
                         
                     v_live = float(today_df['volume'].iloc[-1])
                     v_prev = float(today_df['volume'].iloc[-2]) if len(today_df) > 1 else v_live
                     
                     collector.update_max_price(ticker, p_live)
                     
-                    scanner_vol = stat_data.get('total_vol', 0)
+                    # 🚀 V58.1 雙源成交量引擎 (破除 4點計數器滯後)
                     kbar_sum_vol = int(today_df['volume'].sum()) if not today_df.empty else int(v_live)
-                    daily_vol = int(scanner_vol) if scanner_vol > 0 else kbar_sum_vol
+                    daily_vol_raw = max(tv_scanner_vol, kbar_sum_vol)
+
+                    # 🛠️ 拆股異常校準 (主大腦)
+                    kbar_prev = float(today_df['low'].min()) if not today_df.empty else p_live
+                    base_prev = tv_prev_est if tv_prev_est > 0 else kbar_prev
+                    
+                    if tv_native_pct < -20.0 and p_live > base_prev:
+                        yf_prev = fetch_yfinance_prev_close(ticker)
+                        if yf_prev > 0:
+                            correct_prev = yf_prev
+                            real_pct = ((p_live - correct_prev) / correct_prev) * 100
+                        else:
+                            correct_prev = base_prev
+                            real_pct = ((p_live - correct_prev) / correct_prev) * 100 if correct_prev > 0 else 0.0
+                    else:
+                        correct_prev = base_prev
+                        real_pct = ((p_live - correct_prev) / correct_prev) * 100 if correct_prev > 0 else 0.0
 
                     k_range = today_df['high'] - today_df['low']
                     k_range = k_range.replace(0, 1e-5) 
@@ -726,26 +788,33 @@ def scanner_engine():
 
                     time_lapsed_mins = len(today_df)
                     real_float = get_real_float(ticker)
-                    float_m = real_float / 1_000_000 if real_float > 0 else 999.0
-                    turnover = (daily_vol / real_float) if real_float > 0 else 0.0
+                    
+                    if real_float <= 0 or math.isnan(real_float):
+                        real_float = FLOAT_CACHE.get(ticker, 999_000_000.0)
+                        
+                    float_m = real_float / 1_000_000
+                    turnover = (daily_vol_raw / real_float) if real_float > 0 else 0.0
                     
                     if stat_data.get('type') == 'fund': float_str = "N/A (ETF)"
-                    elif real_float > 0: float_str = f"⚠️{float_m:.1f}M" if float_m > 50.0 else f"{float_m:.1f}M"
-                    else: float_str = "未知"
+                    else: float_str = f"⚠️{float_m:.1f}M" if float_m > 50.0 else f"{float_m:.1f}M"
 
-                    avg_vol_10d = stat_data.get('avg_vol_10d', 0)
+                    avg_vol_10d = stat_data.get('avg_vol_10d', 0.0)
                     native_rel_vol = stat_data.get('native_rel_vol', 0.0)
                     
                     if avg_vol_10d > 0: historical_1m_avg = avg_vol_10d / 390.0
                     else: historical_1m_avg = float(today_df['volume'].iloc[:-1].mean()) if time_lapsed_mins > 2 else v_live
                     if historical_1m_avg <= 0: historical_1m_avg = 1.0 
                     
-                    if native_rel_vol > 0: daily_rel_vol = float(round(native_rel_vol, 2))
-                    elif avg_vol_10d > 0: daily_rel_vol = float(round(daily_vol / avg_vol_10d, 2))
-                    else: daily_rel_vol = 1.0
+                    # 🛠️ 拆股量比自動校準
+                    if native_rel_vol < 0.1 and real_pct > 15.0 and avg_vol_10d > 0:
+                        expected_vol = (avg_vol_10d / 390.0) * max(1, time_lapsed_mins)
+                        rel_vol_display = float(round(daily_vol_raw / expected_vol, 2)) if expected_vol > 0 else 1.0
+                    else:
+                        if native_rel_vol > 0: rel_vol_display = float(round(native_rel_vol, 2))
+                        elif avg_vol_10d > 0: rel_vol_display = float(round(daily_vol_raw / avg_vol_10d, 2))
+                        else: rel_vol_display = 1.0
 
-                    rel_vol_display = daily_rel_vol
-                    if daily_vol < 5000: rel_vol_display = 0.0
+                    if daily_vol_raw < 500: rel_vol_display = 0.0
 
                     if time_lapsed_mins > 0:
                         typical_price = (today_df['high'] + today_df['low'] + today_df['close']) / 3
@@ -755,9 +824,6 @@ def scanner_engine():
                         vwap_dev = float(round(((p_live - current_vwap) / current_vwap) * 100, 2)) if current_vwap > 0 else 0.0
                     else: current_vwap = p_live; vwap_dev = 0.0
 
-                    prev_close = float(stat_data['prev']) if stat_data['prev'] > 0 else float(today_df['low'].min())
-                    real_pct = float(((p_live - prev_close) / prev_close) * 100) if prev_close > 0 else 0.0
-                    
                     now_ny = datetime.now(TZ_NY)
                     is_premarket = now_ny.time() < datetime.strptime("09:30", "%H:%M").time()
                     if is_premarket: 
@@ -770,7 +836,7 @@ def scanner_engine():
                             reg_df = today_df[ny_index.time >= datetime.strptime("09:30", "%H:%M").time()]
                             if not reg_df.empty:
                                 reg_open = float(reg_df['open'].iloc[0])
-                                gap_pct = float(((reg_open - prev_close) / prev_close) * 100) if prev_close > 0 else 0.0
+                                gap_pct = float(((reg_open - correct_prev) / correct_prev) * 100) if correct_prev > 0 else 0.0
                             else: gap_pct = real_pct
                         except: gap_pct = real_pct
 
@@ -814,12 +880,10 @@ def scanner_engine():
                             elif vol_A < vol_B < vol_C: vol_acc_str = f"🧊 {ratio_5v5:.2f}x"
                             else: vol_acc_str = f"↘ {ratio_5v5:.2f}x"
 
-                    base_sn_score = (stat_data.get('float_comp', 0) + real_pct) * (ratio_5v5 if ratio_5v5 > 1.0 else 0.5)
+                    float_comp = 100.0 / math.sqrt(float_m) if float_m > 0 else 0.0
+                    base_sn_score = (float_comp + real_pct) * (ratio_5v5 if ratio_5v5 > 1.0 else 0.5)
                     sn_score = int(round(base_sn_score))
                     
-                    # ==========================================
-                    # ⚔️ V58 全新 CVD 六大戰術判定區
-                    # ==========================================
                     is_spring_trap = False
                     is_peak_hook = False
                     is_golden_cross = False
@@ -888,7 +952,7 @@ def scanner_engine():
                         status_color = "green"
 
                     delta_threshold = 0.03 if p_live < 5.0 else 0.015
-                    last_alert_info = STATE_TRACKER.get(f"{ticker}_last_alert", {"price": p_live, "vol": daily_vol})
+                    last_alert_info = STATE_TRACKER.get(f"{ticker}_last_alert", {"price": p_live, "vol": daily_vol_raw})
                     price_change_ratio = (p_live - last_alert_info["price"]) / last_alert_info["price"] if last_alert_info["price"] > 0 else 0.0
                     
                     trigger_type = "none"
@@ -896,15 +960,30 @@ def scanner_engine():
                     if price_change_ratio >= delta_threshold:
                         trigger_type = "up"
                         delta_pct_str = f"+{(price_change_ratio*100):.1f}% ↗"
-                        STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
+                        STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol_raw}
                     elif price_change_ratio <= -delta_threshold:
                         trigger_type = "down"
                         delta_pct_str = f"{(price_change_ratio*100):.1f}% ↘"
-                        STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol}
+                        STATE_TRACKER[f"{ticker}_last_alert"] = {"price": p_live, "vol": daily_vol_raw}
 
                     with brain_lock:
                         cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "StickySignal": "", "StickyColor": "green", "StickyTime": 0})
                         
+                        # 🚀 V58.1 資料物理隔離寫入
+                        cell["TV_Live_Price"] = p_live
+                        cell["Correct_Prev_Close"] = correct_prev
+                        cell["PctVal"] = real_pct
+                        cell["AmtVal"] = p_live - correct_prev
+                        cell["TV_Scanner_Vol"] = tv_scanner_vol
+                        cell["KBar_Cum_Vol"] = kbar_sum_vol
+                        cell["Daily_Vol_Raw"] = daily_vol_raw
+                        cell["TV_Native_RelVol"] = native_rel_vol
+                        cell["Real_Float_Shares"] = real_float
+
+                        if len(today_df) >= 20 and has_active_volume:
+                            cell["CVD_Value"] = curr_cvd
+                            cell["CVD_HMA"] = curr_hma
+
                         has_sentiment_flip = False
                         if cell.get("CatScore", 0) < 0 and p_live > current_vwap and curr_ema9 > curr_ema20:
                             cell["CatScore"] = 60
@@ -924,9 +1003,18 @@ def scanner_engine():
                                 status_color = cell.get("StickyColor", "green")
 
                         is_alpaca_active = cell.get("Alpaca_Active", False)
+                        alpaca_cost_price = cell.get("Alpaca_Cost_Price", 0.0)
+
+                        # 🛡️ Alpaca 終極渲染路由
+                        if is_alpaca_active and alpaca_cost_price > 0:
+                            ui_price_str = f"${alpaca_cost_price:.2f} (持倉)"
+                            ui_price_val = alpaca_cost_price
+                        else:
+                            ui_price_str = f"${p_live:.2f}"
+                            ui_price_val = p_live
 
                         stats = {
-                            "Code": ticker, "RelVol": f"{rel_vol_display}x", "Vol": format_vol(daily_vol),
+                            "Code": ticker, "RelVol": f"{rel_vol_display}x", "Vol": format_vol(daily_vol_raw),
                             "Status": status_color, "Signal": current_signal,
                             "HighVal": safe_float(today_df['high'].max() if not today_df.empty else p_live), 
                             "StopLoss": safe_float(curr_ema20 * 0.99), 
@@ -938,14 +1026,9 @@ def scanner_engine():
                             "Turnover": f"{turnover*100:.1f}%",
                             "DeltaStr": delta_pct_str, "TriggerTS": now_ts if trigger_type != "none" else cell.get("TriggerTS", 0),
                             "HasSentimentFlip": has_sentiment_flip, "GapPct": safe_float(gap_pct), "Pct2Min": safe_float(pct_2m), "HOD_Cooldown": minutes_since_hod,
-                            "PrevClose": safe_float(prev_close) 
+                            "PrevClose": safe_float(correct_prev),
+                            "Price": ui_price_str, "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live - correct_prev):+.2f}", "PriceVal": safe_float(ui_price_val)
                         }
-                        
-                        if not is_alpaca_active:
-                            stats["Price"] = f"${p_live:.2f}"
-                            stats["Pct"] = f"{real_pct:+.2f}%"
-                            stats["Amt"] = f"{(p_live-prev_close):+.2f}"
-                            stats["PriceVal"] = safe_float(p_live)
 
                         cell.update(stats)
                         
@@ -979,7 +1062,7 @@ def scanner_engine():
                 with brain_lock:
                     all_items = list(MASTER_BRAIN["details"].values())
                     active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST]
-                    MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(str(x.get('Pct', '0')).replace('%', '')), reverse=True)[:30]
+                    MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(str(x.get('Pct', '0')).replace('%', '')), reverse=True)[:100]
                     MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
             
             time.sleep(15)
