@@ -674,7 +674,7 @@ def scanner_engine():
                     # 📊 V58 核心武器：CVD 籌碼矩陣運算
                     # ==========================================
                     k_range = today_df['high'] - today_df['low']
-                    k_range = k_range.replace(0, 1e-5) # 防呆除以零
+                    k_range = k_range.replace(0, 1e-5) 
                     
                     buy_vol = np.where(today_df['close'] >= today_df['open'], 
                                        today_df['volume'] * ((today_df['close'] - today_df['low']) / k_range),
@@ -684,7 +684,6 @@ def scanner_engine():
                     delta = buy_vol - sell_vol
                     cvd_series = delta.cumsum()
                     
-                    # 計算 HMA 與 布林極限
                     cvd_hma = calc_hma(cvd_series, 14)
                     cvd_sma20 = cvd_series.rolling(20).mean()
                     cvd_std20 = cvd_series.rolling(20).std()
@@ -724,11 +723,14 @@ def scanner_engine():
 
                     prev_close = float(stat_data['prev']) if stat_data['prev'] > 0 else float(today_df['low'].min())
                     real_pct = float(((p_live - prev_close) / prev_close) * 100) if prev_close > 0 else 0.0
-                    gap_pct = real_pct # 盤前視為與 real_pct 一致
+                    gap_pct = real_pct 
 
                     curr_ema9 = float(df['close'].ewm(span=9, adjust=False).mean().iloc[-1]) if len(df) >= 9 else p_live
                     curr_ema20 = float(df['close'].ewm(span=20, adjust=False).mean().iloc[-1]) if len(df) >= 20 else p_live
                     curr_ema52 = float(df['close'].ewm(span=52, adjust=False).mean().iloc[-1]) if len(df) >= 52 else p_live
+                    
+                    # ✅ 把剛才切太快切掉的 ema9_dev 安全補回來！
+                    ema9_dev = float(round(((p_live - curr_ema9) / curr_ema9) * 100, 2)) if curr_ema9 > 0 else 0.0
                     
                     vol_tier = 1 
                     if (v_live >= historical_1m_avg * 5.0 and v_live >= 5000): vol_tier = 3 
@@ -760,7 +762,6 @@ def scanner_engine():
                     is_cvd_frontrun = False
                     is_iceberg_dist = False
                     
-                    # 全局過濾：當前成交量必須大於 5 分鐘均量，否則為死水不發訊號
                     vol_sma5 = today_df['volume'].rolling(5).mean().iloc[-1] if len(today_df) >= 5 else 0
                     has_active_volume = v_live > vol_sma5 and vol_sma5 > 0
 
@@ -775,30 +776,24 @@ def scanner_engine():
                         prev_upper = cvd_upper.iloc[-2]
                         curr_delta = delta.iloc[-1]
                         
-                        # [做多 Level 1] ⚡ 假跌破獵殺 (破VWAP但帶正Delta反拉)
                         if (p_live < current_vwap * 1.01) and (p_live > p_prev) and (curr_delta > 0) and vol_tier >= 3:
                             is_spring_trap = True
                             
-                        # [逃頂 Level 1] 💥 山峰極限反轉 (CVD 突破+2標準差後下勾)
                         if (prev_cvd > prev_upper) and (curr_cvd < prev_cvd):
                             is_peak_hook = True
                             
-                        # [做多 Level 2] ● 金叉啟動
                         if (prev_cvd < prev_hma) and (curr_cvd > curr_hma):
                             is_golden_cross = True
                             
-                        # [逃頂 Level 2] ❌ 動能死叉
                         if (prev_cvd > prev_hma) and (curr_cvd < curr_hma):
                             is_death_cross = True
                             
-                        # [潛伏做多] 🎯 CVD 潛伏上揚 (價格橫盤，但CVD連三漲)
                         if (curr_cvd > prev_cvd > prev2_cvd) and (v_live < historical_1m_avg):
                             ema_max = max(curr_ema9, curr_ema20)
                             ema_min = min(curr_ema9, curr_ema20)
                             is_ema_tight = (ema_max - ema_min) / ema_min < 0.02 if ema_min > 0 else False
                             if is_ema_tight: is_cvd_frontrun = True
                             
-                        # [潛伏逃頂] ⚠️ 冰山倒貨 (高檔爆量留上影線且 Delta < 0)
                         c_open = float(today_df['open'].iloc[-1]); c_close = float(today_df['close'].iloc[-1])
                         c_body = abs(c_open - c_close)
                         c_upper = float(today_df['high'].iloc[-1]) - max(c_open, c_close)
