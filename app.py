@@ -57,6 +57,29 @@ def safe_float(v):
     except: return 0.0
 
 # ==========================================
+# 🌍 V58：動態時區校準引擎 (完美處理美東夏/冬令時差)
+# ==========================================
+TZ_TW = pytz.timezone('Asia/Taipei')
+TZ_NY = pytz.timezone('America/New_York')
+
+def convert_to_taiwan_time(raw_time, source="yahoo"):
+    try:
+        if source == "yahoo":
+            # Yahoo 提供的是帶有時區的字串 (如 -0400, GMT)
+            dt_obj = parsedate_to_datetime(raw_time)
+            # 萬一 API 抽風沒有給時區，強制視為紐約當地時間 (會自動處理夏/冬令)
+            if dt_obj.tzinfo is None:
+                dt_obj = TZ_NY.localize(dt_obj)
+            return dt_obj.astimezone(TZ_TW)
+            
+        elif source == "finnhub":
+            # Finnhub 提供的是絕對 UNIX 時間戳 (UTC)
+            utc_dt = datetime.fromtimestamp(raw_time, pytz.UTC)
+            return utc_dt.astimezone(TZ_TW)
+    except Exception as e:
+        return datetime.now(TZ_TW)
+
+# ==========================================
 # 📊 V58 核心數學引擎：CVD、HMA 與極限軌道
 # ==========================================
 def calc_wma(s, length):
@@ -64,7 +87,7 @@ def calc_wma(s, length):
     return s.rolling(length).apply(lambda x: np.dot(x, weights) / weights.sum(), raw=True)
 
 def calc_hma(s, length):
-    if len(s) < length: return s.copy() # 數據不夠時防呆
+    if len(s) < length: return s.copy() 
     half_length = int(length / 2)
     sqrt_length = int(np.sqrt(length))
     wmaf = calc_wma(s, half_length) * 2
@@ -102,8 +125,6 @@ FINNHUB_TOKEN = os.getenv('FINNHUB_TOKEN')
 TW_USERNAME = os.getenv('TW_USERNAME', 'guest') 
 TW_PASSWORD = os.getenv('TW_PASSWORD', 'guest')
 PORT = int(os.getenv('PORT', 8080))
-TZ_TW = pytz.timezone('Asia/Taipei')
-TZ_NY = pytz.timezone('America/New_York')
 
 _cached_trends = {}
 _last_trends_update = 0
@@ -403,7 +424,8 @@ def fetch_and_score_news(ticker, cell, force=False):
                 finnhub_titles = {n['raw_title'] for n in cell.get('NewsList', []) if n.get('source') == 'Finnhub PR'}
             
             for item in root.findall('./channel/item')[:5]:
-                dt_tpe = parsedate_to_datetime(item.find('pubDate').text).astimezone(TZ_TW)
+                # 💡 套用時區校準引擎
+                dt_tpe = convert_to_taiwan_time(item.find('pubDate').text, source="yahoo")
                 if dt_tpe.date() < three_days_ago_tpe: continue
                 raw_t = item.find('title').text
                 if raw_t in finnhub_titles: continue 
@@ -421,7 +443,8 @@ def fetch_and_score_news(ticker, cell, force=False):
                 p_news = cell.get('HighVal', 0.0)
                 articles.append({
                     "ticker": ticker, "title": "⏳ 翻譯中...", "raw_title": raw_t,
-                    "link": item.find('link').text, "time": dt_tpe.strftime("%m-%d %H:%M"),
+                    "link": item.find('link').text, 
+                    "time": dt_tpe.strftime("%m-%d %H:%M"), # 精準輸出台灣時間
                     "pub_ts": dt_tpe.timestamp(), "is_today": (dt_tpe.date() == now_tpe.date()), 
                     "score": score, "elites": list(elites), "source": "Yahoo",
                     "p_news": p_news, "max_p_15m": p_news, "fetch_time_ts": time.time()
@@ -467,7 +490,9 @@ def finnhub_news_monitor_worker():
                             art_url = art.get('url', '')
                             art_headline = art.get('headline', '')
                             if not art_url or not art_headline or art_url in seen_news_urls: continue
-                            dt_tpe = datetime.fromtimestamp(art.get('datetime', time.time()), pytz.UTC).astimezone(TZ_TW)
+                            
+                            # 💡 套用時區校準引擎
+                            dt_tpe = convert_to_taiwan_time(art.get('datetime', time.time()), source="finnhub")
                            
                             with brain_lock:
                                 cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": []})
@@ -483,7 +508,8 @@ def finnhub_news_monitor_worker():
                                 p_news = cell.get('HighVal', 0.0)
                                 new_article = {
                                     "ticker": ticker, "title": "⏳ 翻譯中...", "raw_title": art_headline, "link": art_url,
-                                    "time": dt_tpe.strftime("%m-%d %H:%M"), "pub_ts": dt_tpe.timestamp(),
+                                    "time": dt_tpe.strftime("%m-%d %H:%M"), # 精準輸出台灣時間
+                                    "pub_ts": dt_tpe.timestamp(),
                                     "is_today": (dt_tpe.date() == datetime.now(TZ_TW).date()),
                                     "score": score, "elites": list(elites), "source": "Finnhub PR",
                                     "p_news": p_news, "max_p_15m": p_news, "fetch_time_ts": time.time()
@@ -658,7 +684,6 @@ def scanner_engine():
                             MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(str(x.get('Pct', '0')).replace('%', '')), reverse=True)[:30]
                         return 
 
-                    # 🛡️ 斬斷 NaN 病毒：強制清理 TV K 線可能的缺失值，避免 JSON 死機
                     df = df.ffill().bfill().fillna(0)
 
                     time_diff = df.index.to_series().diff()
@@ -683,9 +708,6 @@ def scanner_engine():
                     kbar_sum_vol = int(today_df['volume'].sum()) if not today_df.empty else int(v_live)
                     daily_vol = int(scanner_vol) if scanner_vol > 0 else kbar_sum_vol
 
-                    # ==========================================
-                    # 📊 V58 核心武器：CVD 籌碼矩陣運算
-                    # ==========================================
                     k_range = today_df['high'] - today_df['low']
                     k_range = k_range.replace(0, 1e-5) 
                     
@@ -701,7 +723,6 @@ def scanner_engine():
                     cvd_sma20 = cvd_series.rolling(20).mean()
                     cvd_std20 = cvd_series.rolling(20).std()
                     cvd_upper = cvd_sma20 + (2 * cvd_std20)
-                    # ==========================================
 
                     time_lapsed_mins = len(today_df)
                     real_float = get_real_float(ticker)
@@ -737,7 +758,6 @@ def scanner_engine():
                     prev_close = float(stat_data['prev']) if stat_data['prev'] > 0 else float(today_df['low'].min())
                     real_pct = float(((p_live - prev_close) / prev_close) * 100) if prev_close > 0 else 0.0
                     
-                    # ✅ 恢復：精準判斷盤前真實跳空缺口
                     now_ny = datetime.now(TZ_NY)
                     is_premarket = now_ny.time() < datetime.strptime("09:30", "%H:%M").time()
                     if is_premarket: 
@@ -754,14 +774,12 @@ def scanner_engine():
                             else: gap_pct = real_pct
                         except: gap_pct = real_pct
 
-                    # ✅ 恢復：2 分鐘動能漲幅追蹤
                     try:
                         if len(df) >= 3: p_2m_ago = float(df['close'].iloc[-3])
                         else: p_2m_ago = float(df['close'].iloc[0])
                         pct_2m = float(((p_live - p_2m_ago) / p_2m_ago) * 100) if p_2m_ago > 0 else 0.0
                     except: pct_2m = 0.0
 
-                    # ✅ 恢復：高點冷卻追蹤 (讓前端的「🔥新高標記」重新復活)
                     try:
                         if not today_df.empty:
                             hod_val = float(today_df['high'].max())
@@ -813,7 +831,6 @@ def scanner_engine():
                     has_active_volume = v_live > vol_sma5 and vol_sma5 > 0
 
                     if len(today_df) >= 20 and has_active_volume:
-                        # 🛡️ 加裝 safe_float 防止陣列末端遇到空值崩潰
                         curr_cvd = safe_float(cvd_series.iloc[-1])
                         prev_cvd = safe_float(cvd_series.iloc[-2])
                         prev2_cvd = safe_float(cvd_series.iloc[-3])
@@ -848,7 +865,6 @@ def scanner_engine():
                         if (p_live > current_vwap) and (c_upper > c_body * 2) and (v_live > historical_1m_avg * 2) and (curr_delta < 0):
                             is_iceberg_dist = True
 
-                    # 🎨 訊號與顏色判定
                     status_color = "green"
                     current_signal = ""
                     
@@ -909,7 +925,6 @@ def scanner_engine():
 
                         is_alpaca_active = cell.get("Alpaca_Active", False)
 
-                        # 🛡️ 封裝最後輸出：全數套用 safe_float 防禦 JSON 崩潰
                         stats = {
                             "Code": ticker, "RelVol": f"{rel_vol_display}x", "Vol": format_vol(daily_vol),
                             "Status": status_color, "Signal": current_signal,
