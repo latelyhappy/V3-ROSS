@@ -47,6 +47,16 @@ import memory_worker
 app = Flask(__name__)
 
 # ==========================================
+# 🛡️ 防禦裝甲：確保傳給前端的數字絕不崩潰
+# ==========================================
+def safe_float(v):
+    try:
+        f = float(v)
+        if math.isnan(f) or math.isinf(f): return 0.0
+        return f
+    except: return 0.0
+
+# ==========================================
 # 📊 V58 核心數學引擎：CVD、HMA 與極限軌道
 # ==========================================
 def calc_wma(s, length):
@@ -54,7 +64,7 @@ def calc_wma(s, length):
     return s.rolling(length).apply(lambda x: np.dot(x, weights) / weights.sum(), raw=True)
 
 def calc_hma(s, length):
-    if len(s) < length: return s # 數據不夠時防呆
+    if len(s) < length: return s.copy() # 數據不夠時防呆
     half_length = int(length / 2)
     sqrt_length = int(np.sqrt(length))
     wmaf = calc_wma(s, half_length) * 2
@@ -636,17 +646,20 @@ def scanner_engine():
                             stats = {
                                 "Code": ticker, "RelVol": f"{stat_data.get('native_rel_vol', 0.0)}x", "Vol": format_vol(int(stat_data.get('total_vol', 0))),
                                 "Status": "gray", "Signal": "⏳ 待K線生成",
-                                "HighVal": p_live, "StopLoss": p_live * 0.99, "Float": stat_data.get('float_str', '-'), "Type": stat_data.get('type', 'stock'),
+                                "HighVal": safe_float(p_live), "StopLoss": safe_float(p_live * 0.99), "Float": stat_data.get('float_str', '-'), "Type": stat_data.get('type', 'stock'),
                                 "VolAcc": "-", "VolTier": 1, "EMA9_Dev": 0.0, "IsSniperTarget": False, "IsTrendingNews": False, 
-                                "SN_Score": 0, "VsaState": 0, "VR_Acc": 0.0, "VWAP_Dev": 0.0, "VWAP_Rating": "Low",
-                                "EMA9": p_live, "EMA52": p_live, "TriggerType": "none", "Turnover": "0.0%", "DeltaStr": "", "TriggerTS": 0,
-                                "HasSentimentFlip": False, "GapPct": real_pct, "Pct2Min": 0.0, "HOD_Cooldown": 0, "PrevClose": stat_data.get('prev', 0.0),
-                                "Price": f"${p_live:.2f}", "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live - stat_data.get('prev', 0.0)):+.2f}", "PriceVal": p_live
+                                "SN_Score": 0.0, "VsaState": 0, "VR_Acc": 0.0, "VWAP_Dev": 0.0, "VWAP_Rating": "Low",
+                                "EMA9": safe_float(p_live), "EMA52": safe_float(p_live), "TriggerType": "none", "Turnover": "0.0%", "DeltaStr": "", "TriggerTS": 0,
+                                "HasSentimentFlip": False, "GapPct": safe_float(real_pct), "Pct2Min": 0.0, "HOD_Cooldown": 0, "PrevClose": safe_float(stat_data.get('prev', 0.0)),
+                                "Price": f"${p_live:.2f}", "Pct": f"{real_pct:+.2f}%", "Amt": f"{(p_live - stat_data.get('prev', 0.0)):+.2f}", "PriceVal": safe_float(p_live)
                             }
                             cell.update(stats)
                             active_items = [x for x in MASTER_BRAIN["details"].values() if x.get("Code") in DYNAMIC_WATCHLIST]
                             MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(str(x.get('Pct', '0')).replace('%', '')), reverse=True)[:30]
                         return 
+
+                    # 🛡️ 斬斷 NaN 病毒：強制清理 TV K 線可能的缺失值，避免 JSON 死機
+                    df = df.ffill().bfill().fillna(0)
 
                     time_diff = df.index.to_series().diff()
                     new_sessions = time_diff[time_diff > pd.Timedelta(hours=4)]
@@ -723,13 +736,47 @@ def scanner_engine():
 
                     prev_close = float(stat_data['prev']) if stat_data['prev'] > 0 else float(today_df['low'].min())
                     real_pct = float(((p_live - prev_close) / prev_close) * 100) if prev_close > 0 else 0.0
-                    gap_pct = real_pct 
+                    
+                    # ✅ 恢復：精準判斷盤前真實跳空缺口
+                    now_ny = datetime.now(TZ_NY)
+                    is_premarket = now_ny.time() < datetime.strptime("09:30", "%H:%M").time()
+                    if is_premarket: 
+                        gap_pct = real_pct 
+                    else:
+                        try:
+                            if today_df.index.tzinfo is None: ny_index = today_df.index.tz_localize('UTC').tz_convert('America/New_York')
+                            else: ny_index = today_df.index.tz_convert('America/New_York')
+                                
+                            reg_df = today_df[ny_index.time >= datetime.strptime("09:30", "%H:%M").time()]
+                            if not reg_df.empty:
+                                reg_open = float(reg_df['open'].iloc[0])
+                                gap_pct = float(((reg_open - prev_close) / prev_close) * 100) if prev_close > 0 else 0.0
+                            else: gap_pct = real_pct
+                        except: gap_pct = real_pct
+
+                    # ✅ 恢復：2 分鐘動能漲幅追蹤
+                    try:
+                        if len(df) >= 3: p_2m_ago = float(df['close'].iloc[-3])
+                        else: p_2m_ago = float(df['close'].iloc[0])
+                        pct_2m = float(((p_live - p_2m_ago) / p_2m_ago) * 100) if p_2m_ago > 0 else 0.0
+                    except: pct_2m = 0.0
+
+                    # ✅ 恢復：高點冷卻追蹤 (讓前端的「🔥新高標記」重新復活)
+                    try:
+                        if not today_df.empty:
+                            hod_val = float(today_df['high'].max())
+                            hod_idx = today_df[today_df['high'] == hod_val].index[-1]
+                            current_utc = datetime.now(pytz.UTC)
+                            if hod_idx.tzinfo is None: hod_idx = pytz.UTC.localize(hod_idx)
+                            minutes_since_hod = int((current_utc - hod_idx).total_seconds() / 60)
+                            minutes_since_hod = max(0, minutes_since_hod)
+                        else: minutes_since_hod = 0
+                    except: minutes_since_hod = 0
 
                     curr_ema9 = float(df['close'].ewm(span=9, adjust=False).mean().iloc[-1]) if len(df) >= 9 else p_live
                     curr_ema20 = float(df['close'].ewm(span=20, adjust=False).mean().iloc[-1]) if len(df) >= 20 else p_live
                     curr_ema52 = float(df['close'].ewm(span=52, adjust=False).mean().iloc[-1]) if len(df) >= 52 else p_live
                     
-                    # ✅ 把剛才切太快切掉的 ema9_dev 安全補回來！
                     ema9_dev = float(round(((p_live - curr_ema9) / curr_ema9) * 100, 2)) if curr_ema9 > 0 else 0.0
                     
                     vol_tier = 1 
@@ -766,15 +813,16 @@ def scanner_engine():
                     has_active_volume = v_live > vol_sma5 and vol_sma5 > 0
 
                     if len(today_df) >= 20 and has_active_volume:
-                        curr_cvd = cvd_series.iloc[-1]
-                        prev_cvd = cvd_series.iloc[-2]
-                        prev2_cvd = cvd_series.iloc[-3]
+                        # 🛡️ 加裝 safe_float 防止陣列末端遇到空值崩潰
+                        curr_cvd = safe_float(cvd_series.iloc[-1])
+                        prev_cvd = safe_float(cvd_series.iloc[-2])
+                        prev2_cvd = safe_float(cvd_series.iloc[-3])
                         
-                        curr_hma = cvd_hma.iloc[-1]
-                        prev_hma = cvd_hma.iloc[-2]
+                        curr_hma = safe_float(cvd_hma.iloc[-1])
+                        prev_hma = safe_float(cvd_hma.iloc[-2])
                         
-                        prev_upper = cvd_upper.iloc[-2]
-                        curr_delta = delta.iloc[-1]
+                        prev_upper = safe_float(cvd_upper.iloc[-2])
+                        curr_delta = safe_float(delta.iloc[-1])
                         
                         if (p_live < current_vwap * 1.01) and (p_live > p_prev) and (curr_delta > 0) and vol_tier >= 3:
                             is_spring_trap = True
@@ -861,26 +909,28 @@ def scanner_engine():
 
                         is_alpaca_active = cell.get("Alpaca_Active", False)
 
+                        # 🛡️ 封裝最後輸出：全數套用 safe_float 防禦 JSON 崩潰
                         stats = {
                             "Code": ticker, "RelVol": f"{rel_vol_display}x", "Vol": format_vol(daily_vol),
                             "Status": status_color, "Signal": current_signal,
-                            "HighVal": float(df['high'].iloc[-1]), "StopLoss": curr_ema20 * 0.99, 
+                            "HighVal": safe_float(today_df['high'].max() if not today_df.empty else p_live), 
+                            "StopLoss": safe_float(curr_ema20 * 0.99), 
                             "Float": float_str, "Type": stat_data.get('type', 'stock'), "VolAcc": vol_acc_str, 
-                            "VolTier": vol_tier, "EMA9_Dev": ema9_dev, "IsSniperTarget": False, 
+                            "VolTier": vol_tier, "EMA9_Dev": safe_float(ema9_dev), "IsSniperTarget": False, 
                             "IsTrendingNews": cell.get("IsTrendingNews", False), 
-                            "SN_Score": sn_score, "VsaState": 0, "VR_Acc": 0.0, "VWAP_Dev": vwap_dev, "VWAP_Rating": "Low",
-                            "EMA9": curr_ema9, "EMA52": curr_ema52, "TriggerType": trigger_type, 
+                            "SN_Score": safe_float(sn_score), "VsaState": 0, "VR_Acc": 0.0, "VWAP_Dev": safe_float(vwap_dev), "VWAP_Rating": "Low",
+                            "EMA9": safe_float(curr_ema9), "EMA52": safe_float(curr_ema52), "TriggerType": trigger_type, 
                             "Turnover": f"{turnover*100:.1f}%",
                             "DeltaStr": delta_pct_str, "TriggerTS": now_ts if trigger_type != "none" else cell.get("TriggerTS", 0),
-                            "HasSentimentFlip": has_sentiment_flip, "GapPct": gap_pct, "Pct2Min": 0.0, "HOD_Cooldown": 0,
-                            "PrevClose": prev_close 
+                            "HasSentimentFlip": has_sentiment_flip, "GapPct": safe_float(gap_pct), "Pct2Min": safe_float(pct_2m), "HOD_Cooldown": minutes_since_hod,
+                            "PrevClose": safe_float(prev_close) 
                         }
                         
                         if not is_alpaca_active:
                             stats["Price"] = f"${p_live:.2f}"
                             stats["Pct"] = f"{real_pct:+.2f}%"
                             stats["Amt"] = f"{(p_live-prev_close):+.2f}"
-                            stats["PriceVal"] = float(p_live)
+                            stats["PriceVal"] = safe_float(p_live)
 
                         cell.update(stats)
                         
