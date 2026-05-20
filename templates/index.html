@@ -268,7 +268,20 @@
             return res;
         }
 
-        function refresh() { fetch('/data?t=' + Date.now()).then(r => r.json()).then(d => { brain = d; refreshUI(d); setTimeout(refresh, 5000); }).catch(e => { document.getElementById('sys-status').innerText = "⚠️ 網路閃斷..."; document.getElementById('sys-status').style.color = "var(--red)"; setTimeout(refresh, 5000); }); }
+        // 🚀 V58.4: 提升前端刷新頻率至 1 秒
+        function refresh() { 
+        fetch('/data?t=' + Date.now())
+        .then(r => r.json())
+        .then(d => { 
+            brain = d; 
+            refreshUI(d); 
+            setTimeout(refresh, 1000); // 改為 1000ms
+        })
+        .catch(e => { 
+            document.getElementById('sys-status').innerText = "⚠️ 網路閃斷..."; 
+            setTimeout(refresh, 3000); 
+        }); 
+        }
 
         function refreshUI(d) {
             if (!d) return;
