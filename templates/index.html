@@ -3,463 +3,156 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V58.3 - Chimera Matrix (戰術護眼對齊版)</title>
+    <title>Sniper V59.0 - 解耦超頻消光版</title>
     <style>
         :root { 
-            --yellow: #e3b341; --purple: #a371f7; --green: #3fb950; --red: #f85149; --blue: #58a6ff;
-            --neon-green: #39ff14; --neon-purple: #d292ff; 
+            --yellow: #e3b341; --purple: #a371f7; --green: #2ea643; --red: #f85149; --blue: #58a6ff;
             --bg-base: #0d1117; --bg-surface: #161b22; --border: #30363d; 
             --text-main: #c9d1d9; --text-muted: #8b949e; 
         }
         body { margin: 0; background: var(--bg-base); color: var(--text-main); font-family: -apple-system, "Segoe UI", sans-serif; height: 100vh; width: 100vw; display: flex; flex-direction: column; overflow: hidden; user-select: none; font-size: 13px; }
-        
-        #tactical-bar { height: 42px; background: rgba(13, 17, 23, 0.95); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 12px; box-sizing: border-box; flex-shrink: 0; z-index: 100; overflow-x: auto; white-space: nowrap; }
-        #tactical-bar::-webkit-scrollbar { display: none; }
-        
-        .ghost-btn { background: transparent; border: 1px solid var(--border); color: var(--text-main); padding: 4px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: bold; transition: all 0.2s ease; margin-right: 6px; flex-shrink: 0;}
+        #tactical-bar { height: 42px; background: rgba(13, 17, 23, 0.95); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 12px; box-sizing: border-box; flex-shrink: 0; z-index: 100; }
+        .ghost-btn { background: transparent; border: 1px solid var(--border); color: var(--text-main); padding: 4px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: bold; margin-right: 6px; }
         .ghost-btn:hover { background: rgba(163, 113, 247, 0.2); border-color: var(--purple); }
         
-        #workspace { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 6px; padding: 6px; flex: 1; box-sizing: border-box; background: #000; overflow: hidden; }
-        .window-panel { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; position: relative; }
-        .panel-header { background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border); padding: 6px 12px; font-size: 13px; font-weight: bold; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
-        
-        .panel-content { flex: 1; overflow-y: auto; overflow-x: auto; padding: 0; scrollbar-width: none; -ms-overflow-style: none; }
-        .panel-content::-webkit-scrollbar { display: none; } 
+        #workspace { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 6px; padding: 6px; flex: 1; background: #000; overflow: hidden; }
+        .window-panel { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; }
+        .panel-header { background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border); padding: 6px 12px; font-size: 13px; font-weight: bold; color: var(--text-muted); }
+        .panel-content { flex: 1; overflow-y: auto; overflow-x: auto; }
         
         table { width: 100%; border-collapse: collapse; }
-        th { background: #161b22; color: var(--text-muted); font-size: 11px; position: sticky; top: 0; z-index: 10; padding: 8px; text-align: left; border-bottom: 1px solid var(--border); cursor: pointer; }
-        td { padding: 6px 8px; border-bottom: 1px solid rgba(48, 54, 61, 0.3); font-size: 12px; vertical-align: middle; line-height: 1.3; }
-        tr { transition: background-color 0.4s ease; }
-        tr:hover { background: rgba(255,255,255,0.05); cursor: pointer; }
+        th { background: #161b22; color: var(--text-muted); font-size: 11px; position: sticky; top: 0; z-index: 10; padding: 8px; text-align: left; border-bottom: 1px solid var(--border); }
+        td { padding: 6px 8px; border-bottom: 1px solid rgba(48, 54, 61, 0.3); font-size: 12px; }
         
         .status-indicator { width: 4px; padding: 0 !important; }
-        tr.tr-yellow .status-indicator { background: var(--yellow); } tr.tr-purple .status-indicator { background: var(--purple); }
-        tr.tr-red .status-indicator { background: var(--red); } tr.tr-green .status-indicator { background: var(--green); }
-        tr.tr-gray .status-indicator { background: var(--text-muted); }
+        tr.tr-green .status-indicator { background: var(--green); }
+        tr.tr-red .status-indicator { background: var(--red); }
         
-        .new-alert-row { background-color: rgba(88, 166, 255, 0.08) !important; }
+        /* 🚀 戰術消光護眼配方 */
+        .cyan-bg { background-color: rgba(13, 188, 212, 0.25) !important; color: #0df !important; font-weight: bold; text-align: center; }
+        .gray-bg { background-color: rgba(255,255,255,0.02) !important; color: var(--text-muted); text-align: center; }
+        .flash-green { background-color: rgba(46, 160, 67, 0.85) !important; color: #fff !important; }
         
-        /* 🚀 V58.3 戰術護眼視覺編碼 CSS */
-        .cyan-bg { background-color: rgba(13, 188, 212, 0.9) !important; color: #000 !important; font-weight: 900 !important; }
-        .gray-bg { background-color: #4b5563 !important; color: #fff !important; font-weight: bold !important; }
-        .flash-green { background-color: rgba(46, 160, 67, 0.85) !important; color: #ffffff !important; transition: background-color 0.2s ease; }
-        .flash-green td { border-color: rgba(255, 255, 255, 0.1); }
-        .flash-green .sym, .flash-green span, .flash-green b { color: #ffffff !important; text-shadow: none !important; }
+        /* 🚀 Ross 同款：區塊式紅綠燈配色 */
+        .badge-g { background: rgba(46, 160, 67, 0.2) !important; color: #56d364 !important; font-weight: 900; text-align: center; border-radius: 4px; padding: 4px; display: block; }
+        .badge-r { background: rgba(248, 81, 73, 0.15) !important; color: #ff7b72 !important; font-weight: 900; text-align: center; border-radius: 4px; padding: 4px; display: block; }
 
-        @keyframes sniper-pulse { 0% { color: var(--green); text-shadow: none; } 50% { color: #56d364; text-shadow: 0 0 3px rgba(86,211,100,0.4); } 100% { color: var(--green); text-shadow: none; } }
-        .sniper-tag { animation: sniper-pulse 2s infinite; font-weight: 900; }
-        @keyframes gold-glow { 0% { box-shadow: 0 0 2px rgba(255, 215, 0, 0.1); border-color: rgba(255, 215, 0, 0.2); } 50% { box-shadow: 0 0 8px rgba(255, 215, 0, 0.3); border-color: rgba(255, 215, 0, 0.5); } 100% { box-shadow: 0 0 2px rgba(255, 215, 0, 0.1); border-color: rgba(255, 215, 0, 0.2); } }
-        
-        .sym { font-weight: 900; font-size: 16px; color: #ffffff; letter-spacing: 0.5px; }
-        .up { color: var(--green); font-weight: bold; } .down { color: var(--red); font-weight: bold; }
-        .neon-word { color: var(--neon-green); font-weight: 900; }
-
+        .sym { font-weight: 900; font-size: 15px; color: #fff; display: flex; align-items: center; }
         .tw-logo { width: 16px; height: 16px; vertical-align: middle; cursor: pointer; margin-left: 6px; fill: var(--blue); transition: transform 0.2s, fill 0.2s; }
         .tw-logo:hover { transform: scale(1.2); fill: #ffffff; }
-
-        .sniper-target-row { background: rgba(163, 113, 247, 0.15) !important; border-left: 3px solid var(--neon-purple) !important; }
-        .sniper-target-row:hover { background: rgba(163, 113, 247, 0.25) !important; }
-
-        #mobile-tabs { display: none; }
-        
-        /* 📱 手機版核心重構 */
-        body.mobile-mode { overflow: hidden !important; height: 100vh; padding-bottom: 0; }
-        body.mobile-mode #tactical-bar { overflow-x: auto; white-space: nowrap; padding-right: 15px; }
-        body.mobile-mode #mobile-tabs { display: flex; position: fixed; bottom: 0; left: 0; width: 100%; height: 50px; background: var(--bg-surface); z-index: 10000; border-top: 1px solid var(--border); }
-        body.mobile-mode .tab-btn { flex: 1; padding: 0; background: transparent; border: none; color: var(--text-muted); font-weight: bold; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-        body.mobile-mode .tab-btn.active { color: var(--blue); border-top: 2px solid var(--blue); background: rgba(88, 166, 255, 0.05); }
-        
-        body.mobile-mode #workspace { display: flex; flex-direction: column; overflow: hidden; height: calc(100vh - 42px - 50px); padding: 0; width: 100vw; box-sizing: border-box; }
-        body.mobile-mode .window-panel { position: static !important; width: 100% !important; height: 100% !important; min-height: unset; margin: 0; display: none; border-radius: 0; border: none; }
-        body.mobile-mode .window-panel.active-tab { display: flex !important; flex: 1; }
-        
-        body.mobile-mode .panel-content { overflow-x: auto !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
-        body.mobile-mode .panel-content::-webkit-scrollbar { display: block; width: 4px; height: 4px; }
-        body.mobile-mode .panel-content::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 2px; }
-        
-        body.mobile-mode table { min-width: 650px; font-size: 13px; }
-        body.mobile-mode .zoom-controls { display: none !important; }
     </style>
 </head>
-<body id="main-body">
+<body>
     <div id="tactical-bar">
-        <button id="audio-btn" class="ghost-btn" style="border-color:var(--green); color:var(--green);" onclick="toggleAudio()">🔊 核心警報</button>
-        <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 ETF</button>
-        <button id="summary-btn" class="ghost-btn" style="border-color:var(--neon-green); color:var(--neon-green);" onclick="fetchSummary()">📊 高勝率戰報</button>
-        
-        <div class="zoom-controls" style="display:flex; align-items:center; border:1px solid var(--border); border-radius:5px; padding:2px 5px; margin-right:8px; background:rgba(0,0,0,0.2); flex-shrink: 0;">
-            <button class="ghost-btn" style="margin:0; border:none; padding:0 6px; font-size:14px; outline:none;" onclick="changeZoom(-0.1)">-</button>
-            <span id="zoom-label" style="font-size:12px; color:var(--text-main); min-width:35px; text-align:center; font-weight:bold; cursor:default;">100%</span>
-            <button class="ghost-btn" style="margin:0; border:none; padding:0 6px; font-size:14px; outline:none;" onclick="changeZoom(0.1)">+</button>
-        </div>
-
-        <button id="mode-btn" class="ghost-btn" style="border-color:var(--yellow); color:var(--yellow);" onclick="toggleMode()">📱 手機版</button>
-        <button class="ghost-btn" style="border-color:var(--neon-purple); color:var(--neon-purple);" onclick="exportIntelligence()">📥 下載語料</button>
-        <button class="ghost-btn" onclick="resetLayout()">🔄 重設</button>
-        
-        <div style="font-size: 12px; color: var(--text-muted); font-family: monospace; margin-left:8px; flex-shrink: 0;">TPE: <span id="sys-clock" style="color: var(--text-main); font-weight: bold;">--:--:--</span></div>
-        <span id="sys-status" style="margin-left:auto; font-size:11px; color: var(--text-muted); padding-left: 10px;">📡 系統初始化...</span>
+        <button class="ghost-btn" style="color:var(--green); border-color:var(--green);">📡 雷達連線中</button>
+        <div style="font-size: 12px; color: var(--text-muted); font-family: monospace; margin-left:10px;">TPE: <span id="sys-clock" style="color: #fff; font-weight: bold;">--:--:--</span></div>
+        <span id="sys-status" style="margin-left:auto; font-size:11px; color: var(--text-muted);">系統初始化...</span>
     </div>
 
     <div id="workspace">
-        <div id="win-log" class="window-panel">
+        <div class="window-panel">
             <div class="panel-header">🚀 湧浪動態日誌 (Surge Log)</div>
             <div class="panel-content">
-                <table id="surge-log-table">
-                    <thead><tr>
-                        <th class="status-indicator"></th>
-                        <th>時間</th>
-                        <th>代碼/情報</th>
-                        <th>現價</th>
-                        <th>成交量</th>
-                        <th>戰術訊號</th>
-                    </tr></thead>
-                    <tbody id="surge-log-body"><tr><td colspan="6" style="text-align:center; padding: 30px; color: var(--text-muted); font-size: 13px;">等待訊號觸發</td></tr></tbody>
+                <table>
+                    <thead><tr><th class="status-indicator"></th><th>時間</th><th>代碼/情報</th><th>現價</th><th>成交量</th><th>戰術訊號</th></tr></thead>
+                    <tbody id="surge-body"></tbody>
                 </table>
             </div>
         </div>
 
-        <div id="win-detail" class="window-panel">
+        <div class="window-panel">
             <div class="panel-header">📊 深度分析與風控</div>
-            <div id="detail-list" class="panel-content" style="padding: 10px;">
-                <div style="text-align:center; color: var(--text-muted); padding: 50px 0; font-size: 13px;">點擊代碼載入戰報...</div>
-            </div>
+            <div id="detail-pane" class="panel-content" style="padding:12px; font-family:monospace;">點擊代碼展開數據...</div>
         </div>
 
-        <div id="win-rank" class="window-panel">
+        <div class="window-panel" style="grid-column: span 2;">
             <div class="panel-header">🏆 狙擊陣型監控雷達 (Low Float Top Gainers)</div>
             <div class="panel-content">
                 <table>
                     <thead><tr>
                         <th class="status-indicator"></th>
-                        <th onclick="setSort('rank', 'PctVal')">漲幅 (%) <span id="sort-rank-PctVal">▼</span></th>
-                        <th onclick="setSort('rank', 'Code')">代碼/情報 <span id="sort-rank-Code"></span></th>
-                        <th onclick="setSort('rank', 'PriceVal')">現價 <span id="sort-rank-PriceVal"></span></th>
-                        <th onclick="setSort('rank', 'Daily_Vol_Raw')">成交量 <span id="sort-rank-Daily_Vol_Raw"></span></th>
-                        <th onclick="setSort('rank', 'Shares_Outstanding_Raw')">發行總股數 <span id="sort-rank-Shares_Outstanding_Raw"></span></th>
-                        <th onclick="setSort('rank', 'Real_Float_Shares')">流通股數 <span id="sort-rank-Real_Float_Shares"></span></th>
-                        <th onclick="setSort('rank', 'RelVol')">即時量比 <span id="sort-rank-RelVol"></span></th>
+                        <th>漲幅 (%)</th><th>代碼/情報</th><th>現價</th><th>成交量</th><th>發行總股數</th><th>流通股數</th><th>即時量比</th>
                     </tr></thead>
-                    <tbody id="rank-list"></tbody>
+                    <tbody id="rank-body"></tbody>
                 </table>
             </div>
         </div>
-
-        <div id="win-news" class="window-panel">
-            <div class="panel-header">🗞️ 核心情報雷達</div>
-            <div class="panel-content">
-                <table>
-                    <thead><tr>
-                        <th class="status-indicator"></th>
-                        <th onclick="setSort('news', 'time')">時間 <span id="sort-news-time"></span></th>
-                        <th onclick="setSort('news', 'Code')">代碼/缺口 <span id="sort-news-Code"></span></th>
-                        <th onclick="setSort('news', 'CatScore')">評分 <span id="sort-news-CatScore">▼</span></th>
-                        <th>情報摘要</th>
-                    </tr></thead>
-                    <tbody id="news-list"></tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <div id="mobile-tabs">
-        <button class="tab-btn active" onclick="switchTab('win-rank', this)">🏆 排行</button>
-        <button class="tab-btn" onclick="switchTab('win-log', this)">動態</button>
-        <button class="tab-btn" onclick="switchTab('win-news', this)">🗞️ 情報</button>
-        <button class="tab-btn" onclick="switchTab('win-detail', this)">📊 戰報</button>
     </div>
 
     <script>
-        let brain = {}, activeSym = "", audioOn = true, played = {}, showETF = false;
-        const sounds = { nova: new Audio('/static/sounds/nova.mp3') };
-        let rankCfg = { col: 'PctVal', asc: false }, newsCfg = { col: 'CatScore', asc: false };
-        let isMobileMode = window.innerWidth <= 768;
-        if (isMobileMode) document.body.classList.add('mobile-mode');
-
-        let alertRenderCount = {};
-        let currentZoom = parseFloat(localStorage.getItem('sniper_zoom')) || 1.0;
-        if (currentZoom < 0.5) currentZoom = 0.5;
-        if (currentZoom > 2.0) currentZoom = 2.0;
-
-        function applyZoom() { 
-            document.getElementById('main-body').style.zoom = currentZoom; 
-            document.getElementById('zoom-label').innerText = Math.round(currentZoom * 100) + '%';
-        }
-        function changeZoom(delta) { 
-            currentZoom += delta; 
-            if(currentZoom < 0.5) currentZoom = 0.5; 
-            if(currentZoom > 2.0) currentZoom = 2.0; 
-            currentZoom = Math.round(currentZoom * 10) / 10; 
-            localStorage.setItem('sniper_zoom', currentZoom); 
-            applyZoom(); 
-        }
-
-        let audioUnlocked = false;
-        function initAudioContext() {
-            if (audioUnlocked) return;
-            audioUnlocked = true;
-            sounds.nova.volume = 0.01;
-            let playPromise = sounds.nova.play();
-            if (playPromise !== undefined) {
-                playPromise.then(() => { sounds.nova.pause(); sounds.nova.currentTime = 0; sounds.nova.volume = 1.0; }).catch(e => { sounds.nova.volume = 1.0; });
-            } else { sounds.nova.volume = 1.0; }
-            document.removeEventListener('click', initAudioContext);
-            document.removeEventListener('touchstart', initAudioContext);
-        }
-        document.addEventListener('click', initAudioContext);
-        document.addEventListener('touchstart', initAudioContext);
-        function toggleAudio() {
-            audioOn = !audioOn;
-            let btn = document.getElementById('audio-btn');
-            if (audioOn) { btn.style.borderColor="var(--green)"; btn.style.color="var(--green)"; btn.innerText="🔊 核心警報"; initAudioContext(); } 
-            else { btn.style.borderColor="var(--red)"; btn.style.color="var(--red)"; btn.innerText="🔇 音效 (已靜音)"; }
-        }
-
-        function toggleMode() { 
-            isMobileMode = !isMobileMode; 
-            let btn = document.getElementById('mode-btn'); 
-            if (isMobileMode) { 
-                document.body.classList.add('mobile-mode'); 
-                btn.innerText = "💻 電腦版"; 
-                document.getElementById('main-body').style.zoom = 1.0; 
-                switchTab('win-rank', document.querySelectorAll('.tab-btn')[0]); 
-            } else { 
-                document.body.classList.remove('mobile-mode'); 
-                btn.innerText = "📱 手機版"; 
-                applyZoom(); 
-                document.querySelectorAll('.window-panel').forEach(el => el.classList.remove('active-tab')); 
-            } 
-        }
-
-        function switchTab(tabId, btn) { document.querySelectorAll('.window-panel').forEach(el => el.classList.remove('active-tab')); document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active')); document.getElementById(tabId).classList.add('active-tab'); btn.classList.add('active'); }
-        function toggleETF() { showETF = !showETF; let btn = document.getElementById('etf-btn'); if (showETF) { btn.innerText = "🔘 隱藏 ETF"; btn.style.borderColor = "var(--red)"; btn.style.color = "var(--red)"; } else { btn.innerText = "🔘 ETF"; btn.style.borderColor = "var(--border)"; btn.style.color = "var(--text-main)"; } if (Object.keys(brain).length > 0) refreshUI(brain); }
+        let activeSym = "";
         
-        function openTW(s) { window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank'); }
-
+        // 🚀 將 TV Logo 產生器移至前端
         function getTWLogo(sym) {
-            return `<svg class="tw-logo" onclick="event.stopPropagation(); openTW('${sym}')" viewBox="0 0 24 24" title="開啟 TradingView"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5h-2v-2h2v2zm0-4h-2v-6h2v6z"/></svg>`;
+            return `<svg class="tw-logo" onclick="event.stopPropagation(); window.open('https://www.tradingview.com/chart/?symbol=${sym}', '_blank')" viewBox="0 0 24 24" title="開啟 TradingView"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5h-2v-2h2v2zm0-4h-2v-6h2v6z"/></svg>`;
         }
 
-        function parseValue(val, col) {
-            if (val === undefined || val === null || val === '-') return -999999;
-            if (typeof val === 'string' && val.includes('N/A')) return -999999;
-            if (col === 'Code' || col === 'time') return val.toString();
-            
-            let cleanStr = val.toString().replace(/<[^>]*>?/gm, ''); 
-            let num = parseFloat(cleanStr.replace(/[^0-9.-]/g, '')) || 0;
-            
-            if (col === 'RelVol' && cleanStr.includes('x')) return parseFloat(cleanStr.replace('x', '')) || 0;
-            return num;
+        function refresh() {
+            fetch('/data?t=' + Date.now()).then(r => r.json()).then(d => {
+                document.getElementById('sys-status').innerText = `${d.tv_status || ''} | 📡 每秒輪詢同步中...`;
+                
+                // 1. 渲染湧浪日誌
+                let h1 = "";
+                (d.surge_log || []).forEach(r => {
+                    let sig = r.Signal || '-';
+                    if (sig.includes('金叉') || sig.includes('極限')) {
+                        sig = `<span style="font-weight:900; color:var(--green);">${sig}</span>`;
+                    }
+                    
+                    h1 += `<tr class="${r.Row_Status==='flash-green'?'flash-green':''}">
+                        <td class="status-indicator"></td>
+                        <td style="color:var(--text-muted); font-size:11px;">${r.Time}</td>
+                        <td><div class="sym">${r.Code}</div></td>
+                        <td><b>${r.Price}</b></td>
+                        <td><b>${r.Vol}</b></td>
+                        <td style="font-weight:bold;">${sig}</td>
+                    </tr>`;
+                });
+                document.getElementById('surge-body').innerHTML = h1 || `<tr><td colspan="6" style="text-align:center; padding:20px; color:var(--text-muted);">等待點火事件...</td></tr>`;
+
+                // 2. 渲染監控排行榜
+                let h2 = "";
+                (d.leaderboard || []).forEach(r => {
+                    let curPct = parseFloat(r.Pct) || 0;
+                    let pctBadge = curPct >= 0 ? `<span class="badge-g">${r.Pct}</span>` : `<span class="badge-r">${r.Pct}</span>`;
+                    
+                    h2 += `<tr onclick="showDetail('${r.Code}')" style="cursor:pointer; ${r.Code===activeSym?'background:rgba(255,255,255,0.08);':''}">
+                        <td class="status-indicator"></td>
+                        <td style="width:90px;">${pctBadge}</td>
+                        <td><div class="sym">${r.Code}${getTWLogo(r.Code)}</div></td>
+                        <td><b style="font-size:13px;">${r.Price}</b></td>
+                        <td><b>${r.Vol}</b></td>
+                        <td>${r.Outstanding || '-'}</td>
+                        <td class="${r.Float_Color}">${r.Float || '-'}</td>
+                        <td style="color:var(--yellow); font-weight:bold;">${r.RelVol}</td>
+                    </tr>`;
+                });
+                document.getElementById('rank-body').innerHTML = h2;
+                
+                if(activeSym && d.details[activeSym]) renderDetailPane(d.details[activeSym]);
+                setTimeout(refresh, 1000); 
+            }).catch(() => setTimeout(refresh, 2000));
         }
 
-        function setSort(table, col) {
-            let cfg = table === 'rank' ? rankCfg : newsCfg;
-            if (cfg.col === col) cfg.asc = !cfg.asc; else { cfg.col = col; cfg.asc = false; }
-            document.querySelectorAll(`[id^="sort-${table}-"]`).forEach(el => el.innerText = "");
-            document.getElementById(`sort-${table}-${col}`).innerText = cfg.asc ? "▲" : "▼";
-            if (Object.keys(brain).length > 0) refreshUI(brain);
-        }
-
-        function highlightElites(text, elites, trends) {
-            if (!text) return text;
-            let res = text.replace(/\[Echo\] /g, `<span style="color:var(--blue); border:1px solid rgba(88,166,255,0.3); padding:1px 3px; border-radius:2px; font-size:10px; margin-right:3px;">🔔 發酵</span>`);
-            if (!elites || elites.length === 0) return res;
-            elites.forEach(w => { let regex = new RegExp(`\\b${w}\\b`, 'gi'); res = res.replace(regex, `<span class="neon-word">$&</span>`); });
-            return res;
-        }
-
-        // 🚀 V58.4: 提升前端刷新頻率至 1 秒
-        function refresh() { 
-        fetch('/data?t=' + Date.now())
-        .then(r => r.json())
-        .then(d => { 
-            brain = d; 
-            refreshUI(d); 
-            setTimeout(refresh, 1000); // 改為 1000ms
-        })
-        .catch(e => { 
-            document.getElementById('sys-status').innerText = "⚠️ 網路閃斷..."; 
-            setTimeout(refresh, 3000); 
-        }); 
-        }
-
-        function refreshUI(d) {
-            if (!d) return;
-            document.getElementById('sys-status').innerHTML = `<span style="color:var(--neon-purple); font-weight:bold;">${d.tv_status || ''}</span> &nbsp;|&nbsp; 📡 更新: ${d.last_update || '--:--:--'}`;
-            document.getElementById('sys-status').style.color = "var(--text-muted)";
-            
-            let newsScoreMap = {};
-            (d.top_catalysts || []).forEach(n => { newsScoreMap[n.Code || n.ticker || n.symbol] = n.CatScore || n.score || 0; });
-
-            let currentSigIds = new Set();
-            
-            let h1 = "";
-            (d.surge_log || []).forEach(r => {
-                if (r.Type === 'fund' && !showETF) return; 
-                let f_Code = r.Code || r.ticker || "N/A";
-                let sigId = f_Code + "_" + r.SignalTS;
-                currentSigIds.add(sigId);
-                alertRenderCount[sigId] = (alertRenderCount[sigId] || 0) + 1;
-                let isNew = alertRenderCount[sigId] <= 5;
-                
-                // 🚀 Ross 視覺：處理湧浪日誌的閃綠燈
-                let rowClass = r.Status ? `tr-${r.Status}` : ""; 
-                if (isNew) rowClass += " new-alert-row";
-                if (r.Row_Status === 'flash-green') rowClass += " flash-green";
-                
-                let sig = r.Signal || '-';
-                if (sig.includes('🎯')) sig = `<span class="sniper-tag">${sig}</span>`;
-                
-                let badges = "";
-                let volTier = r.VolTier || 0; 
-                if (volTier === 3) badges += `<span title="大浪" style="font-size:12px;">🌊</span>`;
-                if (volTier === 4) badges += `<span title="瀑布 (主升段)" style="font-size:12px; animation: sniper-pulse 1.5s infinite;">🌋</span>`;
-
-                h1 += `<tr class="${rowClass}" onclick="loadDetail('${f_Code}')" ondblclick="openTW('${f_Code}')">
-                    <td class="status-indicator"></td>
-                    <td style="color:var(--text-muted); font-size:11px;">${r.Time}</td>
-                    <td><div class="sym">${f_Code} ${badges}</div></td>
-                    <td><b style="font-size:14px;">${r.Price||'-'}</b></td>
-                    <td><b style="font-size:14px;">${r.Vol||'-'}</b></td>
-                    <td style="font-weight:bold; font-size:13px;">${sig}</td>
-                </tr>`;
-                if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { played[r.SignalTS] = r.SignalTS; sounds.nova.play().catch(e=>{}); }
-            });
-            document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="6" style="text-align:center; padding: 30px; color: var(--text-muted);">等待訊號</td></tr>`;
-
-            for (let key in alertRenderCount) { if (!currentSigIds.has(key)) delete alertRenderCount[key]; }
-
-            let h2 = "", rankData = [...(d.leaderboard || [])].filter(r => !(r?.Type === 'fund' && !showETF));
-            rankData.sort((a, b) => {
-                let vA = parseValue(a[rankCfg.col], rankCfg.col);
-                let vB = parseValue(b[rankCfg.col], rankCfg.col);
-                return (vA < vB) ? (rankCfg.asc ? -1 : 1) : (vA > vB ? (rankCfg.asc ? 1 : -1) : 0);
-            });
-            
-            rankData.forEach(r => {
-                let f_Code = r.Code || r.ticker || "N/A";
-                let newsScore = newsScoreMap[f_Code] || 0;
-                let curPctVal = parseFloat(r.PctVal) || 0;
-                
-                let isSniperTarget = r.IsSniperTarget || false;
-                let rowClass = isSniperTarget ? "sniper-target-row" : "";
-                
-                let hasNewsText = newsScore > 70 ? (r.IsTrendingNews ? `<span title="情報發酵" style="font-size:12px;">🔥</span>` : `<span title="情報" style="font-size:12px;">🗞️</span>`) : ``;
-
-                // 🚀 Ross 視覺：中文化表格對齊
-                let uiPct = `<b style="color:${curPctVal>0?'var(--green)':'var(--red)'}; font-size:15px;">${r.Pct||'-'}</b>`;
-                let symHtml = `<div style="display:flex; align-items:center;"><span class="sym" style="cursor:pointer;" ondblclick="event.stopPropagation(); openTW('${f_Code}')">${f_Code}</span><span style="margin-left:4px;">${hasNewsText}</span></div>`;
-                let priceHtml = `<b style="font-size:14px;">${r.Price||'-'}</b>`;
-                let volHtml = `<b style="font-size:14px;">${r.Vol||'-'}</b>`;
-                let outHtml = `<b style="font-size:13px;">${r.Outstanding||'-'}</b>`;
-                
-                // 🚀 Ross 視覺：流通股數動態顏色分配
-                let floatClass = r.Float_Color || "gray-bg";
-                let floatHtml = `<td class="${floatClass}" style="text-align:center; border-left:1px solid rgba(255,255,255,0.1); border-right:1px solid rgba(255,255,255,0.1);"><b>${r.Float||'-'}</b></td>`;
-                
-                let relVolHtml = `<b style="color:var(--yellow); font-size:13px;">${r.RelVol||'-'}</b>`;
-
-                h2 += `<tr class="${rowClass}" onclick="loadDetail('${f_Code}')" ondblclick="openTW('${f_Code}')">
-                    <td class="status-indicator"></td>
-                    <td>${uiPct}</td>
-                    <td>${symHtml}</td>
-                    <td>${priceHtml}</td>
-                    <td>${volHtml}</td>
-                    <td>${outHtml}</td>
-                    ${floatHtml}
-                    <td>${relVolHtml}</td>
-                </tr>`;
-            });
-            document.getElementById('rank-list').innerHTML = h2;
-
-            let h3 = "", newsData = [...(d.top_catalysts || [])].filter(n => (n.Code || n.ticker) && n.NewsList && n.NewsList.length > 0);
-            newsData.sort((a, b) => parseValue(b[newsCfg.col], newsCfg.col) - parseValue(a[newsCfg.col], newsCfg.col));
-            
-            newsData.forEach(n => {
-                let latest = n.NewsList[0]; 
-                let f_Score = n.CatScore || 0;
-                let gapPctVal = parseFloat(n.GapPct) || 0;
-                let gapStr = gapPctVal > 0 ? `+${gapPctVal.toFixed(1)}%` : `${gapPctVal.toFixed(1)}%`;
-                let gapColor = gapPctVal > 10 ? 'var(--neon-green)' : (gapPctVal > 0 ? 'var(--green)' : 'var(--text-muted)');
-                let hl_text = highlightElites(latest.title==="⏳ 翻譯中..."?latest.raw_title:latest.title, latest.elites, d.live_trends);
-                
-                h3 += `<tr onclick="loadDetail('${n.Code||n.ticker}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[3]);">
-                    <td class="status-indicator" style="background:${f_Score >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
-                    <td style="color:${latest.is_today?'#ffa500':'var(--text-muted)'}; font-size:10px;">${latest.time}</td>
-                    <td class="sym" style="font-size:14px; cursor:pointer;" ondblclick="event.stopPropagation(); openTW('${n.Code||n.ticker}')" title="雙擊開啟 TV 圖表">${n.Code||n.ticker}<br><span style="font-size:10px; color:${gapColor};">Gap: ${gapStr}</span></td>
-                    <td style="font-weight:bold; font-size:14px; color:${f_Score>=6?'var(--yellow)' : (f_Score<0?'var(--red)':'var(--text-muted)')};">${f_Score}</td>
-                    <td style="font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px;">${hl_text}</td>
-                </tr>`;
-            });
-            document.getElementById('news-list').innerHTML = h3;
-            if(activeSym) loadDetail(activeSym);
-        }
-
-        function loadDetail(sym) {
-            if (!sym || sym === "N/A") return; 
-            activeSym = sym;
-            let d = (brain.details && brain.details[sym]) ? brain.details[sym] : null; 
-            if (!d) return;
-            
-            let trapWarn = d.IsTrap ? `<div style="border:1px solid var(--red); color:var(--red); padding:4px; margin-bottom:6px; border-radius:4px; font-size:11px; font-weight:bold;">🩸 偵測到毒藥/退市風險</div>` : "";
-            if (d.HasSentimentFlip) trapWarn = `<div style="border:1px solid rgba(255,215,0,0.6); background: rgba(255,215,0,0.05); color:#ffd700; padding:4px; margin-bottom:6px; border-radius:4px; font-size:11px; font-weight:bold; animation: gold-glow 2s infinite;">💎 戰術警報：利空不跌！主力強勢承接</div>` + trapWarn;
-            
-            let snScore = d.SN_Score || 0;
-            let snColor = snScore >= 400 ? "var(--neon-green)" : (snScore >= 200 ? "var(--yellow)" : "var(--text-muted)");
-            let vwapColor = d.VWAP_Rating === 'High' ? 'var(--red)' : (d.VWAP_Rating === 'Mid' ? 'var(--yellow)' : 'var(--neon-green)');
-            
-            let gapPctVal = parseFloat(d.GapPct) || 0;
-            let gapStr = gapPctVal > 0 ? `+${gapPctVal.toFixed(2)}%` : `${gapPctVal.toFixed(2)}%`;
-
-            let pct2min = parseFloat(d.Pct2Min) || 0;
-            let p2mStr = pct2min > 0 ? `+${pct2min.toFixed(1)}%` : `${pct2min.toFixed(1)}%`;
-
-            let vwapDevVal = parseFloat(d.VWAP_Dev) || 0;
-            let vwapStr = vwapDevVal > 0 ? `+${vwapDevVal.toFixed(2)}%` : `${vwapDevVal.toFixed(2)}%`;
-
-            let ema9Dev = parseFloat(d.EMA9_Dev) || 0;
-            let ema9DevStr = ema9Dev > 0 ? `+${ema9Dev.toFixed(2)}%` : `${ema9Dev.toFixed(2)}%`;
-            
-            let extBadge = "";
-            if (ema9Dev >= 1.5) extBadge = `<div style="background:rgba(210, 146, 255, 0.12); border:1px solid var(--neon-purple); padding:3px 8px; border-radius:4px; color:var(--neon-purple); font-weight:bold;">🚀 延伸 (${ema9DevStr})</div>`;
-            else if (Math.abs(ema9Dev) <= 0.5) extBadge = `<div style="background:rgba(255, 255, 255, 0.05); border:1px solid var(--text-muted); padding:3px 8px; border-radius:4px; color:var(--text-muted);">🐌 泥沼 (${ema9DevStr})</div>`;
-            else extBadge = `<div style="background:rgba(255, 255, 255, 0.05); padding:3px 8px; border-radius:4px;">乖離: ${ema9DevStr}</div>`;
-
-            let sig = (d.Signal || '掃描中...').replace(/⚡極速拉升\(.*?\)\s*/, '');
-            if (sig.includes('🎯')) sig = `<span class="sniper-tag">${sig}</span>`;
-
-            let gaugeHTML = `<svg width="70" height="38" viewBox="0 0 120 70" style="overflow:visible;"><path d="M 15 60 A 45 45 0 0 1 105 60" fill="none" stroke="var(--border)" stroke-width="12" stroke-linecap="round" /><path d="M 15 60 A 45 45 0 0 1 105 60" fill="none" stroke="${snColor}" stroke-width="12" stroke-linecap="round" stroke-dasharray="141" stroke-dashoffset="${141*(1-Math.min(snScore/600,1))}" style="transition: stroke-dashoffset 1s ease-out;" /><text x="60" y="55" text-anchor="middle" fill="${snColor}" font-size="24" font-weight="900">${snScore}</text></svg>`;
-            
-            let html = `<div style="text-align:left;">${trapWarn}
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;">
-                    <div style="flex:1;"><h2 style="font-size:18px; margin:0; display:inline-block; cursor:pointer;" onclick="openTW('${sym}')" title="開啟圖表">${sym}</h2>${getTWLogo(sym)}<span style="font-size:16px; color:var(--text-muted); margin-left:6px;">${d.Price||'-'}</span><div style="margin-top:2px; font-size:11px;"><span style="color:${d.VsaState > 0 ? 'var(--red)' : 'var(--green)'}; font-weight:bold;">${d.VsaState > 0 ? '🚨背離' : '✅量價'}</span><span style="margin-left:8px; color:var(--text-main);">🛡️守: <b style="color:var(--red);">$${(d.StopLoss||0).toFixed(2)}</b></span></div></div><div>${gaugeHTML}</div>
+        function showDetail(sym) { activeSym = sym; }
+        function renderDetailPane(d) {
+            document.getElementById('detail-pane').innerHTML = `
+                <h2 style="margin:0; color:#fff; display:flex; align-items:center;">
+                    ${d.Code} ${getTWLogo(d.Code)}
+                    <span style="color:var(--text-muted); font-size:14px; margin-left:8px;">${d.Price}</span>
+                </h2>
+                <hr style="border:none; border-top:1px solid var(--border); margin:8px 0;">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; font-size:12px;">
+                    <div>今日換手率: <b style="color:var(--neon-green);">${d.Turnover}</b></div>
+                    <div>即時量比: <b style="color:var(--yellow);">${d.RelVol}</b></div>
+                    <div>當前缺口: <b>${d.GapPct}%</b></div>
+                    <div>風控守位: <b style="color:var(--red);">$${d.StopLoss.toFixed(2)}</b></div>
                 </div>
-                <div style="display:flex; flex-wrap:wrap; gap:4px; padding:6px; background:rgba(0,0,0,0.3); border-radius:5px; font-size:11px; margin-bottom:6px;">
-                    <div style="background:rgba(255,255,255,0.05); padding:3px 6px; border-radius:3px;">Gap: <b>${gapStr}</b></div>
-                    <div style="background:rgba(255,255,255,0.05); padding:3px 6px; border-radius:3px;">2m: <b>${p2mStr}</b></div>
-                    <div style="background:rgba(255,255,255,0.05); padding:3px 6px; border-radius:3px;">Rel: <b style="color:var(--yellow);">${d.RelVol}</b></div>
-                    <div style="background:rgba(255,255,255,0.05); padding:3px 6px; border-radius:3px;">VWAP: <b style="color:${vwapColor};">${vwapStr}</b></div>
-                    <div style="background:rgba(255,255,255,0.05); padding:3px 6px; border-radius:3px;">換手: <b style="color:var(--neon-green);">${d.Turnover || '-'}</b></div>
-                    ${extBadge}
-                </div>
-                <h3 style="color:var(--text-muted); font-size:11px; border-bottom:1px solid var(--border); padding-bottom:2px; margin:4px 0;">🗞️ 情報分析 (3D)</h3>`;
-            
-            if (!d.NewsList || d.NewsList.length === 0) html += `<div style="font-size:11px; color:var(--text-muted);">無新聞。</div>`;
-            else d.NewsList.forEach(n => { 
-                let t = highlightElites(n.title==="⏳ 翻譯中..."?n.raw_title:n.title, n.elites, brain.live_trends); 
-                html += `<div style="margin-bottom:3px; padding:4px 6px; background:rgba(255,255,255,0.01); border-radius:3px; border-left:2px solid ${n.is_today?'#ffa500':'var(--border)'}; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                    <span style="color:${n.is_today ? '#ffa500' : 'var(--text-muted)'}; font-size:10px; margin-right:4px;">${n.time}</span>
-                    <a href="${n.link}" target="_blank" style="text-decoration:none; color:var(--text-main);">${t}</a></div>`; 
-            });
-            document.getElementById('detail-list').innerHTML = html + `</div>`;
+            `;
         }
 
-        function fetchSummary() { fetch('/api/intelligence_summary').then(r=>r.json()).then(res=>{ if(res.status==="success"){ let msg="🏆 前 50 大高勝率戰場詞彙報表：\n\n"; res.data.forEach((i,idx)=>{ msg+=`${idx+1}. 【 ${i.phrase} 】\n   勝率: ${i.win_rate}% | 平均漲幅: +${i.avg_gain_pct}% | 觸發次數: ${i.occurrences}\n\n`;}); alert(msg); }else{alert("運算失敗");} }).catch(e=>alert("網路錯誤")); }
-        function exportIntelligence() { window.location.href='/api/export_intelligence'; }
-        function resetLayout() { localStorage.removeItem('sniper_zoom'); location.reload(); }
-
-        setInterval(() => { document.getElementById('sys-clock').innerText = new Date().toLocaleTimeString('zh-TW', {timeZone: 'Asia/Taipei', hour12: false}); }, 1000);
-        window.onload = () => { applyZoom(); refresh(); if(isMobileMode) switchTab('win-rank', document.querySelectorAll('.tab-btn')[0]); };
+        setInterval(() => { document.getElementById('sys-clock').innerText = new Date().toLocaleTimeString('zh-TW', {hour12: false}); }, 1000);
+        window.onload = refresh;
     </script>
 </body>
 </html>
