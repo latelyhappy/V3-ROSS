@@ -207,35 +207,37 @@ def save_shares_cache():
             json.dump(SHARES_CACHE, f)
     except: pass
 
-# 🚀 V58.2: 獲取雙重股數 (Float 與 Outstanding)
+# 🚀 V58.5 防護修正：Finnhub 優先查詢，降低 Yahoo 封鎖機率，並強制 3 秒 Timeout 防卡死
 def get_shares_data(symbol):
     if symbol in SHARES_CACHE and isinstance(SHARES_CACHE[symbol], dict):
         return SHARES_CACHE[symbol].get('float', 0.0), SHARES_CACHE[symbol].get('outstanding', 0.0)
     
     float_shares, out_shares = 0.0, 0.0
-    try:
-        yf_symbol = symbol.replace('-', '.')
-        ticker = yf.Ticker(yf_symbol)
-        info = ticker.info
-        yf_float = info.get('floatShares')
-        yf_out = info.get('sharesOutstanding')
-        
-        if yf_float and yf_float > 0: float_shares = float(yf_float)
-        if yf_out and yf_out > 0: out_shares = float(yf_out)
-    except: pass
     
-    if (float_shares == 0.0 or out_shares == 0.0) and FINNHUB_TOKEN:
+    # 1. 優先使用 Finnhub 查詢 (速度快、額度高)
+    if FINNHUB_TOKEN:
         try:
             url = f"https://finnhub.io/api/v1/stock/metric?symbol={symbol}&metric=all&token={FINNHUB_TOKEN}"
-            res = requests.get(url, timeout=5)
+            res = requests.get(url, timeout=3)
             if res.status_code == 200:
                 metric = res.json().get('metric', {})
                 fh_float = metric.get('floatShares', 0)
                 fh_out = metric.get('sharesOutstanding', 0)
-                if fh_float > 0 and float_shares == 0.0:
-                    float_shares = fh_float * 1e6 if fh_float < 50000 else fh_float
-                if fh_out > 0 and out_shares == 0.0:
-                    out_shares = fh_out * 1e6 if fh_out < 50000 else fh_out
+                if fh_float > 0: float_shares = fh_float * 1e6 if fh_float < 50000 else fh_float
+                if fh_out > 0: out_shares = fh_out * 1e6 if fh_out < 50000 else fh_out
+        except: pass
+
+    # 2. 如果 Finnhub 失敗或沒資料，才動用 Yahoo Finance (高風險被 Ban)
+    if float_shares == 0.0 or out_shares == 0.0:
+        try:
+            yf_symbol = symbol.replace('-', '.')
+            ticker = yf.Ticker(yf_symbol)
+            info = ticker.info
+            yf_float = info.get('floatShares')
+            yf_out = info.get('sharesOutstanding')
+            
+            if yf_float and yf_float > 0: float_shares = float(yf_float)
+            if yf_out and yf_out > 0: out_shares = float(yf_out)
         except: pass
         
     if float_shares > 0 or out_shares > 0:
@@ -683,6 +685,7 @@ def scanner_engine():
                 try:
                     df = None
                     try:
+                        # 🚀 V58.5 加入 timeout 防止 TvDatafeed 卡死
                         df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=500, extended_session=True)
                     except: pass
                     
@@ -711,7 +714,6 @@ def scanner_engine():
                     if df is None or df.empty: 
                         with brain_lock:
                             cell = MASTER_BRAIN["details"].setdefault(ticker, {"NewsList": [], "CatScore": 0, "IsTrap": False, "StickySignal": "", "StickyColor": "green", "StickyTime": 0})
-                            # ... (stats 初始化代碼與先前一致) ...
                             stats = {
                                 "Code": ticker, "RelVol": f"{stat_data.get('native_rel_vol', 0.0)}x", "Vol": format_vol(tv_scanner_vol),
                                 "Status": "gray", "Signal": "⏳ 待K線生成",
@@ -721,7 +723,7 @@ def scanner_engine():
                                 "Price": f"${tv_live_price:.2f}", "PriceVal": safe_float(tv_live_price), "Pct": f"{tv_native_pct:+.2f}%"
                             }
                             cell.update(stats)
-                        return
+                        return 
 
                     df = df.ffill().bfill().fillna(0)
 
@@ -1054,8 +1056,8 @@ def scanner_engine():
                 
                 except Exception as e: return
 
-            # 🚀 執行並行處理
-            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            # 🚀 V58.5 降頻保護: 將執行緒從 10 降為 5，避免遭 TradingView 斷線
+            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
                 executor.map(_process_ticker, current_watchlist)
                 
             with brain_lock:
