@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V56.2 - Chimera Matrix (終極透視版)</title>
+    <title>Sniper V58.2 - Chimera Matrix (Ross 戰術對齊版)</title>
     <style>
         :root { 
             --yellow: #e3b341; --purple: #a371f7; --green: #3fb950; --red: #f85149; --blue: #58a6ff;
@@ -23,13 +23,12 @@
         .window-panel { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; position: relative; }
         .panel-header { background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border); padding: 6px 12px; font-size: 13px; font-weight: bold; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
         
-        /* 💡 修正：解鎖電腦版的 overflow-x，以防萬一 */
         .panel-content { flex: 1; overflow-y: auto; overflow-x: auto; padding: 0; scrollbar-width: none; -ms-overflow-style: none; }
         .panel-content::-webkit-scrollbar { display: none; } 
         
         table { width: 100%; border-collapse: collapse; }
         th { background: #161b22; color: var(--text-muted); font-size: 11px; position: sticky; top: 0; z-index: 10; padding: 8px; text-align: left; border-bottom: 1px solid var(--border); cursor: pointer; }
-        td { padding: 6px 8px; border-bottom: 1px solid rgba(48, 54, 61, 0.3); font-size: 12px; vertical-align: top; line-height: 1.3; }
+        td { padding: 6px 8px; border-bottom: 1px solid rgba(48, 54, 61, 0.3); font-size: 12px; vertical-align: middle; line-height: 1.3; }
         tr { transition: background-color 0.4s ease; }
         tr:hover { background: rgba(255,255,255,0.05); cursor: pointer; }
         
@@ -39,6 +38,14 @@
         tr.tr-gray .status-indicator { background: var(--text-muted); }
         
         .new-alert-row { background-color: rgba(88, 166, 255, 0.08) !important; }
+        
+        /* 🚀 Ross 視覺編碼 CSS */
+        .cyan-bg { background-color: #0df !important; color: #000 !important; font-weight: 900 !important; }
+        .gray-bg { background-color: #4b5563 !important; color: #fff !important; font-weight: bold !important; }
+        .flash-green { background-color: rgba(57, 255, 20, 0.8) !important; color: #000 !important; }
+        .flash-green td { border-color: rgba(0,0,0,0.1); }
+        .flash-green .sym, .flash-green span, .flash-green b { color: #000 !important; text-shadow: none !important; }
+
         @keyframes sniper-pulse { 0% { color: var(--green); text-shadow: none; } 50% { color: #56d364; text-shadow: 0 0 3px rgba(86,211,100,0.4); } 100% { color: var(--green); text-shadow: none; } }
         .sniper-tag { animation: sniper-pulse 2s infinite; font-weight: 900; }
         @keyframes gold-glow { 0% { box-shadow: 0 0 2px rgba(255, 215, 0, 0.1); border-color: rgba(255, 215, 0, 0.2); } 50% { box-shadow: 0 0 8px rgba(255, 215, 0, 0.3); border-color: rgba(255, 215, 0, 0.5); } 100% { box-shadow: 0 0 2px rgba(255, 215, 0, 0.1); border-color: rgba(255, 215, 0, 0.2); } }
@@ -52,13 +59,10 @@
 
         .sniper-target-row { background: rgba(163, 113, 247, 0.15) !important; border-left: 3px solid var(--neon-purple) !important; }
         .sniper-target-row:hover { background: rgba(163, 113, 247, 0.25) !important; }
-        .badge { font-size: 11px; padding: 2px 5px; border-radius: 4px; font-weight: bold; margin-right: 4px; display: inline-block; vertical-align: text-bottom; }
 
         #mobile-tabs { display: none; }
         
-        /* =========================================================
-           💡 手機版核心重構：解決滑動、Sticky Header 與 Zoom 問題
-           ========================================================= */
+        /* 📱 手機版核心重構 */
         body.mobile-mode { overflow: hidden !important; height: 100vh; padding-bottom: 0; }
         body.mobile-mode #tactical-bar { overflow-x: auto; white-space: nowrap; padding-right: 15px; }
         body.mobile-mode #mobile-tabs { display: flex; position: fixed; bottom: 0; left: 0; width: 100%; height: 50px; background: var(--bg-surface); z-index: 10000; border-top: 1px solid var(--border); }
@@ -69,14 +73,12 @@
         body.mobile-mode .window-panel { position: static !important; width: 100% !important; height: 100% !important; min-height: unset; margin: 0; display: none; border-radius: 0; border: none; }
         body.mobile-mode .window-panel.active-tab { display: flex !important; flex: 1; }
         
-        /* 允許面板內容左右滑動，並顯示提示捲軸 */
         body.mobile-mode .panel-content { overflow-x: auto !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
         body.mobile-mode .panel-content::-webkit-scrollbar { display: block; width: 4px; height: 4px; }
         body.mobile-mode .panel-content::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 2px; }
         
         body.mobile-mode table { min-width: 650px; font-size: 13px; }
         body.mobile-mode .zoom-controls { display: none !important; }
-        /* ========================================================= */
     </style>
 </head>
 <body id="main-body">
@@ -101,17 +103,18 @@
 
     <div id="workspace">
         <div id="win-log" class="window-panel">
-            <div class="panel-header">🚀 即時動能日誌 (精密火控)</div>
+            <div class="panel-header">🚀 湧浪動態日誌 (Surge Log)</div>
             <div class="panel-content">
                 <table id="surge-log-table">
                     <thead><tr>
                         <th class="status-indicator"></th>
                         <th>時間</th>
-                        <th>代碼</th>
-                        <th>價格/量能</th>
+                        <th>代碼/情報</th>
+                        <th>現價</th>
+                        <th>成交量</th>
                         <th>戰術訊號</th>
                     </tr></thead>
-                    <tbody id="surge-log-body"><tr><td colspan="5" style="text-align:center; padding: 30px; color: var(--text-muted); font-size: 13px;">等待訊號觸發</td></tr></tbody>
+                    <tbody id="surge-log-body"><tr><td colspan="6" style="text-align:center; padding: 30px; color: var(--text-muted); font-size: 13px;">等待訊號觸發</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -124,16 +127,18 @@
         </div>
 
         <div id="win-rank" class="window-panel">
-            <div class="panel-header">🏆 超新星排行 (🟣 滿足狙擊要素)</div>
+            <div class="panel-header">🏆 狙擊陣型監控雷達 (Low Float Top Gainers)</div>
             <div class="panel-content">
                 <table>
                     <thead><tr>
                         <th class="status-indicator"></th>
-                        <th onclick="setSort('rank', 'Code')">代碼與屬性 <span id="sort-rank-Code"></span></th>
-                        <th onclick="setSort('rank', 'Pct2Min')">火力 (極速) <span id="sort-rank-Pct2Min"></span></th>
-                        <th onclick="setSort('rank', 'GapPct')">動能 (缺/現) <span id="sort-rank-GapPct"></span></th>
-                        <th onclick="setSort('rank', 'Vol')">量能狀態 <span id="sort-rank-Vol">▼</span></th>
-                        <th onclick="setSort('rank', 'HOD_Cooldown')">籌碼與冷卻 <span id="sort-rank-HOD_Cooldown"></span></th>
+                        <th onclick="setSort('rank', 'PctVal')">漲幅 (%) <span id="sort-rank-PctVal">▼</span></th>
+                        <th onclick="setSort('rank', 'Code')">代碼/情報 <span id="sort-rank-Code"></span></th>
+                        <th onclick="setSort('rank', 'PriceVal')">現價 <span id="sort-rank-PriceVal"></span></th>
+                        <th onclick="setSort('rank', 'Daily_Vol_Raw')">成交量 <span id="sort-rank-Daily_Vol_Raw"></span></th>
+                        <th onclick="setSort('rank', 'Shares_Outstanding_Raw')">發行總股數 <span id="sort-rank-Shares_Outstanding_Raw"></span></th>
+                        <th onclick="setSort('rank', 'Real_Float_Shares')">流通股數 <span id="sort-rank-Real_Float_Shares"></span></th>
+                        <th onclick="setSort('rank', 'RelVol')">即時量比 <span id="sort-rank-RelVol"></span></th>
                     </tr></thead>
                     <tbody id="rank-list"></tbody>
                 </table>
@@ -167,7 +172,7 @@
     <script>
         let brain = {}, activeSym = "", audioOn = true, played = {}, showETF = false;
         const sounds = { nova: new Audio('/static/sounds/nova.mp3') };
-        let rankCfg = { col: 'Vol', asc: false }, newsCfg = { col: 'CatScore', asc: false };
+        let rankCfg = { col: 'PctVal', asc: false }, newsCfg = { col: 'CatScore', asc: false };
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
 
@@ -210,19 +215,18 @@
             else { btn.style.borderColor="var(--red)"; btn.style.color="var(--red)"; btn.innerText="🔇 音效 (已靜音)"; }
         }
 
-        // 💡 修正：切換手機版時強制取消 zoom，避免排版崩壞
         function toggleMode() { 
             isMobileMode = !isMobileMode; 
             let btn = document.getElementById('mode-btn'); 
             if (isMobileMode) { 
                 document.body.classList.add('mobile-mode'); 
                 btn.innerText = "💻 電腦版"; 
-                document.getElementById('main-body').style.zoom = 1.0; // 防跑版
+                document.getElementById('main-body').style.zoom = 1.0; 
                 switchTab('win-rank', document.querySelectorAll('.tab-btn')[0]); 
             } else { 
                 document.body.classList.remove('mobile-mode'); 
                 btn.innerText = "📱 手機版"; 
-                applyZoom(); // 恢復使用者自訂縮放
+                applyZoom(); 
                 document.querySelectorAll('.window-panel').forEach(el => el.classList.remove('active-tab')); 
             } 
         }
@@ -244,11 +248,7 @@
             let cleanStr = val.toString().replace(/<[^>]*>?/gm, ''); 
             let num = parseFloat(cleanStr.replace(/[^0-9.-]/g, '')) || 0;
             
-            if (col === 'Float' || col === 'Vol') { 
-                if (cleanStr.includes('M')) return num * 1000000; 
-                if (cleanStr.includes('K')) return num * 1000; 
-            }
-            if (col === 'RelVol' || col === 'Pct' || col === 'GapPct' || col === 'VolAcc' || col === 'Pct2Min' || col === 'HOD_Cooldown') return parseFloat(cleanStr.replace(/[^0-9.-]/g, '')) || 0;
+            if (col === 'RelVol' && cleanStr.includes('x')) return parseFloat(cleanStr.replace('x', '')) || 0;
             return num;
         }
 
@@ -288,21 +288,31 @@
                 currentSigIds.add(sigId);
                 alertRenderCount[sigId] = (alertRenderCount[sigId] || 0) + 1;
                 let isNew = alertRenderCount[sigId] <= 5;
-                let rowClass = r.Status ? `tr-${r.Status}` : ""; if (isNew) rowClass += " new-alert-row";
+                
+                // 🚀 Ross 視覺：處理湧浪日誌的閃綠燈
+                let rowClass = r.Status ? `tr-${r.Status}` : ""; 
+                if (isNew) rowClass += " new-alert-row";
+                if (r.Row_Status === 'flash-green') rowClass += " flash-green";
                 
                 let sig = r.Signal || '-';
                 if (sig.includes('🎯')) sig = `<span class="sniper-tag">${sig}</span>`;
+                
+                let badges = "";
+                let volTier = r.VolTier || 0; 
+                if (volTier === 3) badges += `<span title="大浪" style="font-size:12px;">🌊</span>`;
+                if (volTier === 4) badges += `<span title="瀑布 (主升段)" style="font-size:12px; animation: sniper-pulse 1.5s infinite;">🌋</span>`;
 
                 h1 += `<tr class="${rowClass}" onclick="loadDetail('${f_Code}')" ondblclick="openTW('${f_Code}')">
                     <td class="status-indicator"></td>
                     <td style="color:var(--text-muted); font-size:11px;">${r.Time}</td>
-                    <td class="sym">${f_Code}</td>
-                    <td><b style="font-size:14px;">${r.Price||'-'}</b><br><span style="font-size:11px; color:var(--text-muted);">Vol: ${r.Vol||'-'}</span></td>
+                    <td><div class="sym">${f_Code} ${badges}</div></td>
+                    <td><b style="font-size:14px;">${r.Price||'-'}</b></td>
+                    <td><b style="font-size:14px;">${r.Vol||'-'}</b></td>
                     <td style="font-weight:bold; font-size:13px;">${sig}</td>
                 </tr>`;
                 if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { played[r.SignalTS] = r.SignalTS; sounds.nova.play().catch(e=>{}); }
             });
-            document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="5" style="text-align:center; padding: 30px; color: var(--text-muted);">等待訊號</td></tr>`;
+            document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="6" style="text-align:center; padding: 30px; color: var(--text-muted);">等待訊號</td></tr>`;
 
             for (let key in alertRenderCount) { if (!currentSigIds.has(key)) delete alertRenderCount[key]; }
 
@@ -316,51 +326,35 @@
             rankData.forEach(r => {
                 let f_Code = r.Code || r.ticker || "N/A";
                 let newsScore = newsScoreMap[f_Code] || 0;
-                let curPriceVal = parseFloat(r.PriceVal) || 0;
-                let pct2min = parseFloat(r.Pct2Min) || 0;
-                let amtTotal = r.Amt || "0.00";
-
-                let amt2min = curPriceVal - (curPriceVal / (1 + pct2min / 100));
-                let amt2minStr = amt2min >= 0 ? `+$${amt2min.toFixed(2)}` : `-$${Math.abs(amt2min).toFixed(2)}`;
-
+                let curPctVal = parseFloat(r.PctVal) || 0;
+                
                 let isSniperTarget = r.IsSniperTarget || false;
                 let rowClass = isSniperTarget ? "sniper-target-row" : "";
                 
-                let badges = "";
-                if (parseFloat(r.GapPct) > 10.0 && parseFloat(r.RelVol) >= 1.0) badges += `<span title="巨幅跳空" style="font-size:16px; line-height:1;">🪂</span>`;
-                if (r.Type === 'dr') badges += `<span title="海外存託憑證(外國妖股)" style="font-size:16px; line-height:1;">🌐</span>`;
+                let hasNewsText = newsScore > 70 ? (r.IsTrendingNews ? `<span title="情報發酵" style="font-size:12px;">🔥</span>` : `<span title="情報" style="font-size:12px;">🗞️</span>`) : ``;
 
-                let volTier = r.VolTier || 0; 
-                if (volTier === 1) badges += `<span title="毛毛雨" style="font-size:16px; line-height:1;">🌧️</span>`;
-                if (volTier === 2) badges += `<span title="水流" style="font-size:16px; line-height:1;">💧</span>`;
-                if (volTier === 3) badges += `<span title="大浪" style="font-size:16px; line-height:1;">🌊</span>`;
-                if (volTier === 4) badges += `<span title="瀑布 (主升段)" style="font-size:16px; line-height:1; animation: sniper-pulse 1.5s infinite;">🌋</span>`;
-
-                let badgesHtml = badges ? `<span style="display:inline-flex; gap:4px; margin-right:6px; align-items:center;">${badges}</span>` : "";
-                let hasNewsText = newsScore > 70 ? (r.IsTrendingNews ? `<div style="font-size:10px; color:var(--neon-green); font-weight:bold; margin-top:2px;">(🔔 情報發酵)</div>` : `<div style="font-size:10px; color:var(--text-muted); margin-top:2px;">(🗞️ 滯後)</div>`) : `<div style="font-size:10px; color:var(--border); margin-top:2px;">(無情報)</div>`;
-
-                let fireHtml = `<b style="font-size:16px;">${r.Price||'-'}</b><br>`;
-                if (pct2min >= 2.0) { fireHtml += `<span style="color:var(--neon-purple); font-weight:bold; font-size:11px;">🚀 +${pct2min.toFixed(1)}% (${amt2minStr})</span>`; } 
-                else if (pct2min <= -2.0) { fireHtml += `<span style="color:var(--red); font-weight:bold; font-size:11px;">🩸 ${pct2min.toFixed(1)}% (${amt2minStr})</span>`; } 
-                else { fireHtml += `<span style="color:var(--text-muted); font-size:11px;">🧊 停滯</span>`; }
-
-                let curPctVal = parseFloat(r.Pct) || 0;
-                let gapStr = parseFloat(r.GapPct) > 0 ? `+${(parseFloat(r.GapPct) || 0).toFixed(1)}%` : `${(parseFloat(r.GapPct) || 0).toFixed(1)}%`;
-                let momentumHtml = `<span style="font-size:11px; color:var(--text-muted);">Gap: <b style="color:var(--text-main);">${gapStr}</b></span><br><span style="font-size:11px; color:var(--text-muted);">現幅: <b style="color:${curPctVal>0?'var(--green)':'var(--red)'};">${r.Pct} (${amtTotal})</b></span>`;
-
-                let volHtml = `<b style="font-size:14px;">${r.Vol||'-'}</b><br><span style="color:var(--yellow); font-size:11px;">${r.RelVol||'-'}</span>`;
-
-                let hodCooldown = parseInt(r.HOD_Cooldown) || 0;
-                let cdStr = hodCooldown === 0 ? `<span style="color:var(--neon-green);">剛才</span>` : (hodCooldown > 30 ? `<span style="color:var(--red);">死水(${hodCooldown}m)</span>` : `${hodCooldown}m`);
-                let floatHtml = `Float: <b style="font-size:12px;">${r.Float||"-"}</b><br><span style="font-size:11px; color:var(--text-muted);">⏱️ 創高: ${cdStr}</span>`;
+                // 🚀 Ross 視覺：中文化表格對齊
+                let uiPct = `<b style="color:${curPctVal>0?'var(--green)':'var(--red)'}; font-size:15px;">${r.Pct||'-'}</b>`;
+                let symHtml = `<div style="display:flex; align-items:center;"><span class="sym" style="cursor:pointer;" ondblclick="event.stopPropagation(); openTW('${f_Code}')">${f_Code}</span><span style="margin-left:4px;">${hasNewsText}</span></div>`;
+                let priceHtml = `<b style="font-size:14px;">${r.Price||'-'}</b>`;
+                let volHtml = `<b style="font-size:14px;">${r.Vol||'-'}</b>`;
+                let outHtml = `<b style="font-size:13px;">${r.Outstanding||'-'}</b>`;
+                
+                // 🚀 Ross 視覺：流通股數動態顏色分配
+                let floatClass = r.Float_Color || "gray-bg";
+                let floatHtml = `<td class="${floatClass}" style="text-align:center; border-left:1px solid rgba(255,255,255,0.1); border-right:1px solid rgba(255,255,255,0.1);"><b>${r.Float||'-'}</b></td>`;
+                
+                let relVolHtml = `<b style="color:var(--yellow); font-size:13px;">${r.RelVol||'-'}</b>`;
 
                 h2 += `<tr class="${rowClass}" onclick="loadDetail('${f_Code}')" ondblclick="openTW('${f_Code}')">
                     <td class="status-indicator"></td>
-                    <td><div class="sym" style="display:flex; align-items:center;">${badgesHtml}<span style="cursor:pointer;" ondblclick="event.stopPropagation(); openTW('${f_Code}')" title="雙擊開啟 TV 圖表">${f_Code}</span></div>${hasNewsText}</td>
-                    <td>${fireHtml}</td>
-                    <td>${momentumHtml}</td>
+                    <td>${uiPct}</td>
+                    <td>${symHtml}</td>
+                    <td>${priceHtml}</td>
                     <td>${volHtml}</td>
-                    <td>${floatHtml}</td>
+                    <td>${outHtml}</td>
+                    ${floatHtml}
+                    <td>${relVolHtml}</td>
                 </tr>`;
             });
             document.getElementById('rank-list').innerHTML = h2;
