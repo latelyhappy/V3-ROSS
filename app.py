@@ -588,7 +588,8 @@ def update_dynamic_watchlist():
             "filter": [
                 {"left": "exchange", "operation": "in_range", "right": ["NASDAQ", "NYSE", "AMEX"]},
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund", "dr"]}, 
-                {"left": price_col, "operation": "in_range", "right": [0.1, 100]},
+                # 🚀 V58.3: 價格區間縮圈為 $0.5 ~ $30.0，杜絕雞蛋水餃股與牛皮股
+                {"left": price_col, "operation": "in_range", "right": [0.5, 30]},
                 {"left": chg_col, "operation": "egreater", "right": -50.0},
                 {"left": vol_col, "operation": "egreater", "right": 500}
             ], 
@@ -693,8 +694,18 @@ def scanner_engine():
                     tv_scanner_vol = int(stat_data.get('total_vol', 0))
                     tv_prev_est = tv_live_price / (1 + (tv_native_pct/100)) if tv_native_pct != -100 else tv_live_price
 
-                    # 🚀 V58.2 提取精準股數與格式化
+                    # 🚀 提取精準股數
                     real_float, out_shares = get_shares_data(ticker)
+
+                    # 🚀 V58.3 終極過濾防線：剔除流通股數 >= 20M 的重型裝甲車
+                    # 如果大於等於 2000萬股，直接從名單中拔除，拒絕進入排行榜！
+                    if real_float >= 20_000_000:
+                        with brain_lock:
+                            if ticker in DYNAMIC_WATCHLIST:
+                                DYNAMIC_WATCHLIST.remove(ticker)
+                            if ticker in MASTER_BRAIN["details"]:
+                                del MASTER_BRAIN["details"][ticker]
+                        return
                     
                     is_etf = stat_data.get('type') == 'fund'
                     if is_etf:
@@ -768,7 +779,10 @@ def scanner_engine():
 
                     p_live = float(today_df['close'].iloc[-1])
                     p_prev = float(today_df['close'].iloc[-2]) if len(today_df) > 1 else p_live
-                    if p_live < 0.1 or p_live > 100.0: return
+                    
+                    # 🚀 V58.3 K線價格二次防護：只允許 $0.5 ~ $30.0 進入大腦
+                    if p_live < 0.5 or p_live > 30.0: 
+                        return
                         
                     v_live = float(today_df['volume'].iloc[-1])
                     v_prev = float(today_df['volume'].iloc[-2]) if len(today_df) > 1 else v_live
@@ -1059,7 +1073,6 @@ def scanner_engine():
                                     
                                 alert_audio = "nova" if (is_spring_trap or is_peak_hook) else None
 
-                                # 🚀 V58.2: 湧浪日誌高亮標記
                                 row_status = "flash-green" if (vol_tier == 3 or ratio_5v5 >= 2.0) else "normal"
 
                                 log_entry = {
