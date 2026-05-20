@@ -588,8 +588,8 @@ def update_dynamic_watchlist():
             "filter": [
                 {"left": "exchange", "operation": "in_range", "right": ["NASDAQ", "NYSE", "AMEX"]},
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund", "dr"]}, 
-                # 🚀 V58.3: 價格區間縮圈為 $0.5 ~ $30.0，杜絕雞蛋水餃股與牛皮股
-                {"left": price_col, "operation": "in_range", "right": [0.5, 30]},
+                # 🚀 V58.4: 價格區間放水至 $0.1 ~ $30.0，杜絕漏掉超低空核彈妖股 (如 SLXN)
+                {"left": price_col, "operation": "in_range", "right": [0.1, 30]},
                 {"left": chg_col, "operation": "egreater", "right": -50.0},
                 {"left": vol_col, "operation": "egreater", "right": 500}
             ], 
@@ -681,7 +681,7 @@ def scanner_engine():
             def _process_ticker(ticker):
                 nonlocal tv
                 try:
-                    time.sleep(0.5) 
+                    # 🚀 V58.4: 徹底拔除 time.sleep(0.5)，解開單股卡死限制
                     df = None
                     try:
                         df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=1000, extended_session=True)
@@ -694,11 +694,8 @@ def scanner_engine():
                     tv_scanner_vol = int(stat_data.get('total_vol', 0))
                     tv_prev_est = tv_live_price / (1 + (tv_native_pct/100)) if tv_native_pct != -100 else tv_live_price
 
-                    # 🚀 提取精準股數
                     real_float, out_shares = get_shares_data(ticker)
 
-                    # 🚀 V58.3 終極過濾防線：剔除流通股數 >= 20M 的重型裝甲車
-                    # 如果大於等於 2000萬股，直接從名單中拔除，拒絕進入排行榜！
                     if real_float >= 20_000_000:
                         with brain_lock:
                             if ticker in DYNAMIC_WATCHLIST:
@@ -762,8 +759,11 @@ def scanner_engine():
                                 "Price": ui_price_str, "Pct": f"{pct_val:+.2f}%", "Amt": f"{amt_val:+.2f}", "PriceVal": safe_float(ui_price_val)
                             }
                             cell.update(stats)
-                            active_items = [x for x in MASTER_BRAIN["details"].values() if x.get("Code") in DYNAMIC_WATCHLIST]
-                            MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(str(x.get('Pct', '0')).replace('%', '')), reverse=True)[:100]
+                            
+                        # 🚀 V58.4 防護機制：避免無限產出 Thread，15分鐘內只允許更新一次新聞
+                        now_time = time.time()
+                        if ticker not in news_cache or (now_time - news_cache.get(ticker, 0) >= 900):
+                            threading.Thread(target=fetch_and_score_news, args=(ticker, cell, False), daemon=True).start()
                         return 
 
                     df = df.ffill().bfill().fillna(0)
@@ -780,9 +780,16 @@ def scanner_engine():
                     p_live = float(today_df['close'].iloc[-1])
                     p_prev = float(today_df['close'].iloc[-2]) if len(today_df) > 1 else p_live
                     
-                    # 🚀 V58.3 K線價格二次防護：只允許 $0.5 ~ $30.0 進入大腦
-                    if p_live < 0.5 or p_live > 30.0: 
+                    # 🚀 V58.4 K線價格二次防護：放行 0.1~30.0，杜絕第一時間死鎖
+                    if p_live < 0.1 or p_live > 30.0: 
                         return
+                        
+                    # 獲取目前的 CatScore 判定是否需要特赦
+                    with brain_lock:
+                        current_cat_score = MASTER_BRAIN["details"].get(ticker, {}).get("CatScore", 0)
+                        
+                    # 🚀 V58.4 智慧特赦邏輯：0.1 ~ 0.5 之間的股票，必須有 CatScore >= 10 才能發送日誌與進榜
+                    is_under_radar = (p_live < 0.5 and current_cat_score < 10)
                         
                     v_live = float(today_df['volume'].iloc[-1])
                     v_prev = float(today_df['volume'].iloc[-2]) if len(today_df) > 1 else v_live
@@ -1063,7 +1070,9 @@ def scanner_engine():
                         
                         if is_spring_trap or is_peak_hook or is_iceberg_dist or is_cvd_frontrun or is_golden_cross or is_death_cross:
                             last_trigger_time = cooldown_tracker.get(ticker, 0)
-                            if now_ts - last_trigger_time > 60:
+                            
+                            # 🚀 V58.4: 低於 0.5 且沒新聞的股票，靜音不報警 (is_under_radar 攔截)
+                            if now_ts - last_trigger_time > 60 and not is_under_radar:
                                 cooldown_tracker[ticker] = now_ts 
                                 
                                 is_sec_trap = check_sec_fatal_traps(ticker)
@@ -1086,22 +1095,27 @@ def scanner_engine():
                                 MASTER_BRAIN["surge_log"].insert(0, log_entry)
                                 MASTER_BRAIN["surge_log"] = MASTER_BRAIN["surge_log"][:1000]
                                 
-                    threading.Thread(target=fetch_and_score_news, args=(ticker, cell, True), daemon=True).start()
+                    now_time = time.time()
+                    if ticker not in news_cache or (now_time - news_cache.get(ticker, 0) >= 900):
+                        threading.Thread(target=fetch_and_score_news, args=(ticker, cell, False), daemon=True).start()
                 
                 except Exception as e: 
                     print(f"❌ [K線運算錯誤] 處理 {ticker} 發生異常: {e}")
                     return
 
-            for ticker in current_watchlist:
-                _process_ticker(ticker)
+            # 🚀 V58.4: 引入多執行緒非同步掃描 (10 執行緒防 TV 斷線)，打破排隊延遲
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                executor.map(_process_ticker, current_watchlist)
                 
-                with brain_lock:
-                    all_items = list(MASTER_BRAIN["details"].values())
-                    active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST]
-                    MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(str(x.get('Pct', '0')).replace('%', '')), reverse=True)[:100]
-                    MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
+            with brain_lock:
+                all_items = list(MASTER_BRAIN["details"].values())
+                # 🚀 V58.4: 排行榜動態防護，價格低於 0.5 且沒重磅新聞者一律不准上榜
+                active_items = [x for x in all_items if x.get("Code") in DYNAMIC_WATCHLIST and not (x.get("PriceVal", 0) < 0.5 and x.get("CatScore", 0) < 10)]
+                MASTER_BRAIN["leaderboard"] = sorted(active_items, key=lambda x: float(str(x.get('Pct', '0')).replace('%', '')), reverse=True)[:100]
+                MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
             
-            time.sleep(15)
+            # 🚀 V58.4: 極限縮短冷卻時間，從 15 秒暴降為 1 秒，實現秒級同步
+            time.sleep(1)
         except Exception as e: 
             time.sleep(5)
 
