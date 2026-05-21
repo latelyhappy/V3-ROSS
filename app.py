@@ -33,7 +33,8 @@ from datetime import datetime, timedelta
 from config import PORT, SESSION_BACKUP_PATH, TZ_NY
 import shared_state
 from engine_shares import load_shares_cache
-from engine_scanner import scanner_engine
+# 🚀 修正後：精確匯入 V59.0 的選股初始化引擎
+from engine_scanner import init_scanner
 from engine_news import finnhub_news_monitor_worker, get_live_trends
 import collector
 import memory_worker
