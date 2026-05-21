@@ -1,98 +1,66 @@
 import os
 import time
-import sqlite3
 import json
 import threading
-from datetime import datetime, timedelta
-import re
-from collections import Counter
 from github import Github
+
+# 🚀 匯入 V59.0 中央設定
+from config import LEARNED_CATALYSTS_PATH
 
 # 讀取環境變數
 GITHUB_TOKEN = os.getenv('GITHUB_TOKEN')
 GITHUB_REPO = os.getenv('GITHUB_REPO') # 格式例如: "your-username/V3-ROSS"
-DB_PATH = os.path.join(os.path.dirname(__file__), 'collector.db')
-LEARNED_FILE = os.path.join(os.path.dirname(__file__), 'learned_catalysts.json')
 
-def extract_elite_words(text):
-    # 提取長度大於 3 的大寫單字或組合
-    words = re.findall(r'\b[A-Z]{3,}\b', text.upper())
-    return [w for w in words if w not in ["THE", "AND", "FOR", "WITH", "INC", "CORP", "LTD"]]
-
-def auto_learn_and_push():
-    print("🧠 [NLP WORKER] 啟動自動學習與 GitHub 推播程序...")
+def auto_push_to_github():
+    """定期將 AI 學習到的軍火庫推送到 GitHub，避免 Railway 重啟後資料遺失"""
+    print("☁️ [NLP WORKER] 啟動 GitHub 雲端記憶同步程序...")
     if not GITHUB_TOKEN or not GITHUB_REPO:
         print("⚠️ [NLP WORKER] 未設定 GITHUB_TOKEN 或 GITHUB_REPO，跳過推播。")
         return
 
     try:
-        # 1. 從資料庫提取過去 24 小時內漲幅 > 10% 的致勝標題
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
-        
-        cursor.execute('''
-            SELECT headline FROM event_logs 
-            WHERE timestamp > ? AND change_percent >= 10.0
-        ''', (yesterday,))
-        rows = cursor.fetchall()
-        conn.close()
-
-        if not rows:
-            print("💤 [NLP WORKER] 今日無足夠的暴漲語料，暫不更新。")
+        # 確認學習檔案是否存在
+        if not os.path.exists(LEARNED_CATALYSTS_PATH):
+            print("💤 [NLP WORKER] 尚未產生學習庫，跳過同步。")
+            return
+            
+        with open(LEARNED_CATALYSTS_PATH, 'r', encoding='utf-8') as f:
+            learned_data = json.load(f)
+            
+        if not learned_data:
             return
 
-        # 2. NLP 詞頻統計
-        all_words = []
-        for row in rows:
-            all_words.extend(extract_elite_words(row[0]))
-        
-        word_counts = Counter(all_words)
-        new_catalysts = {}
-        for word, count in word_counts.items():
-            if count >= 2: # 出現兩次以上的暴漲詞彙，賦予初始分數 10
-                new_catalysts[word] = 10
-
-        if not new_catalysts: return
-
-        # 3. 讀取並合併舊有的 learned_catalysts.json
-        existing_data = {}
-        if os.path.exists(LEARNED_FILE):
-            try:
-                with open(LEARNED_FILE, 'r', encoding='utf-8') as f:
-                    existing_data = json.load(f)
-            except: pass
-        
-        existing_data.update(new_catalysts)
-
-        # 存入本地端
-        with open(LEARNED_FILE, 'w', encoding='utf-8') as f:
-            json.dump(existing_data, f, ensure_ascii=False, indent=2)
-
-        # 4. GitHub 自動推播 (Git Push)
+        # 連線至 GitHub
         g = Github(GITHUB_TOKEN)
         repo = g.get_repo(GITHUB_REPO)
-        
         file_path = "learned_catalysts.json"
-        commit_message = f"🤖 Auto-NLP Update: Learned {len(new_catalysts)} new catalysts"
+        commit_message = f"🤖 Auto-NLP Update: System learned {len(learned_data)} elite catalysts"
         
         try:
+            # 嘗試更新現有檔案
             contents = repo.get_contents(file_path)
-            repo.update_file(contents.path, commit_message, json.dumps(existing_data, indent=2, ensure_ascii=False), contents.sha)
+            repo.update_file(contents.path, commit_message, json.dumps(learned_data, indent=4, ensure_ascii=False), contents.sha)
             print("✅ [NLP WORKER] 成功更新 GitHub 上的 learned_catalysts.json！")
-        except:
-            repo.create_file(file_path, commit_message, json.dumps(existing_data, indent=2, ensure_ascii=False))
-            print("✅ [NLP WORKER] 成功創建並推送 learned_catalysts.json 至 GitHub！")
-
+        except Exception as e:
+            if "404" in str(e) or "not found" in str(e).lower():
+                # 如果 GitHub 上還沒有這個檔案，就建立它
+                repo.create_file(file_path, commit_message, json.dumps(learned_data, indent=4, ensure_ascii=False))
+                print("✅ [NLP WORKER] 成功創建並推送 learned_catalysts.json 至 GitHub！")
+            else:
+                # 檔案內容可能沒有變動 (No changes to commit)
+                print("💤 [NLP WORKER] 雲端記憶已是最新，無需更新。")
+                pass
     except Exception as e:
         print(f"❌ [NLP WORKER] 學習推播失敗: {e}")
 
 def start_memory_loop():
+    # 啟動時先等 5 分鐘，確保資料庫與情報網都初始化完畢
+    time.sleep(300)
     while True:
-        # 每天檢查一次 (86400 秒)
-        time.sleep(86400)
-        auto_learn_and_push()
+        auto_push_to_github()
+        # 每 12 小時 (43200 秒) 自動備份一次到 GitHub
+        time.sleep(43200)
 
-# 👇 app.py 就是在找這個函式！請確保有複製到這一段
+# 👇 app.py 就是在找這個函式！
 def init_worker():
     threading.Thread(target=start_memory_loop, daemon=True).start()

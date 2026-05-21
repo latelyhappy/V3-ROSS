@@ -3,27 +3,29 @@ import time
 import threading
 import math
 from alpaca_trade_api.stream import Stream
-import pytz
 from datetime import datetime
 
-_MASTER_BRAIN = None
-_DYNAMIC_WATCHLIST = None
-_brain_lock = None
-_alpaca_cooldown = {} # 💡 毫秒級防洪閘門紀錄器
-TZ_TW = pytz.timezone('Asia/Taipei')
+# 🚀 匯入 V59.0 全域記憶體與中央設定
+import shared_state
+from config import TZ_TW
 
-def init_alpaca(master_brain, watchlist, lock):
-    global _MASTER_BRAIN, _DYNAMIC_WATCHLIST, _brain_lock
-    _MASTER_BRAIN = master_brain
-    _DYNAMIC_WATCHLIST = watchlist
-    _brain_lock = lock
+_alpaca_cooldown = {} # 💡 毫秒級防洪閘門紀錄器
+
+def init_alpaca(*args, **kwargs):
+    """
+    啟動 Alpaca 毫秒級報價與火控雷達
+    (使用 *args 兼容 app.py 的傳入參數，但內部統一改用 shared_state 解耦架構)
+    """
     threading.Thread(target=_alpaca_thread, daemon=True).start()
 
 def _alpaca_thread():
     global _alpaca_cooldown
     api_key = os.getenv('ALPACA_API_KEY')
     secret_key = os.getenv('ALPACA_SECRET_KEY')
-    if not api_key or not secret_key: return
+    
+    if not api_key or not secret_key: 
+        print("⚠️ 未設定 Alpaca API Key，毫秒級火控雷達未啟動。")
+        return
 
     stream = Stream(api_key, secret_key, base_url='https://paper-api.alpaca.markets', data_feed='iex')
     price_history = {} 
@@ -47,9 +49,9 @@ def _alpaca_thread():
         is_whole_dollar = False
         if 0.95 <= price % 1.0 <= 0.99 and price > 1.0: is_whole_dollar = True
             
-        with _brain_lock:
-            if ticker in _MASTER_BRAIN["details"]:
-                cell = _MASTER_BRAIN["details"][ticker]
+        with shared_state.brain_lock:
+            if ticker in shared_state.MASTER_BRAIN["details"]:
+                cell = shared_state.MASTER_BRAIN["details"][ticker]
                 
                 # 💡 【核心修復：毫秒級報價全面接管】
                 # 無論有沒有觸發警報，只要有價格跳動，立刻覆寫白板！
@@ -95,14 +97,15 @@ def _alpaca_thread():
                             _alpaca_cooldown[ticker] = now_ts
                             stats_copy = {k: v for k, v in cell.items() if k not in ["NewsList", "CatScore", "IsTrap", "StickySignal", "StickyColor", "StickyTime"]}
                             
-                            # Alpaca 單獨觸發的訊號改為靜音
-                            _MASTER_BRAIN["surge_log"].insert(0, {
+                            # Alpaca 單獨觸發的訊號寫入湧浪日誌 (無音效靜音版)
+                            shared_state.MASTER_BRAIN["surge_log"].insert(0, {
                                 **stats_copy, 
                                 "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), 
                                 "SignalTS": now_ts, 
-                                "Audio": None
+                                "Audio": None,
+                                "Row_Status": "normal"
                             })
-                            _MASTER_BRAIN["surge_log"] = _MASTER_BRAIN["surge_log"][:1000]
+                            shared_state.MASTER_BRAIN["surge_log"] = shared_state.MASTER_BRAIN["surge_log"][:1000]
 
     def watch_subscriptions():
         current_subs = set()
@@ -110,7 +113,7 @@ def _alpaca_thread():
             time.sleep(5)
             try:
                 # 💡 核心變更：強迫 Alpaca 只監聽「已經處理好且掛上排行榜」的菁英股票！
-                leaderboard = _MASTER_BRAIN.get("leaderboard", [])
+                leaderboard = shared_state.MASTER_BRAIN.get("leaderboard", [])
                 valid_symbols = [item["Code"] for item in leaderboard if "Code" in item]
                 
                 # 💡 設定安全閾值：最多 28 檔，確保加上緩衝絕不超過免費版 30 檔上限

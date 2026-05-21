@@ -137,14 +137,23 @@ def data():
     return jsonify(safe_brain)
 
 if __name__ == '__main__':
-    collector.init_db()
+    # 啟動附屬資料庫與記憶體 (加入防護罩)
+    try: collector.init_db()
+    except: pass
+    
     load_shares_cache()
     load_intraday_state()
-    memory_worker.init_worker()
+    
+    try: memory_worker.init_worker()
+    except: pass
+    
+    # 啟動四大核心執行緒
     threading.Thread(target=state_auto_save_worker, daemon=True).start()
     threading.Thread(target=scanner_engine, daemon=True).start()
     threading.Thread(target=finnhub_news_monitor_worker, daemon=True).start()
     threading.Thread(target=daily_flush_worker, daemon=True).start()
-    init_alpaca(shared_state.MASTER_BRAIN, shared_state.DYNAMIC_WATCHLIST, shared_state.brain_lock)
+    
+    # 🚀 V59.0 呼叫更新：直接啟動，不需要再塞入變數參數
+    init_alpaca()
     
     app.run(host='0.0.0.0', port=PORT, use_reloader=False)

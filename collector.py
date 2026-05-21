@@ -5,15 +5,12 @@ import os
 import csv
 import re
 from datetime import datetime, timedelta
-import pytz
 
-# 💡 定義時區
-tpe_tz = pytz.timezone('Asia/Taipei')
-ny_tz = pytz.timezone('America/New_York')
+# 🚀 V59.0 匯入中央戰術設定
+from config import BASE_DIR, LEARNED_CATALYSTS_PATH, TZ_TW, TZ_NY
 
 # 💡 檔案路徑
-DB_PATH = os.path.join(os.path.dirname(__file__), 'sniper_intelligence.db')
-CATALYST_PATH = os.path.join(os.path.dirname(__file__), 'catalysts.json')
+DB_PATH = os.path.join(BASE_DIR, 'sniper_intelligence.db')
 
 def init_db():
     """初始化戰地數據庫。"""
@@ -35,7 +32,7 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
-    print("✅ Sniper Intelligence DB (NLP 進化版) 初始化完成。")
+    print("✅ Sniper Intelligence DB (V59.0 隔離進化版) 初始化完成。")
     
     cleanup_old_records()
     # 💡 啟動時執行一次 NLP 自動進化
@@ -72,7 +69,7 @@ def log_event(ticker, headline, float_m, price_initial, volume=0, change_percent
         cursor = conn.cursor()
         
         now_sec = time.time()
-        dt_str = datetime.now(tpe_tz).strftime("%Y-%m-%d %H:%M:%S")
+        dt_str = datetime.now(TZ_TW).strftime("%Y-%m-%d %H:%M:%S")
         
         cursor.execute('''
             INSERT INTO momentum_events 
@@ -114,7 +111,6 @@ def update_max_price(ticker, current_price):
         conn.close()
     except: pass 
 
-# 💡 新增：輸出人類與 AI 皆可讀的 CSV 語料庫
 def export_corpus_csv(output_filename="sniper_corpus_export.csv", limit=None, today_only=False):
     """將戰報輸出為 NLP 校正專用的 CSV 檔案"""
     try:
@@ -126,7 +122,7 @@ def export_corpus_csv(output_filename="sniper_corpus_export.csv", limit=None, to
         params = []
 
         if today_only:
-            now_ny = datetime.now(ny_tz)
+            now_ny = datetime.now(TZ_NY)
             session_start_ny = now_ny.replace(hour=4, minute=0, second=0, microsecond=0)
             if now_ny.hour < 4: session_start_ny -= timedelta(days=1)
             query += ' AND timestamp_sec >= ?'
@@ -141,7 +137,7 @@ def export_corpus_csv(output_filename="sniper_corpus_export.csv", limit=None, to
         rows = cursor.fetchall()
         conn.close()
         
-        export_path = os.path.join(os.path.dirname(__file__), output_filename)
+        export_path = os.path.join(BASE_DIR, output_filename)
         with open(export_path, 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.writer(f)
             writer.writerow(['紀錄時間', '代碼', '流通股(M)', '情報標題', '起漲價', '最高價', '最高漲幅(%)'])
@@ -160,7 +156,6 @@ def export_corpus_csv(output_filename="sniper_corpus_export.csv", limit=None, to
         print(f"⚠️ CSV 匯出失敗: {e}")
         return None
 
-# 💡 保留 JSON 匯出相容原有的 app.py
 def export_to_json(output_filename="sniper_intelligence_export.json", limit=None, today_only=False):
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -169,7 +164,7 @@ def export_to_json(output_filename="sniper_intelligence_export.json", limit=None
         query = 'SELECT * FROM momentum_events WHERE is_closed = 1'
         params = []
         if today_only:
-            now_ny = datetime.now(ny_tz)
+            now_ny = datetime.now(TZ_NY)
             session_start_ny = now_ny.replace(hour=4, minute=0, second=0, microsecond=0)
             if now_ny.hour < 4: session_start_ny -= timedelta(days=1)
             query += ' AND timestamp_sec >= ?'
@@ -189,7 +184,7 @@ def export_to_json(output_filename="sniper_intelligence_export.json", limit=None
             record['max_gain_pct'] = round(((record['price_max_15m'] - initial) / initial) * 100, 2) if initial > 0 else 0.0
             data.append(record)
         conn.close()
-        export_path = os.path.join(os.path.dirname(__file__), output_filename)
+        export_path = os.path.join(BASE_DIR, output_filename)
         with open(export_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
         return export_path
@@ -218,7 +213,7 @@ def get_nlp_stats(days_back=7):
             max_p = row['price_max_15m']
             gain = round(((max_p - initial) / initial) * 100, 2) if initial > 0 else 0.0
             
-            # 💡 提取 1-Gram (單字) 與 2-Gram (雙字組)
+            # 提取 1-Gram (單字) 與 2-Gram (雙字組)
             ngrams = words.copy()
             ngrams += [" ".join(words[i:i+2]) for i in range(len(words)-1)]
             
@@ -255,9 +250,9 @@ def generate_intelligence_summary():
         return {"status": "success", "data": summary[:50]}
     return {"status": "error", "message": "無數據"}
 
-# 💡 終極武器：自動進化機制 (覆寫軍火庫)
+# 💡 終極武器：自動進化機制 (保護手工 JSON 版)
 def auto_evolve_nlp():
-    """自動將高勝率詞彙寫入 catalysts.json 的 THEMATIC_TRENDS 中"""
+    """自動將高勝率詞彙寫入獨立的 learned_catalysts.json，絕不覆寫手工設定"""
     print("🧠 啟動 NLP 自動進化引擎...")
     stats = get_nlp_stats(days_back=7)
     
@@ -269,29 +264,25 @@ def auto_evolve_nlp():
         return
 
     try:
-        # 讀取現有軍火庫
-        if os.path.exists(CATALYST_PATH):
-            with open(CATALYST_PATH, 'r', encoding='utf-8') as f:
-                armory = json.load(f)
-        else:
-            armory = {}
-            
-        if "THEMATIC_TRENDS" not in armory:
-            armory["THEMATIC_TRENDS"] = {}
-            
-        # 寫入新發現的詞彙 (不覆蓋人工設定的更高分數)
+        learned_data = {}
+        # 讀取獨立的 AI 學習庫 (若存在)
+        if os.path.exists(LEARNED_CATALYSTS_PATH):
+            with open(LEARNED_CATALYSTS_PATH, 'r', encoding='utf-8') as f:
+                learned_data = json.load(f)
+                
+        # 寫入新發現的詞彙
         added_count = 0
         for phrase, score in elite_phrases.items():
-            if phrase not in armory["THEMATIC_TRENDS"]:
-                armory["THEMATIC_TRENDS"][phrase] = score
+            if phrase not in learned_data:
+                learned_data[phrase] = score
                 added_count += 1
                 
         if added_count > 0:
-            with open(CATALYST_PATH, 'w', encoding='utf-8') as f:
-                json.dump(armory, f, ensure_ascii=False, indent=4)
-            print(f"✅ NLP 進化完成！自動學習了 {added_count} 個全新暴漲關鍵字。")
+            with open(LEARNED_CATALYSTS_PATH, 'w', encoding='utf-8') as f:
+                json.dump(learned_data, f, ensure_ascii=False, indent=4)
+            print(f"✅ NLP 進化完成！自動學習了 {added_count} 個全新暴漲關鍵字並存入獨立軍火庫。")
         else:
-            print("   -> 詞彙已存在於軍火庫中，維持現狀。")
+            print("   -> 詞彙已存在於學習庫中，維持現狀。")
             
     except Exception as e:
         print(f"⚠️ NLP 進化失敗: {e}")
