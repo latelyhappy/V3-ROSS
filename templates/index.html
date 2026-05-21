@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V59.0 - Chimera Matrix (純淨戰術版)</title>
+    <title>Sniper V59.0 - Chimera Matrix (戰術消光對齊版)</title>
     <style>
         :root { 
             --yellow: #e3b341; --purple: #a371f7; --green: #3fb950; --red: #f85149; --blue: #58a6ff;
@@ -39,7 +39,6 @@
         
         .new-alert-row { background-color: rgba(88, 166, 255, 0.08) !important; }
         
-        /* 🚀 V59.0 戰術護眼視覺編碼 CSS */
         .cyan-bg { background-color: rgba(13, 188, 212, 0.15) !important; color: #0df !important; font-weight: 900 !important; text-align: center; }
         .gray-bg { background-color: rgba(255,255,255,0.02) !important; color: var(--text-muted) !important; font-weight: bold !important; text-align: center; }
         .flash-green { background-color: rgba(46, 160, 67, 0.85) !important; color: #ffffff !important; transition: background-color 0.2s ease; }
@@ -139,8 +138,8 @@
                         <th onclick="setSort('rank', 'Code')">代碼/情報 <span id="sort-rank-Code"></span></th>
                         <th onclick="setSort('rank', 'PriceVal')">現價 <span id="sort-rank-PriceVal"></span></th>
                         <th onclick="setSort('rank', 'Daily_Vol_Raw')">成交量 <span id="sort-rank-Daily_Vol_Raw"></span></th>
-                        <th onclick="setSort('rank', 'Shares_Outstanding_Raw')">發行總股數 <span id="sort-rank-Shares_Outstanding_Raw"></span></th>
-                        <th onclick="setSort('rank', 'Real_Float_Shares')">流通股數 <span id="sort-rank-Real_Float_Shares"></span></th>
+                        <th onclick="setSort('rank', 'Outstanding')">發行總股數 <span id="sort-rank-Outstanding"></span></th>
+                        <th onclick="setSort('rank', 'Float')">流通股數 <span id="sort-rank-Float"></span></th>
                         <th onclick="setSort('rank', 'RelVol')">即時量比 <span id="sort-rank-RelVol"></span></th>
                     </tr></thead>
                     <tbody id="rank-list"></tbody>
@@ -211,7 +210,6 @@
         }
         document.addEventListener('click', initAudioContext);
         document.addEventListener('touchstart', initAudioContext);
-        
         function toggleAudio() {
             audioOn = !audioOn;
             let btn = document.getElementById('audio-btn');
@@ -235,26 +233,29 @@
             } 
         }
 
-        function switchTab(tabId, btn) { 
-            document.querySelectorAll('.window-panel').forEach(el => el.classList.remove('active-tab')); 
-            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active')); 
-            document.getElementById(tabId).classList.add('active-tab'); 
-            btn.classList.add('active'); 
-        }
-        
+        function switchTab(tabId, btn) { document.querySelectorAll('.window-panel').forEach(el => el.classList.remove('active-tab')); document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active')); document.getElementById(tabId).classList.add('active-tab'); btn.classList.add('active'); }
         function toggleETF() { showETF = !showETF; let btn = document.getElementById('etf-btn'); if (showETF) { btn.innerText = "🔘 隱藏 ETF"; btn.style.borderColor = "var(--red)"; btn.style.color = "var(--red)"; } else { btn.innerText = "🔘 ETF"; btn.style.borderColor = "var(--border)"; btn.style.color = "var(--text-main)"; } if (Object.keys(brain).length > 0) refreshUI(brain); }
+        
         function openTW(s) { window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank'); }
 
         function getTWLogo(sym) {
-            return `<svg class="tw-logo" style="width:18px; height:18px; padding:2px;" onclick="event.stopPropagation(); openTW('${sym}')" viewBox="0 0 24 24" title="開啟 TradingView"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5h-2v-2h2v2zm0-4h-2v-6h2v6z"/></svg>`;
+            return `<svg class="tw-logo" onclick="event.stopPropagation(); openTW('${sym}')" viewBox="0 0 24 24" title="開啟 TradingView"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5h-2v-2h2v2zm0-4h-2v-6h2v6z"/></svg>`;
         }
 
+        // 🚀 核心修復：解析字串中的 M (百萬) 與 K (千)，讓點擊表頭可以正確排大小！
         function parseValue(val, col) {
-            if (val === undefined || val === null || val === '-') return -999999;
+            if (val === undefined || val === null || val === '-' || val === '載入中...') return -999999;
             if (typeof val === 'string' && val.includes('N/A')) return -999999;
             if (col === 'Code' || col === 'time') return val.toString();
+            
             let cleanStr = val.toString().replace(/<[^>]*>?/gm, ''); 
             let num = parseFloat(cleanStr.replace(/[^0-9.-]/g, '')) || 0;
+            
+            // 加入 M 與 K 的乘數還原邏輯
+            if (cleanStr.toUpperCase().includes('M')) num *= 1000000;
+            if (cleanStr.toUpperCase().includes('K')) num *= 1000;
+            if (cleanStr.toUpperCase().includes('B')) num *= 1000000000;
+
             if (col === 'RelVol') return parseFloat(cleanStr.replace('x', '')) || 0;
             return num;
         }
@@ -275,7 +276,6 @@
             return res;
         }
 
-        // 🚀 每 1 秒高速輪詢
         function refresh() { 
             fetch('/data?t=' + Date.now())
             .then(r => r.json())
@@ -298,6 +298,7 @@
             (d.top_catalysts || []).forEach(n => { newsScoreMap[n.Code || n.ticker || n.symbol] = n.CatScore || n.score || 0; });
 
             let currentSigIds = new Set();
+            
             let h1 = "";
             (d.surge_log || []).forEach(r => {
                 if (r.Type === 'fund' && !showETF) return; 
@@ -351,22 +352,26 @@
 
                 let pctBadge = curPctVal >= 0 ? `<span class="badge-g">${r.Pct||'-'}</span>` : `<span class="badge-r">${r.Pct||'-'}</span>`;
                 
-                // 🚀 TV 小圖標加大了觸控範圍，方便手機點擊
-                let symHtml = `<span class="sym" style="cursor:pointer;">${f_Code}</span><span style="margin-left:4px;">${hasNewsText}</span><svg class="tw-logo" style="width:18px; height:18px; padding:2px; margin-left:6px; fill:var(--blue); cursor:pointer;" onclick="event.stopPropagation(); openTW('${f_Code}')" viewBox="0 0 24 24" title="開啟 TradingView"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5h-2v-2h2v2zm0-4h-2v-6h2v6z"/></svg>`;
+                let symHtml = `<span class="sym" style="cursor:pointer;" ondblclick="event.stopPropagation(); openTW('${f_Code}')">${f_Code}</span><span style="margin-left:4px;">${hasNewsText}</span><svg class="tw-logo" style="width:18px; height:18px; padding:2px; margin-left:6px; fill:var(--blue); cursor:pointer;" onclick="event.stopPropagation(); openTW('${f_Code}')" viewBox="0 0 24 24" title="開啟 TradingView"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5h-2v-2h2v2zm0-4h-2v-6h2v6z"/></svg>`;
+                let priceHtml = `<b style="font-size:14px;">${r.Price||'-'}</b>`;
+                let volHtml = `<b style="font-size:14px;">${r.Vol||'-'}</b>`;
+                let outHtml = `<b style="font-size:13px;">${r.Outstanding||'-'}</b>`;
                 
                 let floatClass = r.Float_Color || "gray-bg";
+                let floatHtml = `<td class="${floatClass}" style="border-left:1px solid rgba(255,255,255,0.1); border-right:1px solid rgba(255,255,255,0.1);"><b>${r.Float||'-'}</b></td>`;
+                
                 let safeRelVol = typeof r.RelVol === 'string' && r.RelVol.length > 8 ? parseFloat(r.RelVol.replace('x','')).toFixed(2) + 'x' : (r.RelVol || '-');
+                let relVolHtml = `<b style="color:var(--yellow); font-size:13px;">${safeRelVol}</b>`;
 
-                // 🚀 在 <tr> 上面加入 ondblclick="openTW('${f_Code}')"，實現電腦版連點兩下跳轉！
                 h2 += `<tr class="${rowClass}" onclick="loadDetail('${f_Code}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[3]);" ondblclick="openTW('${f_Code}')">
                     <td class="status-indicator"></td>
                     <td style="width: 75px;">${pctBadge}</td>
                     <td><div style="display:flex; align-items:center;">${symHtml}</div></td>
-                    <td><b style="font-size:14px;">${r.Price||'-'}</b></td>
-                    <td><b style="font-size:14px;">${r.Vol||'-'}</b></td>
-                    <td><b style="font-size:13px;">${r.Outstanding||'-'}</b></td>
-                    <td class="${floatClass}" style="border-left:1px solid rgba(255,255,255,0.1); border-right:1px solid rgba(255,255,255,0.1);"><b>${r.Float||'-'}</b></td>
-                    <td><b style="color:var(--yellow); font-size:13px;">${safeRelVol}</b></td>
+                    <td>${priceHtml}</td>
+                    <td>${volHtml}</td>
+                    <td>${outHtml}</td>
+                    ${floatHtml}
+                    <td>${relVolHtml}</td>
                 </tr>`;
             });
             document.getElementById('rank-list').innerHTML = h2;
@@ -414,10 +419,13 @@
             
             let gapPctVal = parseFloat(d.GapPct) || 0;
             let gapStr = gapPctVal > 0 ? `+${gapPctVal.toFixed(2)}%` : `${gapPctVal.toFixed(2)}%`;
+
             let pct2min = parseFloat(d.Pct2Min) || 0;
             let p2mStr = pct2min > 0 ? `+${pct2min.toFixed(1)}%` : `${pct2min.toFixed(1)}%`;
+
             let vwapDevVal = parseFloat(d.VWAP_Dev) || 0;
             let vwapStr = vwapDevVal > 0 ? `+${vwapDevVal.toFixed(2)}%` : `${vwapDevVal.toFixed(2)}%`;
+
             let ema9Dev = parseFloat(d.EMA9_Dev) || 0;
             let ema9DevStr = ema9Dev > 0 ? `+${ema9Dev.toFixed(2)}%` : `${ema9Dev.toFixed(2)}%`;
             
