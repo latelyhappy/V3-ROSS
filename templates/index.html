@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V59.0 - Chimera Matrix (戰術消光對齊版)</title>
+    <title>Sniper V59.0 - Chimera Matrix (戰術消光純淨版)</title>
     <style>
         :root { 
             --yellow: #e3b341; --purple: #a371f7; --green: #3fb950; --red: #f85149; --blue: #58a6ff;
@@ -48,12 +48,7 @@
         .badge-g { background: rgba(46, 160, 67, 0.2) !important; color: #56d364 !important; font-weight: 900; text-align: center; border-radius: 4px; padding: 4px 6px; display: inline-block; min-width: 55px;}
         .badge-r { background: rgba(248, 81, 73, 0.15) !important; color: #ff7b72 !important; font-weight: 900; text-align: center; border-radius: 4px; padding: 4px 6px; display: inline-block; min-width: 55px;}
 
-        @keyframes sniper-pulse { 0% { color: var(--green); text-shadow: none; } 50% { color: #56d364; text-shadow: 0 0 3px rgba(86,211,100,0.4); } 100% { color: var(--green); text-shadow: none; } }
-        .sniper-tag { animation: sniper-pulse 2s infinite; font-weight: 900; }
-        @keyframes gold-glow { 0% { box-shadow: 0 0 2px rgba(255, 215, 0, 0.1); border-color: rgba(255, 215, 0, 0.2); } 50% { box-shadow: 0 0 8px rgba(255, 215, 0, 0.3); border-color: rgba(255, 215, 0, 0.5); } 100% { box-shadow: 0 0 2px rgba(255, 215, 0, 0.1); border-color: rgba(255, 215, 0, 0.2); } }
-        
         .sym { font-weight: 900; font-size: 15px; color: #ffffff; letter-spacing: 0.5px; display: inline-flex; align-items: center;}
-        .up { color: var(--green); font-weight: bold; } .down { color: var(--red); font-weight: bold; }
         .neon-word { color: var(--neon-green); font-weight: 900; }
 
         .tw-logo { width: 16px; height: 16px; cursor: pointer; margin-left: 6px; fill: var(--blue); transition: transform 0.2s, fill 0.2s; }
@@ -242,7 +237,6 @@
             return `<svg class="tw-logo" onclick="event.stopPropagation(); openTW('${sym}')" viewBox="0 0 24 24" title="開啟 TradingView"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5h-2v-2h2v2zm0-4h-2v-6h2v6z"/></svg>`;
         }
 
-        // 🚀 核心修復：解析字串中的 M (百萬) 與 K (千)，讓點擊表頭可以正確排大小！
         function parseValue(val, col) {
             if (val === undefined || val === null || val === '-' || val === '載入中...') return -999999;
             if (typeof val === 'string' && val.includes('N/A')) return -999999;
@@ -251,7 +245,6 @@
             let cleanStr = val.toString().replace(/<[^>]*>?/gm, ''); 
             let num = parseFloat(cleanStr.replace(/[^0-9.-]/g, '')) || 0;
             
-            // 加入 M 與 K 的乘數還原邏輯
             if (cleanStr.toUpperCase().includes('M')) num *= 1000000;
             if (cleanStr.toUpperCase().includes('K')) num *= 1000;
             if (cleanStr.toUpperCase().includes('B')) num *= 1000000000;
@@ -313,7 +306,6 @@
                 if (r.Row_Status === 'flash-green') rowClass += " flash-green";
                 
                 let sig = (r.Signal || '-').replace(/<[^>]*>?/gm, '');
-                if (sig.includes('🎯') || sig.includes('極限') || sig.includes('金叉')) sig = `<span class="sniper-tag">${sig}</span>`;
                 
                 let badges = "";
                 let volTier = r.VolTier || 0; 
@@ -342,36 +334,25 @@
             
             rankData.forEach(r => {
                 let f_Code = r.Code || r.ticker || "N/A";
-                let newsScore = newsScoreMap[f_Code] || 0;
                 let curPctVal = parseFloat(r.PctVal) || 0;
-                
-                let isSniperTarget = r.IsSniperTarget || false;
-                let rowClass = isSniperTarget ? "sniper-target-row" : "";
-                
-                let hasNewsText = newsScore > 70 ? (r.IsTrendingNews ? `<span title="情報發酵" style="font-size:12px;">🔥</span>` : `<span title="情報" style="font-size:12px;">🗞️</span>`) : ``;
-
+                let rowClass = r.IsSniperTarget ? "sniper-target-row" : "";
                 let pctBadge = curPctVal >= 0 ? `<span class="badge-g">${r.Pct||'-'}</span>` : `<span class="badge-r">${r.Pct||'-'}</span>`;
                 
-                let symHtml = `<span class="sym" style="cursor:pointer;" ondblclick="event.stopPropagation(); openTW('${f_Code}')">${f_Code}</span><span style="margin-left:4px;">${hasNewsText}</span><svg class="tw-logo" style="width:18px; height:18px; padding:2px; margin-left:6px; fill:var(--blue); cursor:pointer;" onclick="event.stopPropagation(); openTW('${f_Code}')" viewBox="0 0 24 24" title="開啟 TradingView"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5h-2v-2h2v2zm0-4h-2v-6h2v6z"/></svg>`;
-                let priceHtml = `<b style="font-size:14px;">${r.Price||'-'}</b>`;
-                let volHtml = `<b style="font-size:14px;">${r.Vol||'-'}</b>`;
-                let outHtml = `<b style="font-size:13px;">${r.Outstanding||'-'}</b>`;
+                // 🚀 盲點二修復：拔除所有驚嘆號，只留下最純淨的代碼字串與 TV 標誌
+                let symHtml = `<span class="sym" style="cursor:pointer;" ondblclick="event.stopPropagation(); openTW('${f_Code}')">${f_Code}</span><svg class="tw-logo" style="width:18px; height:18px; padding:2px; margin-left:6px; fill:var(--blue); cursor:pointer;" onclick="event.stopPropagation(); openTW('${f_Code}')" viewBox="0 0 24 24" title="開啟 TradingView"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14.5h-2v-2h2v2zm0-4h-2v-6h2v6z"/></svg>`;
                 
                 let floatClass = r.Float_Color || "gray-bg";
-                let floatHtml = `<td class="${floatClass}" style="border-left:1px solid rgba(255,255,255,0.1); border-right:1px solid rgba(255,255,255,0.1);"><b>${r.Float||'-'}</b></td>`;
-                
                 let safeRelVol = typeof r.RelVol === 'string' && r.RelVol.length > 8 ? parseFloat(r.RelVol.replace('x','')).toFixed(2) + 'x' : (r.RelVol || '-');
-                let relVolHtml = `<b style="color:var(--yellow); font-size:13px;">${safeRelVol}</b>`;
 
                 h2 += `<tr class="${rowClass}" onclick="loadDetail('${f_Code}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[3]);" ondblclick="openTW('${f_Code}')">
                     <td class="status-indicator"></td>
                     <td style="width: 75px;">${pctBadge}</td>
                     <td><div style="display:flex; align-items:center;">${symHtml}</div></td>
-                    <td>${priceHtml}</td>
-                    <td>${volHtml}</td>
-                    <td>${outHtml}</td>
-                    ${floatHtml}
-                    <td>${relVolHtml}</td>
+                    <td><b style="font-size:14px;">${r.Price||'-'}</b></td>
+                    <td><b style="font-size:14px;">${r.Vol||'-'}</b></td>
+                    <td><b style="font-size:13px;">${r.Outstanding||'-'}</b></td>
+                    <td class="${floatClass}" style="border-left:1px solid rgba(255,255,255,0.1); border-right:1px solid rgba(255,255,255,0.1);"><b>${r.Float||'-'}</b></td>
+                    <td><b style="color:var(--yellow); font-size:13px;">${safeRelVol}</b></td>
                 </tr>`;
             });
             document.getElementById('rank-list').innerHTML = h2;
@@ -410,9 +391,6 @@
             let d = (brain.details && brain.details[sym]) ? brain.details[sym] : null; 
             if (!d) return;
             
-            let trapWarn = d.IsTrap ? `<div style="border:1px solid var(--red); color:var(--red); padding:4px; margin-bottom:6px; border-radius:4px; font-size:11px; font-weight:bold;">🩸 偵測到毒藥/退市風險</div>` : "";
-            if (d.HasSentimentFlip) trapWarn = `<div style="border:1px solid rgba(255,215,0,0.6); background: rgba(255,215,0,0.05); color:#ffd700; padding:4px; margin-bottom:6px; border-radius:4px; font-size:11px; font-weight:bold; animation: gold-glow 2s infinite;">💎 戰術警報：利空不跌！主力強勢承接</div>` + trapWarn;
-            
             let snScore = d.SN_Score || 0;
             let snColor = snScore >= 400 ? "var(--neon-green)" : (snScore >= 200 ? "var(--yellow)" : "var(--text-muted)");
             let vwapColor = d.VWAP_Rating === 'High' ? 'var(--red)' : (d.VWAP_Rating === 'Mid' ? 'var(--yellow)' : 'var(--neon-green)');
@@ -429,29 +407,20 @@
             let ema9Dev = parseFloat(d.EMA9_Dev) || 0;
             let ema9DevStr = ema9Dev > 0 ? `+${ema9Dev.toFixed(2)}%` : `${ema9Dev.toFixed(2)}%`;
             
-            let extBadge = "";
-            if (ema9Dev >= 1.5) extBadge = `<div style="background:rgba(210, 146, 255, 0.12); border:1px solid var(--neon-purple); padding:3px 8px; border-radius:4px; color:var(--neon-purple); font-weight:bold;">🚀 延伸 (${ema9DevStr})</div>`;
-            else if (Math.abs(ema9Dev) <= 0.5) extBadge = `<div style="background:rgba(255, 255, 255, 0.05); border:1px solid var(--text-muted); padding:3px 8px; border-radius:4px; color:var(--text-muted);">🐌 泥沼 (${ema9DevStr})</div>`;
-            else extBadge = `<div style="background:rgba(255, 255, 255, 0.05); padding:3px 8px; border-radius:4px;">乖離: ${ema9DevStr}</div>`;
-
-            let sig = (d.Signal || '掃描中...').replace(/<[^>]*>?/gm, '');
-            if (sig.includes('🎯') || sig.includes('極限') || sig.includes('金叉')) sig = `<span class="sniper-tag">${sig}</span>`;
-
             let safeRelVol = typeof d.RelVol === 'string' && d.RelVol.length > 8 ? parseFloat(d.RelVol.replace('x','')).toFixed(2) + 'x' : (d.RelVol || '-');
 
             let gaugeHTML = `<svg width="70" height="38" viewBox="0 0 120 70" style="overflow:visible;"><path d="M 15 60 A 45 45 0 0 1 105 60" fill="none" stroke="var(--border)" stroke-width="12" stroke-linecap="round" /><path d="M 15 60 A 45 45 0 0 1 105 60" fill="none" stroke="${snColor}" stroke-width="12" stroke-linecap="round" stroke-dasharray="141" stroke-dashoffset="${141*(1-Math.min(snScore/600,1))}" style="transition: stroke-dashoffset 1s ease-out;" /><text x="60" y="55" text-anchor="middle" fill="${snColor}" font-size="24" font-weight="900">${snScore}</text></svg>`;
             
-            let html = `<div style="text-align:left;">${trapWarn}
+            let html = `<div style="text-align:left;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;">
-                    <div style="flex:1;"><h2 style="font-size:18px; margin:0; display:inline-flex; align-items:center; cursor:pointer;" onclick="openTW('${sym}')" title="開啟圖表">${sym}${getTWLogo(sym)}</h2><span style="font-size:16px; color:var(--text-muted); margin-left:6px;">${d.Price||'-'}</span><div style="margin-top:2px; font-size:11px;"><span style="color:${d.VsaState > 0 ? 'var(--red)' : 'var(--green)'}; font-weight:bold;">${d.VsaState > 0 ? '🚨背離' : '✅量價'}</span><span style="margin-left:8px; color:var(--text-main);">🛡️守: <b style="color:var(--red);">$${(d.StopLoss||0).toFixed(2)}</b></span></div></div><div>${gaugeHTML}</div>
+                    <div style="flex:1;"><h2 style="font-size:18px; margin:0; display:inline-flex; align-items:center; cursor:pointer;" onclick="openTW('${sym}')" title="開啟圖表">${sym}${getTWLogo(sym)}</h2><span style="font-size:16px; color:var(--text-muted); margin-left:6px;">${d.Price||'-'}</span><div style="margin-top:2px; font-size:11px;"><span style="margin-left:8px; color:var(--text-main);">🛡️守: <b style="color:var(--red);">$${(d.StopLoss||0).toFixed(2)}</b></span></div></div><div>${gaugeHTML}</div>
                 </div>
                 <div style="display:flex; flex-wrap:wrap; gap:4px; padding:6px; background:rgba(0,0,0,0.3); border-radius:5px; font-size:11px; margin-bottom:6px;">
                     <div style="background:rgba(255,255,255,0.05); padding:3px 6px; border-radius:3px;">Gap: <b>${gapStr}</b></div>
                     <div style="background:rgba(255,255,255,0.05); padding:3px 6px; border-radius:3px;">2m: <b>${p2mStr}</b></div>
                     <div style="background:rgba(255,255,255,0.05); padding:3px 6px; border-radius:3px;">Rel: <b style="color:var(--yellow);">${safeRelVol}</b></div>
                     <div style="background:rgba(255,255,255,0.05); padding:3px 6px; border-radius:3px;">VWAP: <b style="color:${vwapColor};">${vwapStr}</b></div>
-                    <div style="background:rgba(255,255,255,0.05); padding:3px 6px; border-radius:3px;">換手: <b style="color:var(--neon-green);">${d.Turnover || '-'}</b></div>
-                    ${extBadge}
+                    <div style="background:rgba(255,255,255,0.05); padding:3px 6px; border-radius:3px;">乖離: <b>${ema9DevStr}</b></div>
                 </div>
                 <h3 style="color:var(--text-muted); font-size:11px; border-bottom:1px solid var(--border); padding-bottom:2px; margin:4px 0;">🗞️ 情報分析 (3D)</h3>`;
             
