@@ -6,11 +6,12 @@ import urllib.parse
 import json
 import yfinance as yf
 import pytz
+import feedparser
+from email.utils import parsedate_to_datetime
 
 import shared_state
 from config import TZ_NY, TZ_TW
 
-# 妖股與正規軍複合高勝率詞庫
 DEFAULT_CATALYSTS = {
     "FDA": 10, "APPROVAL": 9, "MERGER": 8, "ACQUISITION": 8,
     "EARNINGS": 6, "REVENUE": 5, "BEATS": 7, "MISSES": -6,
@@ -29,16 +30,14 @@ def load_catalysts():
         return DEFAULT_CATALYSTS
 
 def safe_escape(text):
-    """🚀 盲點一修復：安全脫逸！防止單雙引號把前端 HTML 標籤切斷導致新聞隱形"""
     if not text: return ""
     return text.replace('"', '&quot;').replace("'", "&#39;")
 
 def translate_to_zh(text):
-    """🚀 盲點一修復：加入安全備援，如果 Google 翻譯擋人，直接回傳英文原文，絕不當機！"""
     if not text: return ""
     try:
         url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=zh-TW&dt=t&q={urllib.parse.quote(text)}"
-        headers = {"User-Agent": "Mozilla/5.0"} # 偽裝瀏覽器防擋
+        headers = {"User-Agent": "Mozilla/5.0"} 
         response = requests.get(url, headers=headers, timeout=4)
         if response.status_code == 200:
             data = response.json()
@@ -47,8 +46,15 @@ def translate_to_zh(text):
     except:
         return text
 
+def parse_rss_time(time_str):
+    try:
+        dt = parsedate_to_datetime(time_str)
+        return dt.astimezone(TZ_TW) if dt.tzinfo else TZ_NY.localize(dt).astimezone(TZ_TW)
+    except:
+        return datetime.now(TZ_TW)
+
 def finnhub_news_monitor_worker():
-    print("🗞️ [NEWS] 啟動情報監控網 (防斷裂裝甲與備援機制啟動)...")
+    print("🗞️ [NEWS] 啟動情報監控網 (RSS + yF 雙核心防斷裂裝甲版)...")
     catalysts = load_catalysts()
     
     while True:
@@ -64,43 +70,58 @@ def finnhub_news_monitor_worker():
             
             for sym in watch_list[:15]: 
                 try:
-                    news_data = yf.Ticker(sym).news
                     news_items = []
                     sym_max_score = 0
+                    raw_news_entries = []
                     
-                    for entry in news_data[:3]:
-                        raw_title = entry.get("title", "")
-                        link = entry.get("link", "")
-                        
-                        if not raw_title:
-                            continue
-                        
-                        pub_ts = entry.get("providerPublishTime", time.time())
-                        pub_time = datetime.fromtimestamp(pub_ts, pytz.UTC).astimezone(TZ_TW)
+                    # 🚀 雙核心策略 1：優先使用 RSS (最穩定、不封鎖)
+                    rss_url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={sym}&region=US&lang=en-US"
+                    feed = feedparser.parse(rss_url)
+                    if feed.entries:
+                        for entry in feed.entries[:3]:
+                            raw_news_entries.append({
+                                "raw_title": entry.title,
+                                "link": entry.link,
+                                "pub_time": parse_rss_time(entry.published)
+                            })
+                    else:
+                        # 🚀 雙核心策略 2：如果 RSS 沒東西，備用呼叫 yfinance API
+                        try:
+                            news_data = yf.Ticker(sym).news
+                            for entry in news_data[:3]:
+                                pub_ts = entry.get("providerPublishTime", time.time())
+                                pub_time = datetime.fromtimestamp(pub_ts, pytz.UTC).astimezone(TZ_TW)
+                                raw_news_entries.append({
+                                    "raw_title": entry.get("title", ""),
+                                    "link": entry.get("link", ""),
+                                    "pub_time": pub_time
+                                })
+                        except:
+                            pass
+                            
+                    for entry in raw_news_entries:
+                        raw_title = entry["raw_title"]
+                        if not raw_title: continue
                         
                         score = 0
                         elites = []
                         raw_upper = raw_title.upper()
                         
-                        # 🚀 AI 評分機制：確保用純大寫的英文原文進行碰撞比對
                         for kw, val in catalysts.items():
                             if kw in raw_upper:
                                 score += val
                                 elites.append(kw)
                         
-                        # 翻譯與安全過濾
                         zh_title = translate_to_zh(raw_title)
-                        safe_raw_title = safe_escape(raw_title)
-                        safe_zh_title = safe_escape(zh_title)
                         
                         news_items.append({
-                            "time": pub_time.strftime("%m-%d %H:%M"),
-                            "raw_title": safe_raw_title,
-                            "title": safe_zh_title,
-                            "link": link,
+                            "time": entry["pub_time"].strftime("%m-%d %H:%M"),
+                            "raw_title": safe_escape(raw_title),
+                            "title": safe_escape(zh_title),
+                            "link": entry["link"],
                             "score": score,
                             "elites": elites,
-                            "is_today": pub_time.date() == datetime.now(TZ_TW).date()
+                            "is_today": entry["pub_time"].date() == datetime.now(TZ_TW).date()
                         })
                         
                         if score > sym_max_score:
