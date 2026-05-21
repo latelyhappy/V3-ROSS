@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V59.0 - Chimera Matrix (戰術消光抹茶綠版)</title>
+    <title>Sniper V59.0 - Chimera Matrix (終極完全體)</title>
     <style>
         :root { 
             --yellow: #e3b341; --purple: #a371f7; --green: #3fb950; --red: #f85149; --blue: #58a6ff;
@@ -41,7 +41,6 @@
         .cyan-bg { background-color: rgba(13, 188, 212, 0.15) !important; color: #0df !important; font-weight: 900 !important; text-align: center; }
         .gray-bg { background-color: rgba(255,255,255,0.02) !important; color: var(--text-muted) !important; font-weight: bold !important; text-align: center; }
         
-        /* 🚀 指令 3：暴漲亮綠色修改為「暗色戰術抹茶綠」 */
         .flash-green { background-color: #163e20 !important; color: #ffffff !important; transition: background-color 0.2s ease; }
         .flash-green td { border-color: rgba(255, 255, 255, 0.05); }
         .flash-green .sym, .flash-green span, .flash-green b { color: #8eeea3 !important; }
@@ -51,9 +50,6 @@
 
         .sym { font-weight: 900; font-size: 15px; color: #ffffff; letter-spacing: 0.5px; display: inline-flex; align-items: center;}
         .neon-word { color: var(--neon-green); font-weight: 900; }
-
-        .tw-logo { width: 16px; height: 16px; cursor: pointer; margin-left: 6px; fill: var(--blue); }
-        .sniper-target-row { background: rgba(163, 113, 247, 0.15) !important; }
 
         #mobile-tabs { display: none; }
         body.mobile-mode #mobile-tabs { display: flex; position: fixed; bottom: 0; left: 0; width: 100%; height: 50px; background: var(--bg-surface); z-index: 10000; border-top: 1px solid var(--border); }
@@ -104,7 +100,7 @@
         </div>
 
         <div id="win-rank" class="window-panel">
-            <div class="panel-header">🏆 狙擊陣型監控雷達 (Low Float Top Gainers)</div>
+            <div class="panel-header">🏆 狙擊陣型監控雷達</div>
             <div class="panel-content">
                 <table>
                     <thead><tr>
@@ -193,7 +189,7 @@
         function openTW(s) { window.open(`https://www.tradingview.com/chart/?symbol=${s}`, '_blank'); }
 
         function parseValue(val, col) {
-            if (val === undefined || val === null || val === '-' || val === '載入中...') return -999999;
+            if (val === undefined || val === null || val === '-' || val === '載入中') return -999999;
             let cleanStr = val.toString().replace(/<[^>]*>?/gm, ''); 
             let num = parseFloat(cleanStr.replace(/[^0-9.-]/g, '')) || 0;
             if (cleanStr.toUpperCase().includes('M')) num *= 1000000;
@@ -223,23 +219,14 @@
             if (!d) return;
             document.getElementById('sys-status').innerHTML = `<span style="color:var(--neon-purple); font-weight:bold;">${d.tv_status || ''}</span> &nbsp;|&nbsp; 更新: <span style="color:#fff">${d.last_update || '--:--:--'}</span>`;
             
-           let h1 = "";
+            let h1 = "";
             (d.surge_log || []).forEach(r => {
                 let f_Code = r.Code || "N/A";
-                let sigId = f_Code + "_" + r.SignalTS;
-                currentSigIds.add(sigId);
-                alertRenderCount[sigId] = (alertRenderCount[sigId] || 0) + 1;
-                let isNew = alertRenderCount[sigId] <= 5;
-                
                 let rowClass = r.Status ? `tr-${r.Status}` : ""; 
-                if (isNew) rowClass += " new-alert-row";
                 if (r.Row_Status === 'flash-green') rowClass += " flash-green";
                 
-                // 🚀 接收後端傳來的巨鯨與跳空徽章
-                let badges = r.Badges ? `<span style="font-size:12px; margin-left:4px;" title="特殊戰術狀態">${r.Badges}</span>` : "";
-                
+                let badges = r.Badges ? `<span style="font-size:12px; margin-left:4px;">${r.Badges}</span>` : "";
                 let sig = (r.Signal || '-').replace(/<[^>]*>?/gm, '');
-                // 讓突破心理關卡等文字高亮
                 if(sig.includes('突破')) {
                     sig = sig.replace(/\(突破([^)]+)\)/, '<span style="color:var(--yellow); font-weight:bold;">(突破$1)</span>');
                 }
@@ -250,12 +237,12 @@
                     <td class="status-indicator"></td>
                     <td style="color:var(--text-muted); font-size:11px;">${r.Time}</td>
                     <td><div class="sym">${f_Code} ${badges}</div></td>
-                    <td><b style="font-size:14px;">${r.Price||'-'}</b></td>
-                    <td><b style="font-size:14px;">${r.Vol||'-'}</b></td>
-                    <td><b style="color:var(--yellow); font-size:13px;">${safeRelVol}</b></td>
-                    <td style="font-weight:bold; font-size:13px;">${sig}</td>
+                    <td><b>${r.Price||'-'}</b></td>
+                    <td><b>${r.Vol||'-'}</b></td>
+                    <td><b style="color:var(--yellow);">${safeRelVol}</b></td>
+                    <td style="font-weight:bold;">${sig}</td>
                 </tr>`;
-                if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { played[r.SignalTS] = r.SignalTS; sounds.nova.play().catch(e=>{}); }
+                if (r.Audio && audioOn) { sounds.nova.play().catch(e=>{}); }
             });
             document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="7" style="text-align:center; padding: 30px; color: var(--text-muted);">等待訊號</td></tr>`;
 
@@ -270,14 +257,13 @@
                 let gapVal = parseFloat(r.GapPct) || 0;
                 let gapBadge = gapVal >= 0 ? `<span style="color:#56d364; font-weight:bold;">+${gapVal.toFixed(2)}%</span>` : `<span style="color:#ff7b72; font-weight:bold;">${gapVal.toFixed(2)}%</span>`;
                 let pctBadge = parseFloat(r.PctVal) >= 0 ? `<span class="badge-g">${r.Pct||'-'}</span>` : `<span class="badge-r">${r.Pct||'-'}</span>`;
-                
-                // 🚀 指令 2：極簡代碼，支援點擊直接分析
                 let symHtml = `<span class="sym" style="cursor:pointer;" onclick="loadDetail('${f_Code}')" ondblclick="event.stopPropagation(); openTW('${f_Code}')">${f_Code}</span>`;
 
                 h2 += `<tr onclick="loadDetail('${f_Code}');" ondblclick="openTW('${f_Code}')">
                     <td class="status-indicator"></td>
                     <td>${pctBadge}</td>
-                    <td><b>${gapBadge}</b></td> <td>${symHtml}</td>
+                    <td><b>${gapBadge}</b></td>
+                    <td>${symHtml}</td>
                     <td><b style="font-size:14px;">${r.Price||'-'}</b></td>
                     <td><b>${r.Vol||'-'}</b></td>
                     <td><b>${r.Outstanding||'-'}</b></td>
