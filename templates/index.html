@@ -223,26 +223,39 @@
             if (!d) return;
             document.getElementById('sys-status').innerHTML = `<span style="color:var(--neon-purple); font-weight:bold;">${d.tv_status || ''}</span> &nbsp;|&nbsp; 更新: <span style="color:#fff">${d.last_update || '--:--:--'}</span>`;
             
-            let h1 = "";
+           let h1 = "";
             (d.surge_log || []).forEach(r => {
                 let f_Code = r.Code || "N/A";
+                let sigId = f_Code + "_" + r.SignalTS;
+                currentSigIds.add(sigId);
+                alertRenderCount[sigId] = (alertRenderCount[sigId] || 0) + 1;
+                let isNew = alertRenderCount[sigId] <= 5;
+                
                 let rowClass = r.Status ? `tr-${r.Status}` : ""; 
+                if (isNew) rowClass += " new-alert-row";
                 if (r.Row_Status === 'flash-green') rowClass += " flash-green";
                 
-                // 🚀 指令 2：狀態代表圖示（徽章如 🌊 大浪）復活運作！
-                let badges = (r.VolTier || 0) >= 3 ? `<span title="大浪" style="font-size:12px; margin-left:4px;">🌊</span>` : "";
+                // 🚀 接收後端傳來的巨鯨與跳空徽章
+                let badges = r.Badges ? `<span style="font-size:12px; margin-left:4px;" title="特殊戰術狀態">${r.Badges}</span>` : "";
+                
+                let sig = (r.Signal || '-').replace(/<[^>]*>?/gm, '');
+                // 讓突破心理關卡等文字高亮
+                if(sig.includes('突破')) {
+                    sig = sig.replace(/\(突破([^)]+)\)/, '<span style="color:var(--yellow); font-weight:bold;">(突破$1)</span>');
+                }
+
                 let safeRelVol = typeof r.RelVol === 'string' && r.RelVol.length > 8 ? parseFloat(r.RelVol.replace('x','')).toFixed(2) + 'x' : (r.RelVol || '-');
 
                 h1 += `<tr class="${rowClass}" onclick="loadDetail('${f_Code}')" ondblclick="openTW('${f_Code}')">
                     <td class="status-indicator"></td>
                     <td style="color:var(--text-muted); font-size:11px;">${r.Time}</td>
                     <td><div class="sym">${f_Code} ${badges}</div></td>
-                    <td><b>${r.Price||'-'}</b></td>
-                    <td><b>${r.Vol||'-'}</b></td>
-                    <td><b style="color:var(--yellow);">${safeRelVol}</b></td>
-                    <td style="font-weight:bold;">${r.Signal||'-'}</td>
+                    <td><b style="font-size:14px;">${r.Price||'-'}</b></td>
+                    <td><b style="font-size:14px;">${r.Vol||'-'}</b></td>
+                    <td><b style="color:var(--yellow); font-size:13px;">${safeRelVol}</b></td>
+                    <td style="font-weight:bold; font-size:13px;">${sig}</td>
                 </tr>`;
-                if (r.Audio && audioOn) { sounds.nova.play().catch(e=>{}); }
+                if (r.Audio && r.SignalTS > (played[r.SignalTS] || 0) && audioOn) { played[r.SignalTS] = r.SignalTS; sounds.nova.play().catch(e=>{}); }
             });
             document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="7" style="text-align:center; padding: 30px; color: var(--text-muted);">等待訊號</td></tr>`;
 
