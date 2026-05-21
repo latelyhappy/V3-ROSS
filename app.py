@@ -1,138 +1,43 @@
 import os
-import sys
-import warnings
+import threading
+import time
+from datetime import datetime
+from flask import Flask, render_template, jsonify, request
 
-os.environ["PYTHONWARNINGS"] = "ignore"
-warnings.filterwarnings("ignore")
-
-class CleanStderr:
-    def __init__(self, original_stderr):
-        self.original_stderr = original_stderr
-    def write(self, msg):
-        if "Pandas4Warning" in msg or "Timestamp.utcnow" in msg or "FutureWarning" in msg or "deprecated" in msg: return
-        self.original_stderr.write(msg)
-    def flush(self):
-        self.original_stderr.flush()
-
-sys.stderr = CleanStderr(sys.stderr)
-
-import logging
-logging.getLogger('yfinance').setLevel(logging.CRITICAL)
-logging.getLogger('tvDatafeed').setLevel(logging.CRITICAL)
-logging.getLogger('urllib3').setLevel(logging.CRITICAL)
-logging.getLogger('werkzeug').setLevel(logging.ERROR)
-
-from flask import Flask, jsonify, render_template, request, send_file
-import io, time, threading, json, copy
-import pandas as pd
-from datetime import datetime, timedelta
-
-# ==========================================
-# 匯入解耦模組
-# ==========================================
-from config import PORT, SESSION_BACKUP_PATH, TZ_NY
+# 🚀 匯入 V59.0 中央時區設定與執行緒鎖
 import shared_state
-from engine_shares import load_shares_cache
-# 🚀 修正後：精確匯入 V59.0 的選股初始化引擎
-from engine_scanner import init_scanner
-from engine_news import finnhub_news_monitor_worker, get_live_trends
-import collector
-import memory_worker
-from alpaca_worker import init_alpaca
+from config import TZ_NY, TZ_TW
+
+# 🚀 匯入四大核心解耦 Worker（精準口徑對齊）
+from engine_scanner import init_scanner  # 👈 核心盤前選股雷達
+from engine_news import finnhub_news_monitor_worker, get_live_trends # 👈 情報監控網
+from alpaca_worker import init_alpaca  # 👈 毫秒級火控報價
+from memory_worker import init_worker  # 👈 GitHub 雲端備份記憶體
 
 app = Flask(__name__)
 
+# 全域啟動計數器，防範 Flask 在 Debug 模式下啟動兩次背景線程
+_threads_initialized = False
+
 def get_current_trading_date():
+    """動態計算當前美股交易日（美東時間換算）"""
     now_ny = datetime.now(TZ_NY)
-    return (now_ny - timedelta(days=1)).strftime("%Y-%m-%d") if now_ny.hour < 4 else now_ny.strftime("%Y-%m-%d")
-
-def load_intraday_state():
-    try:
-        if os.path.exists(SESSION_BACKUP_PATH):
-            with open(SESSION_BACKUP_PATH, 'r', encoding='utf-8') as f: data = json.load(f)
-            if data.get("date") == get_current_trading_date():
-                with shared_state.brain_lock:
-                    shared_state.MASTER_BRAIN = data.get("MASTER_BRAIN", shared_state.MASTER_BRAIN)
-                    shared_state.DYNAMIC_WATCHLIST = data.get("DYNAMIC_WATCHLIST", [])
-                    shared_state.STATS_MAP = data.get("STATS_MAP", {})
-    except: pass
-
-def state_auto_save_worker():
-    while True:
-        time.sleep(15)
-        try:
-            with shared_state.brain_lock:
-                backup_data = {
-                    "date": get_current_trading_date(), 
-                    "MASTER_BRAIN": shared_state.MASTER_BRAIN, 
-                    "DYNAMIC_WATCHLIST": shared_state.DYNAMIC_WATCHLIST,
-                    "STATS_MAP": shared_state.STATS_MAP
-                }
-            with open(SESSION_BACKUP_PATH, 'w', encoding='utf-8') as f: 
-                json.dump(backup_data, f, ensure_ascii=False)
-        except: pass
-
-def daily_flush_worker():
-    while True:
-        time.sleep(10)
-        new_session_date = get_current_trading_date()
-        if new_session_date != shared_state._current_session_date:
-            with shared_state.brain_lock:
-                shared_state.MASTER_BRAIN["surge_log"] = []
-                shared_state.MASTER_BRAIN["details"] = {}
-                shared_state.MASTER_BRAIN["leaderboard"] = []
-                shared_state.DYNAMIC_WATCHLIST.clear()
-                shared_state.STATS_MAP.clear()
-                shared_state._current_session_date = new_session_date
-
-@app.route('/api/config', methods=['POST'])
-def update_config():
-    data = request.json
-    if 'relvol_limit' in data:
-        try: shared_state.MIN_RELVOL_LIMIT = float(data['relvol_limit'])
-        except: pass
-    shared_state._last_list_update = 0 
-    return jsonify({"status": "success", "relvol_limit": shared_state.MIN_RELVOL_LIMIT})
-
-@app.route('/api/export_news')
-def export_news():
-    rows = []
-    with shared_state.brain_lock:
-        for ticker_data in shared_state.MASTER_BRAIN.get('top_catalysts', []):
-            ticker = ticker_data.get('Code') or ticker_data.get('ticker')
-            for n in ticker_data.get('NewsList', []):
-                rows.append({
-                    "發布時間": n.get('time'), "代碼": ticker, "總分": ticker_data.get('CatScore', 0),
-                    "標題": n.get('title'), "價格": ticker_data.get('Price', '-'), "漲幅": ticker_data.get('Pct', '-')
-                })
-    if not rows: return "無數據", 404
-    df = pd.DataFrame(rows); output = io.BytesIO(); df.to_csv(output, index=False, encoding='utf-8-sig'); output.seek(0)
-    return send_file(output, mimetype='text/csv', as_attachment=True, download_name="news.csv")
-
-@app.route('/api/export_intelligence')
-def export_intelligence():
-    limit = request.args.get('limit', default=None, type=int)
-    today = request.args.get('today', default='false').lower() == 'true'
-    export_path = collector.export_corpus_csv(limit=limit, today_only=today) 
-    if export_path and os.path.exists(export_path):
-        filename = f"sniper_corpus_{datetime.now().strftime('%m%d_%H%M')}.csv"
-        return send_file(export_path, mimetype='text/csv', as_attachment=True, download_name=filename)
-    return jsonify({"status": "error", "message": "無符合條件之資料，或資料庫為空"}), 404
-
-@app.route('/api/intelligence_summary')
-def intelligence_summary():
-    result = collector.generate_intelligence_summary()
-    return jsonify(result), (200 if result.get("status") == "success" else 500)
+    # 如果是週末，自動倒退回週五
+    if now_ny.weekday() == 5: # 週六
+        now_ny = now_ny - timedelta(days=1)
+    elif now_ny.weekday() == 6: # 週日
+        now_ny = now_ny - timedelta(days=2)
+    return now_ny.strftime('%Y-%m-%d')
 
 @app.route('/')
-def index(): 
+def index():
+    """戰術矩陣前端大廳入口"""
     return render_template('index.html')
 
 @app.route('/data')
 def get_data():
-    """中央大腦即時數據廣播站"""
+    """中央大腦即時數據廣播站（每秒廣播）"""
     with shared_state.brain_lock:
-        # 強制打包
         payload = {
             "tv_status": shared_state.TV_LOGIN_STATUS,
             "last_update": shared_state.MASTER_BRAIN.get("last_update", "--:--:--"),
@@ -143,24 +48,56 @@ def get_data():
         }
     return jsonify(payload)
 
-if __name__ == '__main__':
-    # 啟動附屬資料庫與記憶體 (加入防護罩)
-    try: collector.init_db()
-    except: pass
+@app.route('/api/intelligence_summary')
+def get_intelligence_summary():
+    """高勝率戰報語料生成 API"""
+    try:
+        trends = get_live_trends()
+        return jsonify({"status": "success", "data": trends})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+@app.route('/api/export_intelligence')
+def export_intelligence():
+    """即時下載 AI 語料庫"""
+    with shared_state.brain_lock:
+        data_str = json.dumps(shared_state.MASTER_BRAIN, indent=4, ensure_ascii=False)
+    return app.response_class(
+        data_str,
+        mimetype='application/json',
+        headers={"Content-Disposition": "attachment;filename=sniper_brain_dump.json"}
+    )
+
+def start_global_services():
+    """安全啟動後端四大核心引擎線程（對齊 V59.0 架構）"""
+    global _threads_initialized
+    if _threads_initialized:
+        return
+    _threads_initialized = True
+
+    print("⚡ [SYSTEM] 正在打通後端四象限數據引擎流水線...")
     
-    load_shares_cache()
-    load_intraday_state()
+    # 1. 啟動 TradingView 全域盤前選股雷達 (強制無成交量阻攔放行版)
+    init_scanner()
     
-    try: memory_worker.init_worker()
-    except: pass
-    
-    # 啟動四大核心執行緒
-    threading.Thread(target=state_auto_save_worker, daemon=True).start()
-    threading.Thread(target=scanner_engine, daemon=True).start()
+    # 2. 啟動 Finnhub/Yahoo 情報監控網
     threading.Thread(target=finnhub_news_monitor_worker, daemon=True).start()
-    threading.Thread(target=daily_flush_worker, daemon=True).start()
     
-    # 🚀 V59.0 呼叫更新：直接啟動，不需要再塞入變數參數
+    # 3. 啟動 Alpaca 毫秒級即時報價火控系統
     init_alpaca()
     
-    app.run(host='0.0.0.0', port=PORT, use_reloader=False)
+    # 4. 啟動 GitHub 雲端記憶備份中樞
+    init_worker()
+    
+    print("✅ [SYSTEM] 後端四大核心解耦模組已成功並行運作！")
+
+# 覆寫 Flask 啟動點
+if __name__ == '__main__':
+    # 啟動伺服器前，先發動四大底層 Worker
+    start_global_services()
+    
+    # 讀取環境變數 Port（Railway 部署專用）
+    port = int(os.getenv("PORT", 5000))
+    
+    # 強制關閉 debug 模式防範雙重啟動，並綁定 0.0.0.0
+    app.run(host='0.0.0.0', port=port, debug=False)
