@@ -128,13 +128,19 @@ def index():
     return render_template('index.html')
 
 @app.route('/data')
-def data():
+def get_data():
+    """中央大腦即時數據廣播站"""
     with shared_state.brain_lock:
-        safe_brain = copy.deepcopy(shared_state.MASTER_BRAIN)
-        safe_brain["live_trends"] = get_live_trends()
-        safe_brain["current_relvol"] = shared_state.MIN_RELVOL_LIMIT 
-        safe_brain["tv_status"] = shared_state.TV_LOGIN_STATUS 
-    return jsonify(safe_brain)
+        # 強制打包
+        payload = {
+            "tv_status": shared_state.TV_LOGIN_STATUS,
+            "last_update": shared_state.MASTER_BRAIN.get("last_update", "--:--:--"),
+            "leaderboard": shared_state.MASTER_BRAIN.get("leaderboard", []),
+            "surge_log": shared_state.MASTER_BRAIN.get("surge_log", []),
+            "top_catalysts": shared_state.MASTER_BRAIN.get("top_catalysts", []),
+            "details": shared_state.MASTER_BRAIN.get("details", {})
+        }
+    return jsonify(payload)
 
 if __name__ == '__main__':
     # 啟動附屬資料庫與記憶體 (加入防護罩)
