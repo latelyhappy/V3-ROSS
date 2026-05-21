@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V59.0 - Chimera Matrix (戰術消光對齊版)</title>
+    <title>Sniper V59.0 - Chimera Matrix (純淨戰術版)</title>
     <style>
         :root { 
             --yellow: #e3b341; --purple: #a371f7; --green: #3fb950; --red: #f85149; --blue: #58a6ff;
@@ -19,7 +19,7 @@
         .ghost-btn { background: transparent; border: 1px solid var(--border); color: var(--text-main); padding: 4px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: bold; transition: all 0.2s ease; margin-right: 6px; flex-shrink: 0;}
         .ghost-btn:hover { background: rgba(163, 113, 247, 0.2); border-color: var(--purple); }
         
-        #workspace { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 6px; padding: 6px; flex: 1; box-sizing: border-box; background: #000; overflow: hidden; position: relative; }
+        #workspace { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 6px; padding: 6px; flex: 1; box-sizing: border-box; background: #000; overflow: hidden; }
         .window-panel { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; position: relative; }
         .panel-header { background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border); padding: 6px 12px; font-size: 13px; font-weight: bold; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
         
@@ -69,13 +69,12 @@
         body.mobile-mode { overflow: hidden !important; height: 100vh; padding-bottom: 0; }
         body.mobile-mode #tactical-bar { overflow-x: auto; white-space: nowrap; padding-right: 15px; }
         body.mobile-mode #mobile-tabs { display: flex; position: fixed; bottom: 0; left: 0; width: 100%; height: 50px; background: var(--bg-surface); z-index: 10000; border-top: 1px solid var(--border); }
-        body.mobile-mode .tab-btn { flex: 1; padding: 0; background: transparent; border: none; color: var(--text-muted); font-weight: bold; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        body.mobile-mode .tab-btn { flex: 1; padding: 0; background: transparent; border: none; color: var(--text-muted); font-weight: bold; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
         body.mobile-mode .tab-btn.active { color: var(--blue); border-top: 2px solid var(--blue); background: rgba(88, 166, 255, 0.05); }
         
         body.mobile-mode #workspace { display: flex; flex-direction: column; overflow: hidden; height: calc(100vh - 42px - 50px); padding: 0; width: 100vw; box-sizing: border-box; }
         body.mobile-mode .window-panel { position: static !important; width: 100% !important; height: 100% !important; min-height: unset; margin: 0; display: none; border-radius: 0; border: none; }
         body.mobile-mode .window-panel.active-tab { display: flex !important; flex: 1; }
-        body.mobile-mode #win-search { display: none; } 
         
         body.mobile-mode .panel-content { overflow-x: auto !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
         body.mobile-mode .panel-content::-webkit-scrollbar { display: block; width: 4px; height: 4px; }
@@ -83,20 +82,12 @@
         
         body.mobile-mode table { min-width: 650px; font-size: 13px; }
         body.mobile-mode .zoom-controls { display: none !important; }
-
-        /* 💻 電腦版懸浮搜尋框 (Desktop Overlay) */
-        .desktop-search-overlay {
-            display: flex !important; position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-            width: 80%; max-width: 800px; height: 80%; z-index: 9999;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.9); border: 1px solid var(--blue); border-radius: 8px;
-        }
     </style>
 </head>
 <body id="main-body">
     <div id="tactical-bar">
         <button id="audio-btn" class="ghost-btn" style="border-color:var(--green); color:var(--green);" onclick="toggleAudio()">🔊 核心警報</button>
         <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 ETF</button>
-        <button class="ghost-btn" style="border-color:var(--blue); color:var(--blue);" onclick="toggleDesktopSearch()">🔍 搜查官</button>
         <button id="summary-btn" class="ghost-btn" style="border-color:var(--neon-green); color:var(--neon-green);" onclick="fetchSummary()">📊 高勝率戰報</button>
         
         <div class="zoom-controls" style="display:flex; align-items:center; border:1px solid var(--border); border-radius:5px; padding:2px 5px; margin-right:8px; background:rgba(0,0,0,0.2); flex-shrink: 0;">
@@ -118,7 +109,14 @@
             <div class="panel-header">🚀 湧浪動態日誌 (Surge Log)</div>
             <div class="panel-content">
                 <table id="surge-log-table">
-                    <thead><tr><th class="status-indicator"></th><th>時間</th><th>代碼/情報</th><th>現價</th><th>成交量</th><th>戰術訊號</th></tr></thead>
+                    <thead><tr>
+                        <th class="status-indicator"></th>
+                        <th>時間</th>
+                        <th>代碼/情報</th>
+                        <th>現價</th>
+                        <th>成交量</th>
+                        <th>戰術訊號</th>
+                    </tr></thead>
                     <tbody id="surge-log-body"><tr><td colspan="6" style="text-align:center; padding: 30px; color: var(--text-muted); font-size: 13px;">等待訊號觸發</td></tr></tbody>
                 </table>
             </div>
@@ -132,7 +130,7 @@
         </div>
 
         <div id="win-rank" class="window-panel">
-            <div class="panel-header">🏆 狙擊陣型監控雷達</div>
+            <div class="panel-header">🏆 狙擊陣型監控雷達 (Low Float Top Gainers)</div>
             <div class="panel-content">
                 <table>
                     <thead><tr>
@@ -141,9 +139,9 @@
                         <th onclick="setSort('rank', 'Code')">代碼/情報 <span id="sort-rank-Code"></span></th>
                         <th onclick="setSort('rank', 'PriceVal')">現價 <span id="sort-rank-PriceVal"></span></th>
                         <th onclick="setSort('rank', 'Daily_Vol_Raw')">成交量 <span id="sort-rank-Daily_Vol_Raw"></span></th>
-                        <th onclick="setSort('rank', 'Shares_Outstanding_Raw')">總發行 <span id="sort-rank-Shares_Outstanding_Raw"></span></th>
-                        <th onclick="setSort('rank', 'Real_Float_Shares')">流通 <span id="sort-rank-Real_Float_Shares"></span></th>
-                        <th onclick="setSort('rank', 'RelVol')">量比 <span id="sort-rank-RelVol"></span></th>
+                        <th onclick="setSort('rank', 'Shares_Outstanding_Raw')">發行總股數 <span id="sort-rank-Shares_Outstanding_Raw"></span></th>
+                        <th onclick="setSort('rank', 'Real_Float_Shares')">流通股數 <span id="sort-rank-Real_Float_Shares"></span></th>
+                        <th onclick="setSort('rank', 'RelVol')">即時量比 <span id="sort-rank-RelVol"></span></th>
                     </tr></thead>
                     <tbody id="rank-list"></tbody>
                 </table>
@@ -165,36 +163,12 @@
                 </table>
             </div>
         </div>
-
-        <div id="win-search" class="window-panel" style="display: none;">
-            <div class="panel-header">
-                <div>🔍 情報搜查官 (Local Search)</div>
-                <span style="cursor:pointer; font-size:14px; color:var(--text-muted);" onclick="closeSearch()" title="關閉">❌</span>
-            </div>
-            <div style="padding:10px; display:flex; gap:6px; border-bottom:1px solid var(--border); background: rgba(0,0,0,0.3);">
-                <input id="search-input" type="text" placeholder="輸入代碼或關鍵字 (按 Enter)" style="flex:1; background:var(--bg-base); border:1px solid var(--border); color:#fff; padding:8px 12px; border-radius:4px; font-size: 14px;" onkeypress="if(event.key === 'Enter') executeSearch()">
-                <button class="ghost-btn" style="margin:0; border-color:var(--blue); color:var(--blue); padding: 0 15px;" onclick="executeSearch()">搜索</button>
-            </div>
-            <div id="search-history" style="padding:8px 12px; font-size:11px; color:var(--text-muted); display:flex; gap:8px; flex-wrap:wrap; border-bottom:1px solid rgba(255,255,255,0.05);">
-                </div>
-            <div id="search-list" class="panel-content">
-                <table>
-                    <thead><tr>
-                        <th style="width: 50px;">時間</th><th style="width: 50px;">標的</th><th style="width: 40px;">評分</th><th>情報摘要</th>
-                    </tr></thead>
-                    <tbody id="search-results">
-                        <tr><td colspan="4" style="text-align:center; padding:40px; color:var(--text-muted);">請輸入關鍵字開始高速檢索</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
     </div>
 
     <div id="mobile-tabs">
         <button class="tab-btn active" onclick="switchTab('win-rank', this)">🏆 排行</button>
         <button class="tab-btn" onclick="switchTab('win-log', this)">動態</button>
         <button class="tab-btn" onclick="switchTab('win-news', this)">🗞️ 情報</button>
-        <button class="tab-btn" onclick="switchTab('win-search', this)">🔍 搜尋</button>
         <button class="tab-btn" onclick="switchTab('win-detail', this)">📊 戰報</button>
     </div>
 
@@ -204,9 +178,6 @@
         let rankCfg = { col: 'PctVal', asc: false }, newsCfg = { col: 'CatScore', asc: false };
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
-
-        // 🔍 搜尋引擎變數
-        let searchHistory = JSON.parse(localStorage.getItem('sniper_search_history') || '[]');
 
         let alertRenderCount = {};
         let currentZoom = parseFloat(localStorage.getItem('sniper_zoom')) || 1.0;
@@ -251,20 +222,16 @@
         function toggleMode() { 
             isMobileMode = !isMobileMode; 
             let btn = document.getElementById('mode-btn'); 
-            let searchWin = document.getElementById('win-search');
             if (isMobileMode) { 
                 document.body.classList.add('mobile-mode'); 
                 btn.innerText = "💻 電腦版"; 
-                document.getElementById('main-body').style.zoom = 1.0;
-                searchWin.classList.remove('desktop-search-overlay');
-                searchWin.style.display = 'none'; // 手機版靠 tab 控制
+                document.getElementById('main-body').style.zoom = 1.0; 
                 switchTab('win-rank', document.querySelectorAll('.tab-btn')[0]); 
             } else { 
                 document.body.classList.remove('mobile-mode'); 
                 btn.innerText = "📱 手機版"; 
                 applyZoom(); 
                 document.querySelectorAll('.window-panel').forEach(el => el.classList.remove('active-tab')); 
-                searchWin.style.display = 'none'; // 電腦版預設隱藏
             } 
         }
 
@@ -308,99 +275,7 @@
             return res;
         }
 
-        // ==========================================
-        // 🔍 情報搜查官核心邏輯 (Zero-Latency 瞬間過濾版)
-        // ==========================================
-        function toggleDesktopSearch() {
-            if (isMobileMode) {
-                switchTab('win-search', document.querySelectorAll('.tab-btn')[3]);
-            } else {
-                let win = document.getElementById('win-search');
-                if (win.style.display === 'none') {
-                    win.style.display = 'flex';
-                    win.classList.add('desktop-search-overlay');
-                    document.getElementById('search-input').focus();
-                } else {
-                    win.style.display = 'none';
-                    win.classList.remove('desktop-search-overlay');
-                }
-            }
-        }
-
-        function closeSearch() {
-            if (isMobileMode) {
-                switchTab('win-rank', document.querySelectorAll('.tab-btn')[0]);
-            } else {
-                let win = document.getElementById('win-search');
-                win.style.display = 'none';
-                win.classList.remove('desktop-search-overlay');
-            }
-        }
-
-        function executeSearch(queryOverride = null) {
-            let inputEl = document.getElementById('search-input');
-            let query = (queryOverride || inputEl.value).trim().toUpperCase();
-            if (!query) return;
-
-            inputEl.value = query; // 更新輸入框
-            
-            // 寫入並更新歷史紀錄 (最多存5筆)
-            searchHistory = searchHistory.filter(q => q !== query); 
-            searchHistory.unshift(query);
-            if (searchHistory.length > 5) searchHistory.pop();
-            localStorage.setItem('sniper_search_history', JSON.stringify(searchHistory));
-            renderSearchHistory();
-
-            // 執行記憶體瞬間掃描
-            let results = [];
-            if (brain && brain.details) {
-                Object.keys(brain.details).forEach(sym => {
-                    let d = brain.details[sym];
-                    if (d.NewsList) {
-                        d.NewsList.forEach(n => {
-                            let raw = (n.raw_title || "").toUpperCase();
-                            let t = (n.title || "").toUpperCase();
-                            // 只要代碼或標題有符合，瞬間抓出來
-                            if(raw.includes(query) || t.includes(query) || sym.includes(query)) {
-                                results.push({...n, sym: sym, score: n.score || n.CatScore || 0});
-                            }
-                        });
-                    }
-                });
-            }
-            
-            // 渲染結果與反饋高光
-            let h = "";
-            results.sort((a,b) => (b.pub_ts || 0) - (a.pub_ts || 0)).forEach(n => {
-                let hl_text = highlightElites(n.title === "⏳ 翻譯中..." ? n.raw_title : n.title, n.elites, brain.live_trends);
-                
-                // 動態標示搜尋字詞 (黃底高光)
-                let searchRegex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-                hl_text = hl_text.replace(searchRegex, `<span style="background:rgba(227, 179, 65, 0.4); color:var(--yellow); border-radius:2px; padding:0 2px; font-weight:bold;">$1</span>`);
-
-                h += `<tr onclick="loadDetail('${n.sym}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[4]); else closeSearch();">
-                    <td style="color:${n.is_today?'#ffa500':'var(--text-muted)'}; font-size:10px;">${n.time}</td>
-                    <td class="sym" style="font-size:13px;">${n.sym}</td>
-                    <td style="color:${n.score>=6?'var(--yellow)' : (n.score<0?'var(--red)':'var(--text-muted)')}; font-weight:bold;">${n.score}</td>
-                    <td style="font-size:11px; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${hl_text}</td>
-                </tr>`;
-            });
-            document.getElementById('search-results').innerHTML = h || `<tr><td colspan="4" style="text-align:center; padding:30px; color:var(--text-muted);">記憶體中無「${query}」之情報記錄</td></tr>`;
-        }
-
-        function renderSearchHistory() {
-            let container = document.getElementById('search-history');
-            if (searchHistory.length === 0) { container.innerHTML = '<span style="color:var(--text-muted); font-size:11px;">無搜尋足跡</span>'; return; }
-            let h = '<span style="color:var(--text-muted); margin-top:2px;">足跡:</span>';
-            searchHistory.forEach(q => {
-                h += `<span onclick="executeSearch('${q}')" style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.2); padding:3px 8px; border-radius:12px; cursor:pointer; color:var(--text-main); transition:0.2s;">${q}</span>`;
-            });
-            container.innerHTML = h;
-        }
-
-        // ==========================================
-        // 每秒背景輪詢與渲染
-        // ==========================================
+        // 🚀 每 1 秒高速輪詢
         function refresh() { 
             fetch('/data?t=' + Date.now())
             .then(r => r.json())
@@ -479,7 +354,7 @@
                 let floatClass = r.Float_Color || "gray-bg";
                 let safeRelVol = typeof r.RelVol === 'string' && r.RelVol.length > 8 ? parseFloat(r.RelVol.replace('x','')).toFixed(2) + 'x' : (r.RelVol || '-');
 
-                h2 += `<tr class="${rowClass}" onclick="loadDetail('${f_Code}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[4]);">
+                h2 += `<tr class="${rowClass}" onclick="loadDetail('${f_Code}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[3]);">
                     <td class="status-indicator"></td>
                     <td style="width: 75px;">${pctBadge}</td>
                     <td><div style="display:flex; align-items:center;">${symHtml}</div></td>
@@ -503,7 +378,7 @@
                 let gapColor = gapPctVal > 10 ? 'var(--neon-green)' : (gapPctVal > 0 ? 'var(--green)' : 'var(--text-muted)');
                 let hl_text = highlightElites(latest.title==="⏳ 翻譯中..."?latest.raw_title:latest.title, latest.elites, d.live_trends);
                 
-                h3 += `<tr onclick="loadDetail('${n.Code||n.ticker}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[4]);">
+                h3 += `<tr onclick="loadDetail('${n.Code||n.ticker}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[3]);">
                     <td class="status-indicator" style="background:${f_Score >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
                     <td style="color:${latest.is_today?'#ffa500':'var(--text-muted)'}; font-size:10px;">${latest.time}</td>
                     <td class="sym" style="font-size:14px; cursor:pointer;" ondblclick="event.stopPropagation(); openTW('${n.Code||n.ticker}')" title="雙擊開啟 TV 圖表">${n.Code||n.ticker}<br><span style="font-size:10px; color:${gapColor};">Gap: ${gapStr}</span></td>
@@ -578,7 +453,7 @@
         function resetLayout() { localStorage.removeItem('sniper_zoom'); location.reload(); }
 
         setInterval(() => { document.getElementById('sys-clock').innerText = new Date().toLocaleTimeString('zh-TW', {timeZone: 'Asia/Taipei', hour12: false}); }, 1000);
-        window.onload = () => { applyZoom(); refresh(); renderSearchHistory(); if(isMobileMode) switchTab('win-rank', document.querySelectorAll('.tab-btn')[0]); };
+        window.onload = () => { applyZoom(); refresh(); if(isMobileMode) switchTab('win-rank', document.querySelectorAll('.tab-btn')[0]); };
     </script>
 </body>
 </html>

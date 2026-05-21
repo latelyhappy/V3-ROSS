@@ -22,7 +22,9 @@ def update_dynamic_watchlist():
                 {"left": "type", "operation": "in_range", "right": ["stock", "fund", "dr"]}, 
                 {"left": p_col, "operation": "in_range", "right": [0.1, 30.0]},
                 {"left": chg_col, "operation": "egreater", "right": -50.0},
-                {"left": vol_col, "operation": "egreater", "right": 500}
+                # 🚀 修正後：全面對齊盤前專屬欄位！
+                {"left": "premarket_volume", "operation": "egreater", "right": 500},
+                {"left": "premarket_change", "operation": "egreater", "right": 0}  # 盤前上漲
             ], 
             "columns": ["name", "close", "change", "volume", "premarket_close", "premarket_change", "premarket_volume", "market_cap_basic", "type", "average_volume_10d_calc", "relative_volume_10d_calc"], 
             "sort": {"sortBy": chg_col, "sortOrder": "desc"}, 
@@ -48,7 +50,14 @@ def process_single_ticker(ticker, tv):
     """處理單支股票的 K 線與戰術運算"""
     try:
         # 1. 抓取 K 線 (設限 300 根以提升速度)
-        df = tv.get_hist(symbol=ticker, exchange='', interval=Interval.in_1_minute, n_bars=300, extended_session=True)
+        # 🚀 修正後：強制撕開 TradingView 的時區黑幕，吞入盤前 K 線數據！
+        df = tv.get_hist(
+        symbol=ticker, 
+        exchange=exchange, 
+        interval=Interval.in_1_minute, 
+        n_bars=30,
+        extended_session=True # 👈 就是這一行！沒加這一行，盤前永遠是瞎子！
+)
         stat = shared_state.STATS_MAP.get(ticker, {'live_price': 0.0, 'live_pct': 0.0, 'total_vol': 0, 'native_rel_vol': 1.0})
         
         # 2. 獲取基本面數據
