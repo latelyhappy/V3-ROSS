@@ -136,25 +136,6 @@ def data():
         safe_brain["tv_status"] = shared_state.TV_LOGIN_STATUS 
     return jsonify(safe_brain)
 
-@app.route('/api/force_add', methods=['POST'])
-def force_add_ticker():
-    """搜查官專用：強制將任意代碼寫入雷達與全域大腦"""
-    data = request.json
-    ticker = data.get('ticker', '').upper().strip()
-    if ticker:
-        with shared_state.brain_lock:
-            # 1. 強制插入掃描名單的最前面，讓 Scanner 下一秒立刻去抓它
-            if ticker not in shared_state.DYNAMIC_WATCHLIST:
-                shared_state.DYNAMIC_WATCHLIST.insert(0, ticker)
-            
-            # 2. 在大腦中為它預留位置
-            if ticker not in shared_state.MASTER_BRAIN["details"]:
-                shared_state.MASTER_BRAIN["details"][ticker] = {
-                    "Code": ticker, "Price": "📡 強制掃描中...", 
-                    "Pct": "-", "NewsList": [], "CatScore": 0
-                }
-    return jsonify({"status": "success", "ticker": ticker})
-
 if __name__ == '__main__':
     # 啟動附屬資料庫與記憶體 (加入防護罩)
     try: collector.init_db()
