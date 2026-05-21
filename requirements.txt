@@ -6,5 +6,6 @@ pytz
 yfinance
 git+https://github.com/rongardF/tvdatafeed.git
 deep-translator
-alpaca-trade-api
+alpaca-trade-api==3.1.1
+websockets==10.4
 PyGithub
