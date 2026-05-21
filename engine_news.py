@@ -17,8 +17,7 @@ DEFAULT_CATALYSTS = {
     "EARNINGS": 6, "REVENUE": 5, "BEATS": 7, "MISSES": -6,
     "OFFERING": -8, "BANKRUPTCY": -10, "BUYOUT": 9, "PATENT": 6,
     "COMPLIANCE": 8, "REGAINS": 7, "SPLIT": -5, "REVERSE SPLIT": -8,
-    "AGREEMENT": 5, "PARTNERSHIP": 6, "TRIAL": 6, "DATA": 5,
-    "PHASE": 6, "LAUNCH": 7, "CONTRACT": 8, "AWARD": 7
+    "AGREEMENT": 5, "PARTNERSHIP": 6, "CONTRACT": 8
 }
 
 def load_catalysts():
@@ -40,8 +39,7 @@ def translate_to_zh(text):
         headers = {"User-Agent": "Mozilla/5.0"} 
         response = requests.get(url, headers=headers, timeout=4)
         if response.status_code == 200:
-            data = response.json()
-            return "".join([x[0] for x in data[0]])
+            return "".join([x[0] for x in response.json()[0]])
         return text 
     except:
         return text
@@ -54,7 +52,7 @@ def parse_rss_time(time_str):
         return datetime.now(TZ_TW)
 
 def finnhub_news_monitor_worker():
-    print("🗞️ [NEWS] 啟動情報監控網 (RSS + yF 雙核心防斷裂裝甲版)...")
+    print("🗞️ [NEWS] 啟動雙核防斷裂情報網...")
     catalysts = load_catalysts()
     
     while True:
@@ -74,30 +72,24 @@ def finnhub_news_monitor_worker():
                     sym_max_score = 0
                     raw_news_entries = []
                     
-                    # 🚀 雙核心策略 1：優先使用 RSS (最穩定、不封鎖)
+                    # 雙核抓取策略
                     rss_url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={sym}&region=US&lang=en-US"
                     feed = feedparser.parse(rss_url)
                     if feed.entries:
                         for entry in feed.entries[:3]:
                             raw_news_entries.append({
-                                "raw_title": entry.title,
-                                "link": entry.link,
-                                "pub_time": parse_rss_time(entry.published)
+                                "raw_title": entry.title, "link": entry.link, "pub_time": parse_rss_time(entry.published)
                             })
                     else:
-                        # 🚀 雙核心策略 2：如果 RSS 沒東西，備用呼叫 yfinance API
                         try:
                             news_data = yf.Ticker(sym).news
                             for entry in news_data[:3]:
                                 pub_ts = entry.get("providerPublishTime", time.time())
-                                pub_time = datetime.fromtimestamp(pub_ts, pytz.UTC).astimezone(TZ_TW)
                                 raw_news_entries.append({
-                                    "raw_title": entry.get("title", ""),
-                                    "link": entry.get("link", ""),
-                                    "pub_time": pub_time
+                                    "raw_title": entry.get("title", ""), "link": entry.get("link", ""),
+                                    "pub_time": datetime.fromtimestamp(pub_ts, pytz.UTC).astimezone(TZ_TW)
                                 })
-                        except:
-                            pass
+                        except: pass
                             
                     for entry in raw_news_entries:
                         raw_title = entry["raw_title"]
@@ -134,21 +126,18 @@ def finnhub_news_monitor_worker():
                             shared_state.MASTER_BRAIN["details"][sym]["NewsList"] = news_items
                         
                         top_catalysts_list.append({
-                            "Code": sym,
-                            "CatScore": sym_max_score,
-                            "NewsList": news_items
+                            "Code": sym, "CatScore": sym_max_score, "NewsList": news_items
                         })
-                except Exception as inner_e:
-                    pass
+                except: pass
                     
             with shared_state.brain_lock:
                 top_catalysts_list.sort(key=lambda x: x["CatScore"], reverse=True)
                 shared_state.MASTER_BRAIN["top_catalysts"] = top_catalysts_list
                 
         except Exception as e:
-            print(f"⚠️ [NEWS] 情報網發生異常: {e}")
+            print(f"⚠️ [NEWS] 情報網異常: {e}")
             
-        time.sleep(20)
+        time.sleep(15)
 
 def get_live_trends():
     return []
