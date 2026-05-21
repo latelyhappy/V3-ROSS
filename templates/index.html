@@ -385,7 +385,12 @@
                 h3 += `<tr onclick="loadDetail('${n.Code||n.ticker}'); if(isMobileMode) switchTab('win-detail', document.querySelectorAll('.tab-btn')[3]);">
                     <td class="status-indicator" style="background:${f_Score >= 6 ? 'var(--yellow)' : 'var(--border)'};"></td>
                     <td style="color:${latest.is_today?'#ffa500':'var(--text-muted)'}; font-size:10px;">${latest.time}</td>
-                    <td class="sym" style="font-size:14px; cursor:pointer;" ondblclick="event.stopPropagation(); openTW('${n.Code||n.ticker}')" title="雙擊開啟 TV 圖表">${n.Code||n.ticker}<br><span style="font-size:10px; color:${gapColor};">Gap: ${gapStr}</span></td>
+                    <td class="sym" style="font-size:14px; cursor:pointer;" ondblclick="event.stopPropagation(); openTW('${n.Code||n.ticker}')" title="雙擊開啟 TV 圖表">
+                        <div style="line-height: 1.4;">
+                            ${n.Code||n.ticker}<br>
+                            <span style="font-size:10px; color:${gapColor}; font-weight:normal;">Gap: ${gapStr}</span>
+                        </div>
+                    </td>
                     <td style="font-weight:bold; font-size:14px; color:${f_Score>=6?'var(--yellow)' : (f_Score<0?'var(--red)':'var(--text-muted)')};">${f_Score}</td>
                     <td style="font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px;">${hl_text}</td>
                 </tr>`;
