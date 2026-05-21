@@ -1,150 +1,93 @@
-import os
 import time
 import threading
-import math
-from alpaca_trade_api.stream import Stream
 from datetime import datetime
-
-# 🚀 匯入 V59.0 全域記憶體與中央設定
 import shared_state
-from config import TZ_TW
+from config import TZ_NY, TZ_TW
 
-_alpaca_cooldown = {} # 💡 毫秒級防洪閘門紀錄器
+def init_alpaca():
+    print("🚀 [FIRE-CONTROL] 啟動湧浪動態日誌引擎 (盤前解除封印版)...")
+    threading.Thread(target=surge_monitor_loop, daemon=True).start()
 
-def init_alpaca(*args, **kwargs):
-    """
-    啟動 Alpaca 毫秒級報價與火控雷達
-    (使用 *args 兼容 app.py 的傳入參數，但內部統一改用 shared_state 解耦架構)
-    """
-    threading.Thread(target=_alpaca_thread, daemon=True).start()
-
-def _alpaca_thread():
-    global _alpaca_cooldown
-    api_key = os.getenv('ALPACA_API_KEY')
-    secret_key = os.getenv('ALPACA_SECRET_KEY')
-    
-    if not api_key or not secret_key: 
-        print("⚠️ 未設定 Alpaca API Key，毫秒級火控雷達未啟動。")
-        return
-
-    stream = Stream(api_key, secret_key, base_url='https://paper-api.alpaca.markets', data_feed='iex')
-    price_history = {} 
-    
-    async def trade_callback(t):
-        ticker = t.symbol
-        price = t.price
-        now_ts = time.time()
-        
-        if ticker not in price_history: price_history[ticker] = []
-        price_history[ticker].append((now_ts, price))
-        price_history[ticker] = [x for x in price_history[ticker] if now_ts - x[0] <= 10]
-        
-        # 💡 秒速點火偵測 (5 秒區塊)
-        past_5s = [x for x in price_history[ticker] if 4.0 <= now_ts - x[0] <= 6.0]
-        is_velocity_spike = False
-        if past_5s:
-            old_price = past_5s[0][1]
-            if old_price > 0 and (price - old_price) / old_price >= 0.005: is_velocity_spike = True
-
-        is_whole_dollar = False
-        if 0.95 <= price % 1.0 <= 0.99 and price > 1.0: is_whole_dollar = True
-            
-        with shared_state.brain_lock:
-            if ticker in shared_state.MASTER_BRAIN["details"]:
-                cell = shared_state.MASTER_BRAIN["details"][ticker]
-                
-                # 💡 【核心修復：毫秒級報價全面接管】
-                # 無論有沒有觸發警報，只要有價格跳動，立刻覆寫白板！
-                prev_close = cell.get("PrevClose", 0)
-                real_pct = ((price - prev_close) / prev_close * 100) if prev_close > 0 else 0.0
-                
-                cell["Price"] = f"${price:.2f}"
-                cell["PriceVal"] = float(price)
-                cell["Pct"] = f"{real_pct:+.2f}%"
-                cell["Amt"] = f"{(price - prev_close):+.2f}"
-                
-                # 💡 蓋上印記，正式剝奪 TradingView 的報價權限！
-                cell["Alpaca_Active"] = True
-                
-                # 以下為原本的警報雷達邏輯
-                if is_velocity_spike or is_whole_dollar:
-                    # 基礎清理，避免無限疊加
-                    raw_signal = cell.get("Signal", "").replace("⚡極速拉升(+0.5%/5s)", "").replace(f"🧲即將撞擊(${math.ceil(price):.2f})", "").strip()
-                    
-                    signal_triggered = False
-                    new_tag = ""
-                    
-                    if is_velocity_spike:
-                        new_tag = "⚡極速拉升(+0.5%/5s) "
-                        cell["Status"] = "purple"
-                        cell["StickyColor"] = "purple"
-                        signal_triggered = True
-                        
-                    elif is_whole_dollar:
-                        new_tag = f"🧲即將撞擊(${math.ceil(price):.2f}) "
-                        if cell.get("Status") != "purple":
-                            cell["Status"] = "yellow"
-                            cell["StickyColor"] = "yellow"
-                        signal_triggered = True
-
-                    if signal_triggered:
-                        cell["Signal"] = new_tag + raw_signal
-                        cell["StickySignal"] = cell["Signal"]
-                        cell["StickyTime"] = now_ts
-                        
-                        last_a_time = _alpaca_cooldown.get(ticker, 0)
-                        if now_ts - last_a_time > 30:
-                            _alpaca_cooldown[ticker] = now_ts
-                            stats_copy = {k: v for k, v in cell.items() if k not in ["NewsList", "CatScore", "IsTrap", "StickySignal", "StickyColor", "StickyTime"]}
-                            
-                            # Alpaca 單獨觸發的訊號寫入湧浪日誌 (無音效靜音版)
-                            shared_state.MASTER_BRAIN["surge_log"].insert(0, {
-                                **stats_copy, 
-                                "Time": datetime.now(TZ_TW).strftime("%H:%M:%S"), 
-                                "SignalTS": now_ts, 
-                                "Audio": None,
-                                "Row_Status": "normal"
-                            })
-                            shared_state.MASTER_BRAIN["surge_log"] = shared_state.MASTER_BRAIN["surge_log"][:1000]
-
-    def watch_subscriptions():
-        current_subs = set()
-        while True:
-            time.sleep(5)
-            try:
-                # 💡 核心變更：強迫 Alpaca 只監聽「已經處理好且掛上排行榜」的菁英股票！
-                leaderboard = shared_state.MASTER_BRAIN.get("leaderboard", [])
-                valid_symbols = [item["Code"] for item in leaderboard if "Code" in item]
-                
-                # 💡 設定安全閾值：最多 28 檔，確保加上緩衝絕不超過免費版 30 檔上限
-                safe_watchlist = valid_symbols[:28]
-                target_subs = set(safe_watchlist)
-                to_add = target_subs - current_subs
-                to_remove = current_subs - target_subs
-                
-                if to_remove: 
-                    stream.unsubscribe_trades(*to_remove)
-                    for sym in to_remove: 
-                        price_history.pop(sym, None)
-                        _alpaca_cooldown.pop(sym, None)
-                        
-                if to_add: 
-                    stream.subscribe_trades(trade_callback, *to_add)
-                    
-                current_subs = target_subs
-            except: pass
-
-    threading.Thread(target=watch_subscriptions, daemon=True).start()
+def surge_monitor_loop():
+    # 紀錄上一秒的價格，用來比對瞬間拉升
+    price_memory = {}
     
     while True:
         try:
-            print("🚀 Alpaca 毫秒級火控雷達連線中...")
-            stream.run()
-        except ValueError as e:
-            if "connection limit exceeded" in str(e).lower():
-                print("🚨 Alpaca 連線數超載！冷卻 10 秒後重試...")
-                time.sleep(10)
-            else:
-                time.sleep(5)
-        except Exception:
-            time.sleep(30)
+            now_ts = time.time()
+            time_str = datetime.now(TZ_TW).strftime("%H:%M:%S")
+            
+            with shared_state.brain_lock:
+                details = shared_state.MASTER_BRAIN.get("details", {})
+                
+            for sym, info in details.items():
+                current_price = info.get("PriceVal", 0.0)
+                if current_price <= 0:
+                    continue
+                    
+                # 初始化記憶體
+                if sym not in price_memory:
+                    price_memory[sym] = {"price": current_price, "ts": now_ts}
+                    continue
+                    
+                old_price = price_memory[sym]["price"]
+                old_ts = price_memory[sym]["ts"]
+                
+                # 計算價格變化率
+                if old_price > 0:
+                    change_pct = ((current_price - old_price) / old_price) * 100
+                    
+                    # 🚀 盲區一修復：解除盤前封印！只要瞬間拉升 > 0.3%，立刻觸發警報寫入日誌！
+                    if change_pct >= 0.3 and (now_ts - old_ts) >= 2: 
+                        log_entry = {
+                            "SignalTS": int(now_ts),
+                            "Time": time_str,
+                            "Code": sym,
+                            "Price": f"${current_price:.2f}",
+                            "Vol": info.get("Vol", "-"),
+                            "Signal": f"🚀 湧浪急拉 +{change_pct:.2f}%",
+                            "Status": "green",
+                            "Row_Status": "flash-green",
+                            "Type": "stock",
+                            "VolTier": 3,
+                            "Audio": True
+                        }
+                        
+                        with shared_state.brain_lock:
+                            log = shared_state.MASTER_BRAIN.get("surge_log", [])
+                            log.insert(0, log_entry)
+                            shared_state.MASTER_BRAIN["surge_log"] = log[:50] # 保留前 50 筆
+                        
+                        # 更新記憶體基準價，避免重複觸發
+                        price_memory[sym] = {"price": current_price, "ts": now_ts}
+                        
+                    # 偵測遭遇倒貨 (瞬間下跌 > 0.5%)
+                    elif change_pct <= -0.5 and (now_ts - old_ts) >= 2:
+                        log_entry = {
+                            "SignalTS": int(now_ts),
+                            "Time": time_str,
+                            "Code": sym,
+                            "Price": f"${current_price:.2f}",
+                            "Vol": info.get("Vol", "-"),
+                            "Signal": f"🩸 遭遇倒貨 {change_pct:.2f}%",
+                            "Status": "red",
+                            "Row_Status": "",
+                            "Type": "stock",
+                            "VolTier": 3,
+                            "Audio": False
+                        }
+                        with shared_state.brain_lock:
+                            log = shared_state.MASTER_BRAIN.get("surge_log", [])
+                            log.insert(0, log_entry)
+                            shared_state.MASTER_BRAIN["surge_log"] = log[:50]
+                        
+                        price_memory[sym] = {"price": current_price, "ts": now_ts}
+                        
+                # 定期重置基準價 (每 60 秒)，讓動能運算始終保持「極短線」
+                if (now_ts - price_memory[sym]["ts"]) > 60:
+                    price_memory[sym] = {"price": current_price, "ts": now_ts}
+
+        except Exception as e:
+            print(f"⚠️ [FIRE-CONTROL] 湧浪引擎發生錯誤: {e}")
+            
+        time.sleep(2) # 每 2 秒偵測一次瞬間價差
