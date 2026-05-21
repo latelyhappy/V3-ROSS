@@ -4,7 +4,7 @@ numpy
 requests
 pytz
 yfinance
-tvDatafeed
+git+https://github.com/rongardF/tvdatafeed.git
 deep-translator
 alpaca-trade-api
 PyGithub
