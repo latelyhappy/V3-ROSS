@@ -6,7 +6,7 @@ import pytz
 import yfinance as yf
 import warnings
 
-# 強制消音 Pandas 警告
+# 🚀 強制消音 Pandas 警告
 warnings.filterwarnings('ignore', category=FutureWarning)
 warnings.filterwarnings('ignore', message='.*Timestamp.utcnow.*')
 
@@ -14,7 +14,7 @@ import shared_state
 from config import TZ_NY, TZ_TW
 from utils import safe_float
 
-# 全域靜態快取與防阻塞鎖
+# 🧠 全域靜態快取與防阻塞鎖
 INFO_CACHE = {}
 FETCHING_CACHE = set()
 
@@ -41,42 +41,39 @@ def fetch_yf_info(sym):
             FETCHING_CACHE.remove(sym)
 
 def update_scanner_loop():
-    print("🚀 [SCANNER] 啟動 TV 極速報價 + 24小時無盲區時區對齊引擎...")
+    print("🚀 [SCANNER] 啟動動態階梯濾網 + Ross狙擊標靶判定...")
     
     url = "https://scanner.tradingview.com/america/scan"
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "User-Agent": "Mozilla/5.0",
         "Content-Type": "application/json"
     }
 
     while True:
         try:
             now_ny = datetime.now(TZ_NY)
-            
-            # 🚀 核心修復：精確鎖定真正的美東盤前（04:00 - 09:30）
             is_real_premarket = (4 <= now_ny.hour < 9) or (now_ny.hour == 9 and now_ny.minute < 30)
             
             if is_real_premarket:
                 sort_col = "premarket_change"
                 vol_target_col = "premarket_volume"
             else:
-                # 常規盤與深夜時段全部對齊 Regular 欄位，徹底終結深夜白畫面！
                 sort_col = "change"
                 vol_target_col = "volume"
 
-            # 🚀 100% 安全封包，設定硬性門檻：成交量 > 100,000 股 (100K)
+            # 🚀 第一層：TV API 初步放寬到 5 萬股，以防漏掉微型妖股
             payload = {
                 "filter": [
                     {"left": "type", "operation": "in_range", "right": ["stock", "dr"]},
                     {"left": "close", "operation": "in_range", "right": [0.5, 50.0]},
-                    {"left": vol_target_col, "operation": "egreater", "right": 100000} 
+                    {"left": vol_target_col, "operation": "egreater", "right": 50000} 
                 ],
                 "options": {"lang": "en"},
                 "markets": ["america"],
                 "symbols": {"query": {"types": []}, "tickers": []},
                 "columns": ["name", "close", "change", "volume", "premarket_close", "premarket_change", "premarket_volume"], 
                 "sort": {"sortBy": sort_col, "sortOrder": "desc"},
-                "range": [0, 30] 
+                "range": [0, 50] # 抓取多一點，讓後台動態洗牌
             }
 
             response = requests.post(url, json=payload, headers=headers, timeout=5)
@@ -106,11 +103,6 @@ def update_scanner_loop():
                     pct = reg_change
                     vol = reg_vol
 
-                # 二次保險：未滿 100K 股直接剔除
-                if vol < 100000: continue
-
-                tickers_to_scan.append(sym)
-                
                 if sym not in INFO_CACHE and sym not in FETCHING_CACHE:
                     FETCHING_CACHE.add(sym)
                     threading.Thread(target=fetch_yf_info, args=(sym,), daemon=True).start()
@@ -118,12 +110,29 @@ def update_scanner_loop():
                 cache = INFO_CACHE.get(sym, {'out': 0, 'flt': 0, 'avg_vol': 0, 'prev_c': 0})
                 out_val, flt_val, avg_vol, prev_c = cache['out'], cache['flt'], cache['avg_vol'], cache['prev_c']
 
+                # 🚀 第二層（動能核心）：動態流動性階梯過濾
+                vol_threshold = 100000 # 預設門檻 10 萬股
+                if flt_val > 0:
+                    if flt_val <= 5000000:       # 流通 < 5M，門檻放寬為 5 萬股
+                        vol_threshold = 50000
+                    elif flt_val > 50000000:     # 流通 > 50M，門檻嚴格為 50 萬股
+                        vol_threshold = 500000
+                
+                # 若未達動態門檻，視為雜訊，原地抹殺
+                if vol < vol_threshold: continue
+
+                tickers_to_scan.append(sym)
+                
                 out_str = format_volume(out_val) if out_val > 0 else "載入中"
                 flt_str = format_volume(flt_val) if flt_val > 0 else "載入中"
                 
                 rel_vol = (vol / avg_vol) if avg_vol > 0 else 0.0
                 gap_pct = ((price - prev_c) / prev_c * 100) if prev_c > 0 else 0.0
                 
+                # 🚀 第三層（戰術標靶）：Ross Cameron 第一層訊號鎖定！
+                # 只要符合 跳空大於 5% 且 流通量低於 20M，就直接打上狙擊印記。
+                is_sniper_target = (gap_pct >= 5.0 and 0 < flt_val <= 20000000)
+
                 valid_results.append({
                     "Code": sym,
                     "ticker": sym,
@@ -141,7 +150,8 @@ def update_scanner_loop():
                     "EMA9_Dev": 0.0,
                     "VWAP_Dev": 0.0,
                     "StopLoss": price * 0.95,
-                    "NewsList": []
+                    "NewsList": [],
+                    "IsSniperTarget": is_sniper_target # 寫入大腦，傳給火控雷達！
                 })
 
             with shared_state.brain_lock:
@@ -156,7 +166,7 @@ def update_scanner_loop():
                     shared_state.MASTER_BRAIN["details"][sym] = item
                 
                 shared_state.MASTER_BRAIN["last_update"] = datetime.now(TZ_TW).strftime('%H:%M:%S')
-                shared_state.TV_LOGIN_STATUS = "✅ 雷達全開 (24H 鋼鐵防線版)"
+                shared_state.TV_LOGIN_STATUS = "✅ 階梯濾網 + Ross狙擊標靶"
 
         except Exception as e:
             print(f"⚠️ [SCANNER] 迴圈錯誤: {e}")
