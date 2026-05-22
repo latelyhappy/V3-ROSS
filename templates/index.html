@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Sniper V60.0 - Chimera Matrix (左右消光純淨艙)</title>
+    <title>Sniper V61.0 - Chimera Matrix (4象限橘色警示版)</title>
     <style>
         :root { 
             --yellow: #e3b341; --purple: #a371f7; --green: #3fb950; --red: #f85149; --blue: #58a6ff;
             --neon-green: #39ff14; --neon-purple: #d292ff; 
             --bg-base: #0d1117; --bg-surface: #161b22; --border: #30363d; 
             --text-main: #c9d1d9; --text-muted: #8b949e; 
+            --orange: #ffa500; /* 🚀 新增橘色焦點 */
         }
         body { margin: 0; background: var(--bg-base); color: var(--text-main); font-family: -apple-system, "Segoe UI", sans-serif; height: 100vh; width: 100vw; display: flex; flex-direction: column; overflow: hidden; user-select: none; font-size: 13px; }
         
@@ -19,26 +20,26 @@
         .ghost-btn { background: transparent; border: 1px solid var(--border); color: var(--text-main); padding: 4px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: bold; transition: all 0.2s ease; margin-right: 6px; flex-shrink: 0;}
         .ghost-btn:hover { background: rgba(163, 113, 247, 0.2); border-color: var(--purple); }
         
-        /* 🚀 核心排版：左右 1:1 完美等寬對齊，徹底斬斷斷裂可能 */
-        #workspace { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px; flex: 1; box-sizing: border-box; background: #000; overflow: hidden; }
-        .window-panel { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; position: relative; height: 100%; }
-        .panel-header { background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border); padding: 8px 12px; font-size: 13px; font-weight: bold; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+        /* 🚀 恢復 4 象限排版 */
+        #workspace { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 6px; padding: 6px; flex: 1; box-sizing: border-box; background: #000; overflow: hidden; }
+        .window-panel { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+        .panel-header { background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border); padding: 6px 12px; font-size: 13px; font-weight: bold; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
         
         .panel-content { flex: 1; overflow-y: auto; overflow-x: auto; padding: 0; scrollbar-width: none; -ms-overflow-style: none; }
         .panel-content::-webkit-scrollbar { display: none; } 
         
         table { width: 100%; border-collapse: collapse; }
-        th { background: #161b22; color: var(--text-muted); font-size: 11px; position: sticky; top: 0; z-index: 10; padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--border); cursor: pointer; }
-        td { padding: 8px; border-bottom: 1px solid rgba(48, 54, 61, 0.3); font-size: 12px; vertical-align: middle; line-height: 1.4; }
+        th { background: #161b22; color: var(--text-muted); font-size: 11px; position: sticky; top: 0; z-index: 10; padding: 8px; text-align: left; border-bottom: 1px solid var(--border); cursor: pointer; }
+        td { padding: 6px 8px; border-bottom: 1px solid rgba(48, 54, 61, 0.3); font-size: 12px; vertical-align: middle; line-height: 1.3; }
         tr { transition: background-color 0.2s ease; }
         tr:hover { background: rgba(255,255,255,0.05); cursor: pointer; }
         
         .status-indicator { width: 4px; padding: 0 !important; }
         tr.tr-yellow .status-indicator { background: var(--yellow); } tr.tr-purple .status-indicator { background: var(--purple); }
         tr.tr-red .status-indicator { background: var(--red); } tr.tr-green .status-indicator { background: var(--green); }
+        tr.tr-orange .status-indicator { background: var(--orange); } /* 橘色指示燈 */
         
         .new-alert-row { background-color: rgba(88, 166, 255, 0.05) !important; }
-        
         .cyan-bg { background-color: rgba(13, 188, 212, 0.15) !important; color: #0df !important; font-weight: 900 !important; text-align: center; }
         .gray-bg { background-color: rgba(255,255,255,0.02) !important; color: var(--text-muted) !important; font-weight: bold !important; text-align: center; }
         
@@ -52,8 +53,6 @@
         .sym { font-weight: 900; font-size: 15px; color: #ffffff; letter-spacing: 0.5px; display: inline-flex; align-items: center;}
         
         #mobile-tabs { display: none; }
-        
-        /* 手機版排版 */
         body.mobile-mode #mobile-tabs { display: flex; position: fixed; bottom: 0; left: 0; width: 100%; height: 50px; background: var(--bg-surface); z-index: 10000; border-top: 1px solid var(--border); }
         body.mobile-mode .tab-btn { flex: 1; padding: 0; background: transparent; border: none; color: var(--text-muted); font-weight: bold; font-size: 13px; display: flex; align-items: center; justify-content: center; }
         body.mobile-mode .tab-btn.active { color: var(--blue); border-top: 2px solid var(--blue); }
@@ -68,7 +67,7 @@
         <button id="audio-btn" class="ghost-btn" style="border-color:var(--green); color:var(--green);" onclick="toggleAudio()">🔊 核心警報</button>
         <button id="etf-btn" class="ghost-btn" onclick="toggleETF()">🔘 ETF</button>
         <button id="mode-btn" class="ghost-btn" style="border-color:var(--yellow); color:var(--yellow);" onclick="toggleMode()">📱 手機版</button>
-        <button class="ghost-btn" onclick="resetLayout()">🔄 重設網頁</button>
+        <button class="ghost-btn" onclick="resetLayout()">🔄 重設</button>
         <div style="font-size: 12px; color: var(--text-muted); font-family: monospace; margin-left:8px;">TPE: <span id="sys-clock" style="color: var(--text-main); font-weight: bold;">--:--:--</span></div>
         <span id="sys-status" style="margin-left:auto; font-size:11px; color: var(--text-muted);">📡 系統初始化...</span>
     </div>
@@ -87,8 +86,15 @@
                         <th>量比</th>
                         <th>戰術訊號</th>
                     </tr></thead>
-                    <tbody id="surge-log-body"><tr><td colspan="7" style="text-align:center; padding: 30px; color: var(--text-muted);">等待訊號觸發...</td></tr></tbody>
+                    <tbody id="surge-log-body"><tr><td colspan="7" style="text-align:center; padding: 30px; color: var(--text-muted);">等待訊號觸發</td></tr></tbody>
                 </table>
+            </div>
+        </div>
+
+        <div id="win-detail" class="window-panel">
+            <div class="panel-header">📊 深度分析與風控</div>
+            <div id="detail-list" class="panel-content" style="padding: 10px;">
+                <div style="text-align:center; color: var(--text-muted); padding: 50px 0;">點擊代碼載入戰報...</div>
             </div>
         </div>
 
@@ -111,24 +117,44 @@
                 </table>
             </div>
         </div>
+
+        <div id="win-news" class="window-panel">
+            <div class="panel-header">🗞️ 核心情報雷達 (3日內即時推播)</div>
+            <div class="panel-content">
+                <table>
+                    <thead><tr>
+                        <th class="status-indicator"></th>
+                        <th>發布時間</th>
+                        <th>代碼/缺口</th>
+                        <th>情報摘要 (當日顯示橘色)</th>
+                    </tr></thead>
+                    <tbody id="news-list"></tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
     <div id="mobile-tabs">
-        <button class="tab-btn active" onclick="switchTab('win-rank', this)">🏆 排行雷達</button>
-        <button class="tab-btn" onclick="switchTab('win-log', this)">🚀 湧浪動態</button>
+        <button class="tab-btn active" onclick="switchTab('win-rank', this)">🏆 排行</button>
+        <button class="tab-btn" onclick="switchTab('win-log', this)">動態</button>
+        <button class="tab-btn" onclick="switchTab('win-news', this)">🗞️ 情報</button>
+        <button class="tab-btn" onclick="switchTab('win-detail', this)">📊 戰報</button>
     </div>
 
     <script>
-        let brain = {}, audioOn = true, played = {}, showETF = false;
+        let brain = {}, activeSym = "", audioOn = true, played = {}, showETF = false;
         const sounds = { nova: new Audio('/static/sounds/nova.mp3') };
         let rankCfg = { col: 'PctVal', asc: false };
         let isMobileMode = window.innerWidth <= 768;
         if (isMobileMode) document.body.classList.add('mobile-mode');
 
+        let alertRenderCount = {};
         let currentZoom = parseFloat(localStorage.getItem('sniper_zoom')) || 1.0;
 
         function applyZoom() { 
-            if(!isMobileMode) { document.getElementById('main-body').style.zoom = currentZoom; }
+            if(!isMobileMode) {
+                document.getElementById('main-body').style.zoom = currentZoom; 
+            }
         }
 
         function toggleAudio() {
@@ -165,9 +191,10 @@
         }
 
         function setSort(table, col) {
-            let cfg = rankCfg;
-            if (cfg.col === col) cfg.asc = !cfg.asc; else { cfg.col = col; cfg.asc = false; }
-            if (Object.keys(brain).length > 0) refreshUI(brain);
+            if (table === 'rank') {
+                if (rankCfg.col === col) rankCfg.asc = !rankCfg.asc; else { rankCfg.col = col; rankCfg.asc = false; }
+                if (Object.keys(brain).length > 0) refreshUI(brain);
+            }
         }
 
         function refresh() { 
@@ -178,7 +205,6 @@
             if (!d) return;
             document.getElementById('sys-status').innerHTML = `<span style="color:var(--neon-purple); font-weight:bold;">${d.tv_status || ''}</span> &nbsp;|&nbsp; 更新: <span style="color:#fff">${d.last_update || '--:--:--'}</span>`;
             
-            // 1. 渲染左側日誌
             let h1 = "";
             (d.surge_log || []).forEach(r => {
                 let f_Code = r.Code || "N/A";
@@ -193,7 +219,7 @@
 
                 let safeRelVol = typeof r.RelVol === 'string' && r.RelVol.length > 8 ? parseFloat(r.RelVol.replace('x','')).toFixed(2) + 'x' : (r.RelVol || '-');
 
-                h1 += `<tr class="${rowClass}" onclick="openTW('${f_Code}')" ondblclick="openTW('${f_Code}')">
+                h1 += `<tr class="${rowClass}" onclick="loadDetail('${f_Code}')" ondblclick="openTW('${f_Code}')">
                     <td class="status-indicator"></td>
                     <td style="color:var(--text-muted); font-size:11px;">${r.Time}</td>
                     <td><div class="sym">${f_Code} ${badges}</div></td>
@@ -204,9 +230,8 @@
                 </tr>`;
                 if (r.Audio && audioOn) { sounds.nova.play().catch(e=>{}); }
             });
-            document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="7" style="text-align:center; padding: 30px; color: var(--text-muted);">等待訊號觸發...</td></tr>`;
+            document.getElementById('surge-log-body').innerHTML = h1 || `<tr><td colspan="7" style="text-align:center; padding: 30px; color: var(--text-muted);">等待訊號觸發</td></tr>`;
 
-            // 2. 渲染右側排行
             let h2 = "", rankData = [...(d.leaderboard || [])];
             rankData.sort((a, b) => {
                 let vA = parseValue(a[rankCfg.col], rankCfg.col); let vB = parseValue(b[rankCfg.col], rankCfg.col);
@@ -218,9 +243,9 @@
                 let gapVal = parseFloat(r.GapPct) || 0;
                 let gapBadge = gapVal >= 0 ? `<span style="color:#56d364; font-weight:bold;">+${gapVal.toFixed(2)}%</span>` : `<span style="color:#ff7b72; font-weight:bold;">${gapVal.toFixed(2)}%</span>`;
                 let pctBadge = parseFloat(r.PctVal) >= 0 ? `<span class="badge-g">${r.Pct||'-'}</span>` : `<span class="badge-r">${r.Pct||'-'}</span>`;
-                let symHtml = `<span class="sym" style="cursor:pointer;" onclick="openTW('${f_Code}')" ondblclick="openTW('${f_Code}')">${f_Code}</span>`;
+                let symHtml = `<span class="sym" style="cursor:pointer;" onclick="loadDetail('${f_Code}')" ondblclick="event.stopPropagation(); openTW('${f_Code}')">${f_Code}</span>`;
 
-                h2 += `<tr onclick="openTW('${f_Code}');" ondblclick="openTW('${f_Code}')">
+                h2 += `<tr onclick="loadDetail('${f_Code}');" ondblclick="openTW('${f_Code}')">
                     <td class="status-indicator"></td>
                     <td>${pctBadge}</td>
                     <td><b>${gapBadge}</b></td>
@@ -233,6 +258,50 @@
                 </tr>`;
             });
             document.getElementById('rank-list').innerHTML = h2;
+
+            // 🚀 3. 渲染右下角新聞 (去除評分，當日橘色高亮)
+            let h3 = "", newsData = [...(d.top_catalysts || [])].filter(n => n.NewsList && n.NewsList.length > 0);
+            newsData.forEach(n => {
+                let latest = n.NewsList[0];
+                let isToday = latest.is_today;
+                
+                // 動態設定文字顏色與左側指示燈顏色
+                let timeColor = isToday ? 'var(--orange)' : 'var(--text-muted)';
+                let titleColor = isToday ? 'var(--orange)' : 'var(--text-main)';
+                let rowIndClass = isToday ? 'tr-orange' : 'tr-gray';
+                
+                h3 += `<tr class="${rowIndClass}" onclick="loadDetail('${n.Code}');">
+                    <td class="status-indicator"></td>
+                    <td style="color:${timeColor}; font-weight:${isToday?'bold':'normal'}; font-size:10px;">${latest.time}</td>
+                    <td class="sym">${n.Code}</td>
+                    <td style="color:${titleColor}; font-weight:${isToday?'bold':'normal'}; font-size:12px;">${latest.title}</td>
+                </tr>`;
+            });
+            document.getElementById('news-list').innerHTML = h3 || `<tr><td colspan="4" style="text-align:center; padding: 20px; color: var(--text-muted);">近3日無重點新聞</td></tr>`;
+            if(activeSym) loadDetail(activeSym);
+        }
+
+        function loadDetail(sym) {
+            activeSym = sym; let d = brain.details?.[sym]; if (!d) return;
+            let html = `<div style="text-align:left;">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:4px;">
+                    <div><h2 style="font-size:18px; margin:0; display:inline-flex; align-items:center; cursor:pointer;" onclick="openTW('${sym}')">${sym}</h2><span style="font-size:16px; margin-left:6px;">${d.Price||'-'}</span></div>
+                </div>
+                <div style="display:flex; gap:6px; margin:6px 0; font-size:12px;">
+                    <div style="background:rgba(255,255,255,0.05); padding:4px 6px; border-radius:3px;">跳空: <b>${(d.GapPct||0).toFixed(2)}%</b></div>
+                    <div style="background:rgba(255,255,255,0.05); padding:4px 6px; border-radius:3px;">量比: <b>${d.RelVol||'-'}</b></div>
+                </div>
+                <h3 style="color:var(--text-muted); font-size:11px; margin:6px 0; border-bottom:1px solid var(--border); padding-bottom:2px;">🗞️ 近3日情報彙整</h3>`;
+                
+            if (!d.NewsList || d.NewsList.length === 0) html += `<div style="font-size:11px; color:var(--text-muted);">無新聞。</div>`;
+            else d.NewsList.forEach(n => { 
+                let tColor = n.is_today ? 'var(--orange)' : 'var(--text-main)';
+                let fw = n.is_today ? 'bold' : 'normal';
+                html += `<div style="margin-bottom:4px; padding:4px; background:rgba(255,255,255,0.01); border-radius:3px; border-left:2px solid ${n.is_today?'var(--orange)':'var(--border)'};">
+                    <span style="color:${n.is_today?'var(--orange)':'var(--text-muted)'}; font-size:10px; font-weight:${fw}; margin-right:4px;">${n.time}</span>
+                    <a href="${n.link}" target="_blank" style="color:${tColor}; text-decoration:none; font-weight:${fw};">${n.title}</a></div>`; 
+            });
+            document.getElementById('detail-list').innerHTML = html + `</div>`;
         }
 
         function resetLayout() { localStorage.removeItem('sniper_zoom'); location.reload(); }
